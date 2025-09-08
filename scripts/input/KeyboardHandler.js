@@ -10,6 +10,8 @@ export class KeyboardHandler {
     this.keyListeners = new Map();
     this.isActive = false;
     this.pressedKeys = new Set();
+    this.numberSequence = [];
+    this.numberTimeout = null;
   }
 
   /**
@@ -40,6 +42,8 @@ export class KeyboardHandler {
     const activationKey = getSetting('activationKey');
     if (event.code === activationKey || event.key === activationKey) {
       event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
       this.toggleMenu();
       return;
     }
@@ -76,6 +80,14 @@ export class KeyboardHandler {
         menuManager.navigateDown();
         break;
         
+      case 'PageUp':
+        menuManager.navigatePageUp();
+        break;
+        
+      case 'PageDown':
+        menuManager.navigatePageDown();
+        break;
+        
       case 'ArrowRight':
       case 'Enter':
       case 'NumpadEnter':
@@ -90,6 +102,18 @@ export class KeyboardHandler {
         menuManager.showItemSubmenu();
         break;
         
+      case 'KeyP':
+        menuManager.prepareCurrentSpell();
+        break;
+        
+      case 'KeyU':
+        menuManager.unprepareCurrentSpell();
+        break;
+        
+      case 'KeyR':  // R for Remove from favorites
+        menuManager.unfavoriteCurrentItem();
+        break;
+        
       case 'ArrowLeft':
       case 'Escape':
       case 'Backspace':
@@ -98,52 +122,52 @@ export class KeyboardHandler {
         
       case 'Digit1':
       case 'Numpad1':
-        menuManager.navigateToNumber(1);
+        this.handleNumberInput(1, menuManager);
         break;
         
       case 'Digit2':
       case 'Numpad2':
-        menuManager.navigateToNumber(2);
+        this.handleNumberInput(2, menuManager);
         break;
         
       case 'Digit3':
       case 'Numpad3':
-        menuManager.navigateToNumber(3);
+        this.handleNumberInput(3, menuManager);
         break;
         
       case 'Digit4':
       case 'Numpad4':
-        menuManager.navigateToNumber(4);
+        this.handleNumberInput(4, menuManager);
         break;
         
       case 'Digit5':
       case 'Numpad5':
-        menuManager.navigateToNumber(5);
+        this.handleNumberInput(5, menuManager);
         break;
         
       case 'Digit6':
       case 'Numpad6':
-        menuManager.navigateToNumber(6);
+        this.handleNumberInput(6, menuManager);
         break;
         
       case 'Digit7':
       case 'Numpad7':
-        menuManager.navigateToNumber(7);
+        this.handleNumberInput(7, menuManager);
         break;
         
       case 'Digit8':
       case 'Numpad8':
-        menuManager.navigateToNumber(8);
+        this.handleNumberInput(8, menuManager);
         break;
         
       case 'Digit9':
       case 'Numpad9':
-        menuManager.navigateToNumber(9);
+        this.handleNumberInput(9, menuManager);
         break;
         
       case 'Digit0':
       case 'Numpad0':
-        menuManager.navigateToNumber(10);
+        this.handleNumberInput(10, menuManager);
         break;
     }
   }
@@ -156,6 +180,8 @@ export class KeyboardHandler {
     if (!getSetting('enabled')) return;
     
     event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation();
     
     const menuManager = game.folkenQuickMenu.menuManager;
     
@@ -186,6 +212,73 @@ export class KeyboardHandler {
         game.folkenQuickMenu.menuManager.navigateForward();
       }
     });
+  }
+
+  /**
+   * Handle number input for rapid navigation
+   */
+  handleNumberInput(number, menuManager) {
+    // Clear any existing timeout
+    if (this.numberTimeout) {
+      clearTimeout(this.numberTimeout);
+    }
+    
+    // Add number to sequence
+    this.numberSequence.push(number);
+    
+    // Set timeout to execute after 500ms of no input
+    this.numberTimeout = setTimeout(() => {
+      this.executeNumberSequence(menuManager);
+    }, 500);
+    
+    // Also check if we should execute immediately
+    // (if user pauses or hits a number that would be invalid for next level)
+    this.checkImmediateExecution(menuManager);
+  }
+
+  /**
+   * Check if we should execute the number sequence immediately
+   */
+  checkImmediateExecution(menuManager) {
+    if (!menuManager.currentMenu) return;
+    
+    const currentLength = this.numberSequence.length;
+    const menuLength = menuManager.currentMenu.length;
+    
+    // If the current sequence would already exceed menu length, execute now
+    const sequenceValue = parseInt(this.numberSequence.join(''));
+    if (sequenceValue > menuLength && currentLength > 1) {
+      // Remove the last number and execute with the previous sequence
+      const lastNumber = this.numberSequence.pop();
+      this.executeNumberSequence(menuManager);
+      
+      // Start new sequence with the last number
+      this.numberSequence = [lastNumber];
+      this.numberTimeout = setTimeout(() => {
+        this.executeNumberSequence(menuManager);
+      }, 500);
+    }
+  }
+
+  /**
+   * Execute the accumulated number sequence
+   */
+  executeNumberSequence(menuManager) {
+    if (this.numberSequence.length === 0) return;
+    
+    // Convert sequence to number and execute
+    const targetNumber = parseInt(this.numberSequence.join(''));
+    debugLog('Executing number sequence:', this.numberSequence, 'as', targetNumber);
+    
+    // Execute rapid navigation
+    menuManager.navigateToNumberSequence(this.numberSequence.slice());
+    
+    // Clear sequence and timeout
+    this.numberSequence = [];
+    if (this.numberTimeout) {
+      clearTimeout(this.numberTimeout);
+      this.numberTimeout = null;
+    }
   }
 
   /**

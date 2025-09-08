@@ -55,6 +55,14 @@ export class TTSManager {
   speak(text, options = {}) {
     if (!getSetting('enableTTS') || !text) return;
     
+    // Prevent rapid TTS calls that cause interruption errors
+    const now = Date.now();
+    if (now - (this.lastSpeak || 0) < 50) {
+      debugLog('TTS call too rapid, skipping:', text);
+      return;
+    }
+    this.lastSpeak = now;
+    
     debugLog('Speaking:', text);
     
     // Stop current speech if interrupting
@@ -162,6 +170,38 @@ export class TTSManager {
   }
 
   /**
+   * Clean up skill names for TTS to remove redundant words
+   */
+  cleanupSkillName(name) {
+    if (!name) return name;
+    
+    // Remove "Knowledge" prefix from knowledge skills to save time
+    // "Knowledge (Arcana)" becomes "Arcana"
+    // "Knowledge (Geography)" becomes "Geography" 
+    // "Knowledge Nobility" becomes "Nobility"
+    
+    // Debug log to see what we're working with
+    debugLog('Original skill name:', name);
+    
+    let cleaned = name;
+    
+    if (name.toLowerCase().includes('knowledge')) {
+      // More aggressive replacement - handle all knowledge formats
+      cleaned = name
+        .replace(/^Knowledge\s*\([^)]+\)/i, (match) => {
+          // Extract content from parentheses: "Knowledge (Arcana)" -> "Arcana"
+          const content = match.match(/\(([^)]+)\)/);
+          return content ? content[1] : match;
+        })
+        .replace(/^Knowledge\s+(.+)/i, '$1')  // "Knowledge Nobility" -> "Nobility"
+        .trim();
+    }
+    
+    debugLog('Cleaned skill name:', cleaned);
+    return cleaned;
+  }
+
+  /**
    * Announce menu navigation
    */
   announceNavigation(direction, currentItem) {
@@ -171,10 +211,10 @@ export class TTSManager {
     switch (direction) {
       case 'up':
       case 'down':
-        message = currentItem.label;
+        message = this.cleanupSkillName(currentItem.label);
         break;
       case 'forward':
-        message = `Entering ${currentItem.label}`;
+        message = `Entering ${this.cleanupSkillName(currentItem.label)}`;
         break;
       case 'back':
         message = 'Back';
@@ -186,7 +226,7 @@ export class TTSManager {
         message = 'Quick Menu closed';
         break;
       default:
-        message = currentItem.label;
+        message = this.cleanupSkillName(currentItem.label);
     }
     
     this.speak(message, { interrupt: true });
@@ -207,7 +247,7 @@ export class TTSManager {
     // Filter out header items and format the list
     const validItems = items.filter(item => item.type !== 'header');
     const itemList = validItems
-      .map((item, index) => `${index + 1}, ${item.label}`)
+      .map((item, index) => `${index + 1}, ${this.cleanupSkillName(item.label)}`)
       .join('. ');
     
     message += itemList;

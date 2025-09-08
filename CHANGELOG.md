@@ -7,10 +7,11 @@ All notable changes to the FolkenGames Quick Menu module will be documented in t
 ### Added
 - **Initial Release**: Complete TTS-based character navigation system for FoundryVTT
 - **iPod-Style Interface**: Hierarchical menu navigation inspired by classic iPod design
-- **Advanced Keyboard Controls**: Arrow keys, numbers (1-9), F key favorites, / key submenus
+- **Advanced Keyboard Controls**: Arrow keys, numbers (1-9), F key favorites, / key submenus, U key unfavorite
 - **Smart TTS System**: 120% default speed, streamlined announcements, enhanced attack reporting
 - **Movement Isolation**: Suspends FoundryVTT controls while menu is active
-- **Dynamic Favorites**: Add any action to favorites with F key, persistent storage
+- **Per-Character Favorites**: Add any action to favorites with F key, storage per character and user
+- **GM Token Support**: Game Masters can use menu with any selected token for testing
 - **Skill Enhancement**: Take 10/Take 20 submenus for skill checks
 - **Roll Result Integration**: Instant TTS announcements of dice totals using chat message hooks
 - **Attack Intelligence**: "18 to hit, 12 damage" comprehensive attack result reporting
@@ -20,6 +21,10 @@ All notable changes to the FolkenGames Quick Menu module will be documented in t
 - **Accessibility Focus**: Screen reader friendly, high contrast support, optimized for blind users
 - **Compact Design**: Modern dark theme with minimal screen footprint
 - **Configurable Settings**: TTS speed (50%-200%), visual UI toggle, activation key customization
+
+### Fixed
+- **Control Suspension**: Removed problematic keybinding manipulation that caused JavaScript errors
+- **Spell Navigation**: Fixed spell level submenu navigation issues, ensured Ready spells appear before Unprepared
 
 ### Key Features
 - **Navigation**: Backtick (`) activation, arrow keys, numbers (1-9), F favorites, / submenus

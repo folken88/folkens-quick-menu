@@ -4,6 +4,8 @@
  */
 
 import { debugLog, getSetting } from '../module.js';
+import { CharacterDataExtractor } from '../character/CharacterDataExtractor.js';
+import { CharacterDataExtractorPF2e } from '../character/CharacterDataExtractorPF2e.js';
 
 export class QuickMenuManager {
   constructor() {
@@ -11,6 +13,7 @@ export class QuickMenuManager {
     this.currentMenu = null;
     this.menuStack = [];
     this.selectedIndex = 0;
+    // Initialize with base menu - will be rebuilt dynamically when opened
     this.rootMenuItems = [
       { id: 'favorites', label: 'Favorites', type: 'submenu' },
       { id: 'skills', label: 'Skills', type: 'submenu' },
@@ -41,6 +44,39 @@ export class QuickMenuManager {
   }
 
   /**
+   * Build root menu based on current system
+   */
+  buildRootMenu() {
+    if (game.folkenQuickMenu?.systemDetector?.isPF2e()) {
+      // PF2e menu with Actions (no separate Skills menu since Actions covers skill-based actions)
+      this.rootMenuItems = [
+        { id: 'favorites', label: 'Favorites', type: 'submenu' },
+        { id: 'actions', label: 'Actions', type: 'submenu' },
+        { id: 'attacks', label: 'Attacks', type: 'submenu' },
+        { id: 'spells', label: 'Spells', type: 'submenu' },
+        { id: 'items', label: 'Items', type: 'submenu' },
+        { id: 'abilities', label: 'Abilities', type: 'submenu' },
+        { id: 'saves', label: 'Saving Throws', type: 'submenu' },
+        { id: 'stats', label: 'Statistics', type: 'submenu' }
+      ];
+    } else {
+      // PF1 menu
+      this.rootMenuItems = [
+        { id: 'favorites', label: 'Favorites', type: 'submenu' },
+        { id: 'skills', label: 'Skills', type: 'submenu' },
+        { id: 'combat', label: 'Combat', type: 'submenu' },
+        { id: 'spells', label: 'Spells', type: 'submenu' },
+        { id: 'items', label: 'Items', type: 'submenu' },
+        { id: 'abilities', label: 'Abilities', type: 'submenu' },
+        { id: 'saves', label: 'Saving Throws', type: 'submenu' },
+        { id: 'stats', label: 'Statistics', type: 'submenu' }
+      ];
+    }
+    
+    debugLog('Built root menu for system:', game.folkenQuickMenu?.systemDetector?.isPF2e() ? 'PF2e' : 'PF1');
+  }
+
+  /**
    * Open the quick menu
    */
   async openMenu() {
@@ -48,6 +84,9 @@ export class QuickMenuManager {
     
     debugLog('Opening Quick Menu');
     this.isOpen = true;
+    
+    // Build menu based on current system
+    this.buildRootMenu();
     this.currentMenu = this.rootMenuItems;
     this.selectedIndex = 0;
     this.menuStack = [];
@@ -62,6 +101,9 @@ export class QuickMenuManager {
     
     // Update menu with character data
     await this.updateMenuForActor(actor);
+    
+    // Refresh favorites for this character
+    this.refreshFavoritesForActor();
     
     // Show visual UI if enabled
     if (getSetting('showVisualUI') && this.ui) {
@@ -120,21 +162,160 @@ export class QuickMenuManager {
   }
 
   /**
+   * Navigate up by 10 items (Page Up)
+   */
+  navigatePageUp() {
+    if (!this.isOpen || !this.currentMenu) return;
+    
+    this.selectedIndex = Math.max(0, this.selectedIndex - 10);
+    this.announceCurrentSelection();
+    this.render();
+  }
+
+  /**
+   * Navigate down by 10 items (Page Down)
+   */
+  navigatePageDown() {
+    if (!this.isOpen || !this.currentMenu) return;
+    
+    this.selectedIndex = Math.min(this.currentMenu.length - 1, this.selectedIndex + 10);
+    this.announceCurrentSelection();
+    this.render();
+  }
+
+  /**
    * Navigate into a submenu or execute an action
    */
   navigateForward() {
-    if (!this.isOpen || !this.currentMenu) return;
+    if (!this.isOpen || !this.currentMenu) {
+      debugLog('Cannot navigate forward: menu not open or no current menu');
+      return;
+    }
+    
+    debugLog('Navigate forward called. Current menu length:', this.currentMenu.length, 'Selected index:', this.selectedIndex);
     
     const selectedItem = this.currentMenu[this.selectedIndex];
-    if (!selectedItem) return;
+    if (!selectedItem) {
+      debugLog('No selected item found at index', this.selectedIndex);
+      return;
+    }
     
     debugLog('Navigating forward to:', selectedItem);
     
     if (selectedItem.type === 'submenu') {
+      debugLog('Item is submenu, entering...');
       this.enterSubmenu(selectedItem);
     } else if (selectedItem.type === 'action') {
+      debugLog('Item is action, executing...');
       this.executeAction(selectedItem);
+    } else if (selectedItem.type === 'spell_level') {
+      debugLog('Item is spell level submenu, entering...');
+      this.enterSpellLevel(selectedItem);
+    } else if (selectedItem.type === 'item_category') {
+      debugLog('Item is item category submenu, entering...');
+      this.enterItemCategory(selectedItem);
+    } else if (selectedItem.type === 'action_category') {
+      debugLog('Item is action category submenu, entering...');
+      this.enterActionCategory(selectedItem);
+    } else if (['skill', 'attack', 'spell', 'item', 'ability', 'save', 'stat', 'strike', 'pf2e_action'].includes(selectedItem.type)) {
+      debugLog('Item is executable action, executing...');
+      this.executeAction(selectedItem);
+    } else {
+      debugLog('Unknown item type:', selectedItem.type);
     }
+  }
+
+  /**
+   * Enter a spell level submenu (PF2e specific)
+   */
+  async enterSpellLevel(spellLevelItem) {
+    debugLog('Entering spell level:', spellLevelItem);
+    
+    const actor = this.getCurrentActor();
+    if (!actor) {
+      debugLog('No actor available for spell level');
+      return;
+    }
+    
+    // Save current state
+    this.menuStack.push({
+      menu: this.currentMenu,
+      selectedIndex: this.selectedIndex
+    });
+    
+    // Get spells for this level
+    let spells = [];
+    if (game.folkenQuickMenu.systemDetector.isPF2e()) {
+      spells = game.folkenQuickMenu.characterData.getSpellsForLevel(
+        actor, 
+        spellLevelItem.spellLevel, 
+        spellLevelItem.tradition
+      );
+    } else {
+      spells = game.folkenQuickMenu.characterData.getSpellsForLevel(actor, spellLevelItem.spellLevel);
+    }
+    
+    this.currentMenu = spells;
+    this.selectedIndex = 0;
+    
+    this.announceCurrentSelection();
+    this.render();
+  }
+
+  /**
+   * Enter an item category submenu (PF2e specific)
+   */
+  async enterItemCategory(categoryItem) {
+    debugLog('Entering item category:', categoryItem);
+    
+    const actor = this.getCurrentActor();
+    if (!actor) {
+      debugLog('No actor available for item category');
+      return;
+    }
+    
+    // Save current state
+    this.menuStack.push({
+      menu: this.currentMenu,
+      selectedIndex: this.selectedIndex
+    });
+    
+    // Get items for this category
+    const items = game.folkenQuickMenu.characterData.getItemsByCategory(actor, categoryItem.id);
+    
+    this.currentMenu = items;
+    this.selectedIndex = 0;
+    
+    this.announceCurrentSelection();
+    this.render();
+  }
+
+  /**
+   * Enter an action category submenu (PF2e specific)
+   */
+  async enterActionCategory(categoryItem) {
+    debugLog('Entering action category:', categoryItem);
+    
+    const actor = this.getCurrentActor();
+    if (!actor) {
+      debugLog('No actor available for action category');
+      return;
+    }
+    
+    // Save current state
+    this.menuStack.push({
+      menu: this.currentMenu,
+      selectedIndex: this.selectedIndex
+    });
+    
+    // Get actions for this category
+    const actions = game.folkenQuickMenu.characterData.getActionsByCategory(actor, categoryItem.id);
+    
+    this.currentMenu = actions;
+    this.selectedIndex = 0;
+    
+    this.announceCurrentSelection();
+    this.render();
   }
 
   /**
@@ -164,11 +345,283 @@ export class QuickMenuManager {
   navigateToNumber(number) {
     if (!this.isOpen || !this.currentMenu) return;
     
-    const index = number - 1; // Convert to 0-based index
-    if (index >= 0 && index < this.currentMenu.length) {
-      this.selectedIndex = index;
+    // Look for item with matching displayNumber first
+    let targetIndex = -1;
+    for (let i = 0; i < this.currentMenu.length; i++) {
+      const item = this.currentMenu[i];
+      if (item.displayNumber !== undefined && item.displayNumber === number) {
+        targetIndex = i;
+        break;
+      }
+    }
+    
+    // Fallback to traditional index-based navigation if no displayNumber match
+    if (targetIndex === -1) {
+      targetIndex = number - 1; // Convert to 0-based index
+    }
+    
+    if (targetIndex >= 0 && targetIndex < this.currentMenu.length) {
+      this.selectedIndex = targetIndex;
       this.announceCurrentSelection();
       this.render();
+    }
+  }
+
+  /**
+   * Navigate using a number sequence for rapid navigation
+   */
+  async navigateToNumberSequence(sequence) {
+    if (!this.isOpen || !this.currentMenu || sequence.length === 0) return;
+    
+    debugLog('Executing number sequence navigation:', sequence);
+    
+    for (let i = 0; i < sequence.length; i++) {
+      const number = sequence[i];
+      
+      // Look for item with matching displayNumber first
+      let targetIndex = -1;
+      for (let j = 0; j < this.currentMenu.length; j++) {
+        const item = this.currentMenu[j];
+        if (item.displayNumber !== undefined && item.displayNumber === number) {
+          targetIndex = j;
+          break;
+        }
+      }
+      
+      // Fallback to traditional index-based navigation if no displayNumber match
+      if (targetIndex === -1) {
+        targetIndex = number - 1; // Convert to 0-based index
+      }
+      
+      if (targetIndex >= 0 && targetIndex < this.currentMenu.length) {
+        this.selectedIndex = targetIndex;
+        
+        // If this is the last number in sequence, just announce and render
+        if (i === sequence.length - 1) {
+          this.announceCurrentSelection();
+          this.render();
+          return;
+        }
+        
+        // Otherwise, navigate into the submenu
+        const selectedItem = this.currentMenu[this.selectedIndex];
+        if (selectedItem && selectedItem.type === 'submenu') {
+          await this.enterSubmenu(selectedItem);
+          // Small delay to allow menu to update
+          await new Promise(resolve => setTimeout(resolve, 50));
+        } else if (selectedItem && selectedItem.type === 'action') {
+          // If we hit an action before the sequence is complete, execute it
+          this.executeAction(selectedItem);
+          return;
+        } else {
+          // Invalid path, stop here
+          this.announceCurrentSelection();
+          this.render();
+          return;
+        }
+      } else {
+        // Invalid number for current menu, stop here
+        game.folkenQuickMenu.tts.speak('Invalid selection');
+        return;
+      }
+    }
+  }
+
+  /**
+   * Prepare/unprepare current spell
+   */
+  prepareCurrentSpell() {
+    if (!this.isOpen || !this.currentMenu) return;
+    
+    const selectedItem = this.currentMenu[this.selectedIndex];
+    if (!selectedItem || selectedItem.actionType !== 'spell') return;
+    
+    const actor = this.getCurrentActor();
+    if (!actor) return;
+    
+    const spell = actor.items.get(selectedItem.itemId);
+    if (!spell) return;
+    
+    // PF1 uses preparation.value for currently prepared count
+    const currentCount = spell.system.preparation?.value || 0;
+    const newCount = currentCount + 1; // Increment by 1
+    
+    debugLog(`Preparing spell: ${spell.name} from ${currentCount} to ${newCount}`);
+    
+    // Update the spell preparation value (currently prepared)
+    const updateData = {
+      'system.preparation.value': newCount
+    };
+    
+    debugLog('Update data:', updateData);
+    
+    spell.update(updateData).then(() => {
+      game.folkenQuickMenu.tts.speak(`${spell.name} ${newCount} prepared`);
+      
+      debugLog(`Spell update successful: ${spell.name} now has ${newCount} prepared`);
+      
+      // Update the current menu item to reflect change
+      const selectedItem = this.currentMenu[this.selectedIndex];
+      if (selectedItem) {
+        selectedItem.prepared = newCount > 0;
+      }
+    }).catch(error => {
+      console.error('Error updating spell preparation:', error);
+      debugLog('Full spell data:', spell.system);
+      game.folkenQuickMenu.tts.speak('Failed to update spell');
+    });
+  }
+
+  /**
+   * Unprepare current spell (decrement preparation count)
+   */
+  unprepareCurrentSpell() {
+    if (!this.isOpen || !this.currentMenu) return;
+    
+    const selectedItem = this.currentMenu[this.selectedIndex];
+    if (!selectedItem || selectedItem.actionType !== 'spell') return;
+    
+    const actor = this.getCurrentActor();
+    if (!actor) return;
+    
+    const spell = actor.items.get(selectedItem.itemId);
+    if (!spell) return;
+    
+    // PF1 uses preparation.value for currently prepared count
+    const currentCount = spell.system.preparation?.value || 0;
+    const newCount = Math.max(0, currentCount - 1); // Decrement by 1, minimum 0
+    
+    debugLog(`Unpreparing spell: ${spell.name} from ${currentCount} to ${newCount}`);
+    
+    // Update the spell preparation value (currently prepared)
+    const updateData = {
+      'system.preparation.value': newCount
+    };
+    
+    debugLog('Update data:', updateData);
+    
+    spell.update(updateData).then(() => {
+      if (newCount > 0) {
+        game.folkenQuickMenu.tts.speak(`${spell.name} ${newCount} prepared`);
+      } else {
+        game.folkenQuickMenu.tts.speak(`${spell.name} unprepared`);
+      }
+      
+      debugLog(`Spell update successful: ${spell.name} now has ${newCount} prepared`);
+      
+      // Update the current menu item to reflect change
+      const selectedItem = this.currentMenu[this.selectedIndex];
+      if (selectedItem) {
+        selectedItem.prepared = newCount > 0;
+      }
+    }).catch(error => {
+      console.error('Error updating spell preparation:', error);
+      debugLog('Full spell data:', spell.system);
+      game.folkenQuickMenu.tts.speak('Failed to update spell');
+    });
+  }
+
+  /**
+   * Refresh the current menu (useful after spell preparation changes)
+   */
+  async refreshCurrentMenu() {
+    if (!this.isOpen || !this.currentMenu || this.menuStack.length === 0) return;
+    
+    // Get the parent menu info to recreate current menu
+    const parentState = this.menuStack[this.menuStack.length - 1];
+    const parentItem = parentState.menu[parentState.selectedIndex];
+    
+    let refreshedItems = [];
+    const actor = this.getCurrentActor();
+    
+    if (parentItem.preparationType !== undefined) {
+      // We're in a preparation submenu
+      refreshedItems = game.folkenQuickMenu.characterData.getSpellsByPreparation(
+        actor, parentItem.spellLevel, parentItem.preparationType
+      );
+    } else if (parentItem.spellLevel !== undefined) {
+      // We're in a spell level submenu
+      refreshedItems = game.folkenQuickMenu.characterData.getSpellsForLevel(actor, parentItem.spellLevel);
+    }
+    
+    if (refreshedItems.length > 0) {
+      this.currentMenu = refreshedItems;
+      // Keep selection if possible, otherwise reset to 0
+      if (this.selectedIndex >= refreshedItems.length) {
+        this.selectedIndex = 0;
+      }
+      this.render();
+    }
+  }
+
+  /**
+   * Remove current item from favorites
+   */
+  unfavoriteCurrentItem() {
+    if (!this.isOpen || !this.currentMenu) return;
+    
+    const selectedItem = this.currentMenu[this.selectedIndex];
+    if (!selectedItem || selectedItem.type !== 'action') return;
+    
+    // Check if we're in the favorites menu
+    // We're in favorites if the parent menu is root and selected index 0 (favorites)
+    const isInFavoritesMenu = this.menuStack.length > 0 && 
+      this.menuStack[this.menuStack.length - 1].menu === this.rootMenuItems &&
+      this.menuStack[this.menuStack.length - 1].selectedIndex === 0;
+    
+    if (!isInFavoritesMenu) {
+      game.folkenQuickMenu.tts.speak('Not in favorites');
+      return;
+    }
+    
+    // Find and remove from favorites
+    const favoriteIndex = this.favorites.findIndex(fav => 
+      fav.actionType === selectedItem.actionType && 
+      fav.skillKey === selectedItem.skillKey &&
+      fav.itemId === selectedItem.itemId &&
+      fav.saveType === selectedItem.saveType
+    );
+    
+    if (favoriteIndex === -1) {
+      game.folkenQuickMenu.tts.speak('Not favorited');
+      return;
+    }
+    
+    // Remove from favorites
+    this.favorites.splice(favoriteIndex, 1);
+    this.saveFavorites();
+    
+    game.folkenQuickMenu.tts.speak(`${selectedItem.label} removed`);
+    
+    // Refresh the favorites menu
+    this.refreshFavoritesMenu();
+  }
+
+  /**
+   * Refresh the favorites menu after changes
+   */
+  refreshFavoritesMenu() {
+    if (!this.isOpen || this.menuStack.length === 0) return;
+    
+    // Check if we're in favorites submenu
+    const parentState = this.menuStack[this.menuStack.length - 1];
+    if (parentState.menu === this.rootMenuItems && parentState.selectedIndex === 0) {
+      // We're in the favorites submenu, refresh it
+      this.currentMenu = this.getFavorites();
+      
+      // Adjust selection if needed
+      if (this.selectedIndex >= this.currentMenu.length) {
+        this.selectedIndex = Math.max(0, this.currentMenu.length - 1);
+      }
+      
+      // If no favorites left, announce and go back
+      if (this.currentMenu.length === 0) {
+        game.folkenQuickMenu.tts.speak('No favorites remaining');
+        this.navigateBack();
+      } else {
+        this.announceCurrentSelection();
+        this.render();
+      }
     }
   }
 
@@ -285,16 +738,51 @@ export class QuickMenuManager {
    * Enter a submenu
    */
   async enterSubmenu(menuItem) {
+    debugLog('Entering submenu:', menuItem);
+    
     // Save current state
     this.menuStack.push({
       menu: this.currentMenu,
       selectedIndex: this.selectedIndex
     });
     
-    // Load submenu content
-    const submenuItems = await this.loadSubmenuItems(menuItem.id);
+    let submenuItems = [];
+    
+    // Handle special submenu cases
+    if (menuItem.spellLevel !== undefined) {
+      // This is a spell level submenu - get spells directly
+      const actor = this.getCurrentActor();
+      submenuItems = game.folkenQuickMenu.characterData.getSpellsForLevel(actor, menuItem.spellLevel);
+      debugLog('Spell level submenu items:', submenuItems);
+    } else if (menuItem.itemCategory !== undefined) {
+      // This is an item category submenu
+      const actor = this.getCurrentActor();
+      submenuItems = game.folkenQuickMenu.characterData.getItemsByCategory(actor, menuItem.itemCategory);
+      debugLog('Item category submenu items:', submenuItems);
+    } else if (menuItem.type === 'item_actions') {
+      // This is an item actions submenu - get actions for the specific item
+      const actor = this.getCurrentActor();
+      submenuItems = game.folkenQuickMenu.characterData.getItemActions ? 
+                     game.folkenQuickMenu.characterData.getItemActions(actor, menuItem.id) : [];
+      debugLog('Item actions submenu items:', submenuItems);
+    } else {
+      // Regular submenu
+      submenuItems = await this.loadSubmenuItems(menuItem.id);
+      debugLog('Regular submenu items:', submenuItems);
+    }
+    
     this.currentMenu = submenuItems;
     this.selectedIndex = 0;
+    
+    debugLog('New current menu:', this.currentMenu);
+    debugLog('Selected index:', this.selectedIndex);
+    
+    // Check if menu is empty
+    if (!this.currentMenu || this.currentMenu.length === 0) {
+      debugLog('WARNING: Empty submenu created!');
+      game.folkenQuickMenu.tts.speak('Empty menu');
+      return;
+    }
     
     // Announce just the current selection
     this.announceCurrentSelection();
@@ -316,6 +804,9 @@ export class QuickMenuManager {
         case 'attack':
           await this.executeAttackRoll(actionItem);
           break;
+        case 'strike':
+          await this.executeAttackRoll(actionItem);
+          break;
         case 'spell':
           await this.executeSpellCast(actionItem);
           break;
@@ -330,6 +821,33 @@ export class QuickMenuManager {
           break;
         case 'initiative':
           await this.executeInitiativeRoll(actionItem);
+          break;
+        case 'stabilize':
+          await this.executeStabilize(actionItem);
+          break;
+        case 'caster_level':
+          await this.executeCasterLevelCheck(actionItem);
+          break;
+        case 'concentration':
+          await this.executeConcentrationCheck(actionItem);
+          break;
+        case 'pf2e_action':
+          await this.executePF2eAction(actionItem);
+          break;
+        case 'item_equip':
+          await this.executeItemEquip(actionItem);
+          break;
+        case 'item_unequip':
+          await this.executeItemUnequip(actionItem);
+          break;
+        case 'item_activate':
+          await this.executeItemActivate(actionItem);
+          break;
+        case 'item_consume':
+          await this.executeItemConsume(actionItem);
+          break;
+        case 'item_inspect':
+          await this.executeItemInspect(actionItem);
           break;
         default:
           console.warn('Unknown action type:', actionItem.actionType);
@@ -356,10 +874,24 @@ export class QuickMenuManager {
         return game.folkenQuickMenu.characterData.getSkills(actor);
       case 'attacks':
         return game.folkenQuickMenu.characterData.getAttacks(actor);
+      case 'combat':
+        return game.folkenQuickMenu.characterData.getCombat(actor);
+      case 'actions':
+        // PF2e actions menu
+        return game.folkenQuickMenu.characterData.getActions ? 
+               game.folkenQuickMenu.characterData.getActions(actor) : [];
       case 'spells':
         return game.folkenQuickMenu.characterData.getSpells(actor);
       case 'items':
         return game.folkenQuickMenu.characterData.getItems(actor);
+      case 'item_category':
+        return game.folkenQuickMenu.characterData.getItemsByCategory(actor, menuType.split('_')[2]);
+      case 'item_actions':
+        // Get actions for a specific item
+        return game.folkenQuickMenu.characterData.getItemActions ? 
+               game.folkenQuickMenu.characterData.getItemActions(actor, menuType.split('_')[2]) : [];
+      case 'action_category':
+        return game.folkenQuickMenu.characterData.getActionsByCategory(actor, menuType.split('_')[2]);
       case 'abilities':
         return game.folkenQuickMenu.characterData.getAbilities(actor);
       case 'saves':
@@ -381,7 +913,7 @@ export class QuickMenuManager {
     const assignedActor = game.user.character;
     if (assignedActor) return assignedActor;
     
-    // Fall back to selected token
+    // Fall back to selected token (allows GM to test with any token)
     const controlled = canvas.tokens.controlled;
     if (controlled.length === 1) {
       return controlled[0].actor;
@@ -406,12 +938,25 @@ export class QuickMenuManager {
   }
 
   /**
-   * Load favorites from client storage
+   * Load favorites from client storage (per character)
    */
   loadFavorites() {
     try {
-      const stored = localStorage.getItem('folkenQuickMenu.favorites');
-      return stored ? JSON.parse(stored) : [];
+      const actor = this.getCurrentActor();
+      if (!actor) return [];
+      
+      const key = `folkenQuickMenu.favorites.${game.user.id}.${actor.id}`;
+      const stored = localStorage.getItem(key);
+      
+      if (stored) {
+        return JSON.parse(stored);
+      } else {
+        // First time for this character - add default Perception favorite
+        const defaultFavorites = this.createDefaultFavorites(actor);
+        // Save the defaults so they persist
+        localStorage.setItem(key, JSON.stringify(defaultFavorites));
+        return defaultFavorites;
+      }
     } catch (error) {
       console.warn('Failed to load favorites:', error);
       return [];
@@ -419,14 +964,46 @@ export class QuickMenuManager {
   }
 
   /**
-   * Save favorites to client storage
+   * Save favorites to client storage (per character)
    */
   saveFavorites() {
     try {
-      localStorage.setItem('folkenQuickMenu.favorites', JSON.stringify(this.favorites));
+      const actor = this.getCurrentActor();
+      if (!actor) return;
+      
+      const key = `folkenQuickMenu.favorites.${game.user.id}.${actor.id}`;
+      localStorage.setItem(key, JSON.stringify(this.favorites));
     } catch (error) {
       console.warn('Failed to save favorites:', error);
     }
+  }
+
+  /**
+   * Create default favorites for a new character
+   */
+  createDefaultFavorites(actor) {
+    const defaults = [];
+    
+    // Add Perception as default - everyone needs it
+    const perceptionSkill = actor.system?.skills?.per;
+    if (perceptionSkill) {
+      defaults.push({
+        type: 'skill',
+        id: 'per',
+        label: 'Perception',
+        actionType: 'skill'
+      });
+    }
+    
+    debugLog('Created default favorites for actor:', actor.name, defaults);
+    return defaults;
+  }
+
+  /**
+   * Refresh favorites for current character
+   */
+  refreshFavoritesForActor() {
+    this.favorites = this.loadFavorites();
   }
 
   /**
@@ -435,10 +1012,20 @@ export class QuickMenuManager {
   announceCurrentSelection() {
     if (!getSetting('enableTTS') || !this.currentMenu) return;
     
+    debugLog('Announcing current selection. Menu length:', this.currentMenu.length, 'Selected index:', this.selectedIndex);
+    
     const selectedItem = this.currentMenu[this.selectedIndex];
     if (selectedItem) {
-      const message = `${this.selectedIndex + 1}. ${selectedItem.label}`;
+      // Use displayNumber if available, otherwise use index + 1
+      const displayNum = selectedItem.displayNumber !== undefined ? selectedItem.displayNumber : this.selectedIndex + 1;
+      const message = `${displayNum}. ${selectedItem.label}`;
+      debugLog('Announcing:', message);
       game.folkenQuickMenu.tts.speak(message);
+      
+      // Update visual UI and scroll to selection
+      this.render();
+    } else {
+      debugLog('No selected item found!');
     }
   }
 
@@ -459,25 +1046,28 @@ export class QuickMenuManager {
     const actor = this.getCurrentActor();
     if (!actor) return;
     
-    const skillKey = actionItem.skillKey;
+    // Check if we're using PF2e system
+    if (game.folkenQuickMenu.systemDetector.isPF2e()) {
+      // For now, PF2e skill rolls are not implemented
+      // We need to research the actual PF2e API patterns first
+      game.folkenQuickMenu.tts.speak('PF2e skill rolls not yet implemented');
+      console.log('PF2e skill execution not implemented. Action item:', actionItem);
+      return;
+    }
     
-    // Handle take 10/20 options
+    // PF1 implementation
+    const skillKey = actionItem.skillKey || actionItem.id;
     const rollOptions = { skipDialog: true };
     
     if (actionItem.take10) {
       rollOptions.take10 = true;
-      // No TTS announcement needed - user already heard "Take 10 X"
     } else if (actionItem.take20) {
       rollOptions.take20 = true;
-      // No TTS announcement needed - user already heard "Take 20 X"
-    } else {
-      // No TTS announcement needed - user already heard the skill name
     }
     
     // Set up chat message hook to announce the result
     const hookId = Hooks.once("createChatMessage", (message) => {
       if (message.rolls?.[0]?.total && game.folkenQuickMenu?.tts) {
-        // Announce the rolled result
         game.folkenQuickMenu.tts.announceRollResult(message.rolls[0].total);
       }
     });
@@ -486,7 +1076,6 @@ export class QuickMenuManager {
       await actor.rollSkill(skillKey, rollOptions);
     } catch (error) {
       console.error("Skill check error:", error);
-      // Clean up hook if roll fails
       Hooks.off("createChatMessage", hookId);
     }
   }
@@ -495,31 +1084,37 @@ export class QuickMenuManager {
     const actor = this.getCurrentActor();
     if (!actor) return;
     
-    const item = actor.items.get(actionItem.itemId);
-    if (item) {
-      const useOptions = { skipDialog: true };
-      
-      if (actionItem.fullAttack) {
-        useOptions.fullAttack = true;
-        // No TTS announcement needed - user already heard "Full Attack X"
-      } else {
-        // No TTS announcement needed - user already heard the attack name
-      }
-      
-      // Set up chat message hook to announce the result
-      const hookId = Hooks.once("createChatMessage", (message) => {
-        if (message.rolls && game.folkenQuickMenu?.tts) {
-          // Announce detailed attack results
-          game.folkenQuickMenu.tts.announceAttackResult(message);
+    // Check if we're using PF2e system
+    if (game.folkenQuickMenu.systemDetector.isPF2e()) {
+      await this.executePF2eAttack(actionItem);
+    } else {
+      // PF1 implementation
+      const item = actor.items.get(actionItem.itemId);
+      if (item) {
+        const useOptions = { skipDialog: true };
+        
+        if (actionItem.fullAttack) {
+          useOptions.fullAttack = true;
+          // No TTS announcement needed - user already heard "Full Attack X"
+        } else {
+          // No TTS announcement needed - user already heard the attack name
         }
-      });
-      
-      try {
-        await item.use(useOptions);
-      } catch (error) {
-        console.error("Attack roll error:", error);
-        // Clean up hook if roll fails
-        Hooks.off("createChatMessage", hookId);
+        
+        // Set up chat message hook to announce the result
+        const hookId = Hooks.once("createChatMessage", (message) => {
+          if (message.rolls && game.folkenQuickMenu?.tts) {
+            // Announce detailed attack results
+            game.folkenQuickMenu.tts.announceAttackResult(message);
+          }
+        });
+        
+        try {
+          await item.use(useOptions);
+        } catch (error) {
+          console.error("Attack roll error:", error);
+          // Clean up hook if roll fails
+          Hooks.off("createChatMessage", hookId);
+        }
       }
     }
   }
@@ -529,9 +1124,38 @@ export class QuickMenuManager {
     if (!actor) return;
     
     const spell = actor.items.get(actionItem.itemId);
-    if (spell) {
-      // No TTS announcement needed - user already heard the spell name
-      await spell.use({ skipDialog: true });
+    if (!spell) return;
+    
+    // Check if we're using PF2e system
+    if (game.folkenQuickMenu.systemDetector.isPF2e()) {
+      await this.executePF2eSpellCast(spell, actionItem);
+    } else {
+      // PF1 implementation - check preparation
+      const preparedCount = spell.system.preparation?.value || 0;
+      debugLog(`Casting spell ${spell.name}: prepared=${preparedCount}, level=${spell.system.level}`);
+      
+      if (preparedCount <= 0 && spell.system.level > 0) {
+        game.folkenQuickMenu.tts.speak('None prepared');
+        return;
+      }
+      
+      try {
+        const hookId = Hooks.once("createChatMessage", (message) => {
+          try {
+            if (message.rolls?.[0]?.total && window.speechSynthesis) {
+              game.folkenQuickMenu.tts.announceRollResult(message.rolls[0].total);
+            }
+          } catch (error) {
+            console.error('Error announcing spell result:', error);
+          }
+        });
+
+        await spell.use({ skipDialog: true });
+      } catch (error) {
+        console.error('Error casting spell:', error);
+        game.folkenQuickMenu.tts.speak('Cast failed');
+        Hooks.off("createChatMessage", hookId);
+      }
     }
   }
 
@@ -541,8 +1165,13 @@ export class QuickMenuManager {
     
     const item = actor.items.get(actionItem.itemId);
     if (item) {
-      // No TTS announcement needed - user already heard the item name
-      await item.use({ skipDialog: true });
+      // Check if we're using PF2e system
+      if (game.folkenQuickMenu.systemDetector.isPF2e()) {
+        await this.executePF2eItemUse(item, actionItem);
+      } else {
+        // PF1 implementation
+        await item.use({ skipDialog: true });
+      }
     }
   }
 
@@ -550,13 +1179,17 @@ export class QuickMenuManager {
     const actor = this.getCurrentActor();
     if (!actor) return;
     
-    const saveType = actionItem.saveType;
-    // No TTS announcement needed - user already heard the save name
+    // Check if we're using PF2e system
+    if (game.folkenQuickMenu.systemDetector.isPF2e()) {
+      game.folkenQuickMenu.tts.speak('PF2e saves not yet implemented');
+      console.log('PF2e save execution not implemented. Action item:', actionItem);
+      return;
+    }
     
-    // Set up chat message hook to announce the result
+    // PF1 implementation
+    const saveType = actionItem.saveType || actionItem.id;
     const hookId = Hooks.once("createChatMessage", (message) => {
       if (message.rolls?.[0]?.total && game.folkenQuickMenu?.tts) {
-        // Announce the rolled result
         game.folkenQuickMenu.tts.announceRollResult(message.rolls[0].total);
       }
     });
@@ -565,7 +1198,6 @@ export class QuickMenuManager {
       await actor.rollSavingThrow(saveType, { skipDialog: true });
     } catch (error) {
       console.error("Saving throw error:", error);
-      // Clean up hook if roll fails
       Hooks.off("createChatMessage", hookId);
     }
   }
@@ -574,13 +1206,17 @@ export class QuickMenuManager {
     const actor = this.getCurrentActor();
     if (!actor) return;
     
-    const abilityKey = actionItem.abilityKey;
-    // No TTS announcement needed - user already heard the ability name
+    // Check if we're using PF2e system
+    if (game.folkenQuickMenu.systemDetector.isPF2e()) {
+      game.folkenQuickMenu.tts.speak('PF2e ability checks not yet implemented');
+      console.log('PF2e ability execution not implemented. Action item:', actionItem);
+      return;
+    }
     
-    // Set up chat message hook to announce the result
+    // PF1 implementation
+    const abilityKey = actionItem.abilityKey || actionItem.id;
     const hookId = Hooks.once("createChatMessage", (message) => {
       if (message.rolls?.[0]?.total && game.folkenQuickMenu?.tts) {
-        // Announce the rolled result
         game.folkenQuickMenu.tts.announceRollResult(message.rolls[0].total);
       }
     });
@@ -589,7 +1225,6 @@ export class QuickMenuManager {
       await actor.rollAbilityTest(abilityKey, { skipDialog: true });
     } catch (error) {
       console.error("Ability check error:", error);
-      // Clean up hook if roll fails
       Hooks.off("createChatMessage", hookId);
     }
   }
@@ -672,25 +1307,22 @@ export class QuickMenuManager {
     // Store original states
     this._originalCanvasStates = {};
     
-    // Disable canvas interactions
+    // Only disable basic canvas panning to prevent accidental movement
+    // Our keyboard handlers already prevent movement keys with preventDefault
+    
+    // Disable canvas pan/zoom controls only
     if (canvas?.stage) {
-      this._originalCanvasStates.interactive = canvas.stage.interactive;
-      canvas.stage.interactive = false;
+      this._originalCanvasStates.canvasPan = canvas.pan;
+      canvas.pan = () => {}; // Disable panning
     }
     
-    // Disable keyboard manager if it exists
-    if (game.keyboard) {
-      this._originalCanvasStates.keyboardActive = game.keyboard.active;
-      game.keyboard.active = false;
-    }
+    // Don't disable token interactivity - too aggressive
+    // Don't disable canvas stage interactivity - breaks double-click and other interactions
+    // Don't disable mouse interaction manager - breaks token selection/interaction
+    // Don't disable all layers - too broad and affects other functionality
     
-    // Disable canvas layers
-    if (canvas?.tokens) {
-      this._originalCanvasStates.tokensInteractive = canvas.tokens.interactive;
-      canvas.tokens.interactive = false;
-    }
-    
-    debugLog('FoundryVTT controls suspended');
+    debugLog('FoundryVTT controls suspended (minimal scope)');
+    debugLog('Only canvas panning disabled. Keyboard events handled by our event system.');
   }
 
   /**
@@ -699,23 +1331,13 @@ export class QuickMenuManager {
   resumeFoundryControls() {
     if (!this._originalCanvasStates) return;
     
-    // Restore canvas interactions
-    if (canvas?.stage && this._originalCanvasStates.interactive !== undefined) {
-      canvas.stage.interactive = this._originalCanvasStates.interactive;
-    }
-    
-    // Restore keyboard manager
-    if (game.keyboard && this._originalCanvasStates.keyboardActive !== undefined) {
-      game.keyboard.active = this._originalCanvasStates.keyboardActive;
-    }
-    
-    // Restore canvas layers
-    if (canvas?.tokens && this._originalCanvasStates.tokensInteractive !== undefined) {
-      canvas.tokens.interactive = this._originalCanvasStates.tokensInteractive;
+    // Restore canvas pan controls only
+    if (canvas?.stage && this._originalCanvasStates.canvasPan !== undefined) {
+      canvas.pan = this._originalCanvasStates.canvasPan;
     }
     
     this._originalCanvasStates = null;
-    debugLog('FoundryVTT controls resumed');
+    debugLog('FoundryVTT controls resumed (minimal scope)');
   }
 
   /**
@@ -729,13 +1351,14 @@ export class QuickMenuManager {
     
     let html = '<div class="quick-menu-container compact">';
     html += '<div class="quick-menu-header">Quick Menu</div>';
-    html += '<div class="quick-menu-items">';
+    html += '<div class="quick-menu-items" id="quick-menu-items-container">';
     
     this.currentMenu.forEach((item, index) => {
       const isSelected = index === this.selectedIndex;
       const selectedClass = isSelected ? 'selected' : '';
-      html += `<div class="quick-menu-item ${selectedClass}" data-type="${item.type}" data-action-type="${item.actionType || ''}">`;
-      html += `<span class="item-number">${index + 1}</span>`;
+      html += `<div class="quick-menu-item ${selectedClass}" data-index="${index}" data-type="${item.type}" data-action-type="${item.actionType || ''}">`;
+      const displayNum = item.displayNumber !== undefined ? item.displayNumber : index + 1;
+      html += `<span class="item-number">${displayNum}</span>`;
       html += `<span class="item-label">${item.label}</span>`;
       html += '</div>';
     });
@@ -744,5 +1367,414 @@ export class QuickMenuManager {
     html += '</div>';
     
     this.ui.innerHTML = html;
+    
+    // Scroll selected item into view
+    this.scrollToSelectedItem();
   }
+
+  /**
+   * Scroll the selected item into view
+   */
+  scrollToSelectedItem() {
+    if (!this.ui || this.selectedIndex < 0) return;
+    
+    const container = this.ui.querySelector('#quick-menu-items-container');
+    const selectedItem = this.ui.querySelector(`[data-index="${this.selectedIndex}"]`);
+    
+    if (container && selectedItem) {
+      // Calculate if the item is visible
+      const containerRect = container.getBoundingClientRect();
+      const itemRect = selectedItem.getBoundingClientRect();
+      
+      // Check if item is above the visible area
+      if (itemRect.top < containerRect.top) {
+        selectedItem.scrollIntoView({ 
+          behavior: 'smooth', 
+          block: 'start',
+          inline: 'nearest'
+        });
+      }
+      // Check if item is below the visible area
+      else if (itemRect.bottom > containerRect.bottom) {
+        selectedItem.scrollIntoView({ 
+          behavior: 'smooth', 
+          block: 'end',
+          inline: 'nearest'
+        });
+      }
+    }
+  }
+
+  /**
+   * Execute stabilize attempt
+   */
+  async executeStabilize(actionItem) {
+    const actor = this.getCurrentActor();
+    if (!actor) return;
+    
+    // Stabilize is a Heal check in PF1
+    const hookId = Hooks.once("createChatMessage", (message) => {
+      if (message.rolls?.[0]?.total && game.folkenQuickMenu?.tts) {
+        game.folkenQuickMenu.tts.announceRollResult(message.rolls[0].total);
+      }
+    });
+    
+    try {
+      await actor.rollSkill('hea', { skipDialog: true }); // Heal check
+    } catch (error) {
+      console.error("Stabilize check error:", error);
+      Hooks.off("createChatMessage", hookId);
+    }
+  }
+
+  /**
+   * Execute caster level check
+   */
+  async executeCasterLevelCheck(actionItem) {
+    const actor = this.getCurrentActor();
+    if (!actor) return;
+    
+    const casterLevel = actionItem.casterLevel || 1;
+    
+    const hookId = Hooks.once("createChatMessage", (message) => {
+      if (message.rolls?.[0]?.total && game.folkenQuickMenu?.tts) {
+        game.folkenQuickMenu.tts.announceRollResult(message.rolls[0].total);
+      }
+    });
+    
+    try {
+      // Create a custom roll for caster level check
+      const roll = new Roll(`1d20 + ${casterLevel}`);
+      await roll.evaluate({ async: true });
+      
+      await ChatMessage.create({
+        rolls: [roll],
+        flavor: `Caster Level Check (${actionItem.spellbook || 'Primary'})`,
+        speaker: ChatMessage.getSpeaker({ actor: actor })
+      });
+    } catch (error) {
+      console.error("Caster level check error:", error);
+      Hooks.off("createChatMessage", hookId);
+    }
+  }
+
+  /**
+   * Execute concentration check
+   */
+  async executeConcentrationCheck(actionItem) {
+    const actor = this.getCurrentActor();
+    if (!actor) return;
+    
+    const concentrationBonus = actionItem.concentrationBonus || 0;
+    
+    const hookId = Hooks.once("createChatMessage", (message) => {
+      if (message.rolls?.[0]?.total && game.folkenQuickMenu?.tts) {
+        game.folkenQuickMenu.tts.announceRollResult(message.rolls[0].total);
+      }
+    });
+    
+    try {
+      // Create a custom roll for concentration check
+      const roll = new Roll(`1d20 + ${concentrationBonus}`);
+      await roll.evaluate({ async: true });
+      
+      await ChatMessage.create({
+        rolls: [roll],
+        flavor: `Concentration Check (${actionItem.spellbook || 'Primary'})`,
+        speaker: ChatMessage.getSpeaker({ actor: actor })
+      });
+    } catch (error) {
+      console.error("Concentration check error:", error);
+      Hooks.off("createChatMessage", hookId);
+    }
+  }
+
+  /**
+   * Execute PF2e attack using rollItemMacro
+   */
+  async executePF2eAttack(actionItem) {
+    debugLog('Executing PF2e attack:', actionItem);
+    
+    // Use the macro path if available, otherwise construct it
+    const macroPath = actionItem.macroPath || `Actor.${actionItem.actorId}.Item.${actionItem.itemId}`;
+    
+    if (!macroPath || !actionItem.itemId) {
+      console.error('No macro path available for PF2e attack:', actionItem);
+      game.folkenQuickMenu.tts.speak('Attack not available');
+      return;
+    }
+    
+    // Set up TTS hook for roll results
+    const hookId = Hooks.once("createChatMessage", (message) => {
+      debugLog('PF2e attack chat message received:', message);
+      if (message.rolls && game.folkenQuickMenu?.tts) {
+        // Announce detailed attack results
+        game.folkenQuickMenu.tts.announceAttackResult(message);
+      }
+    });
+    
+    try {
+      // Create a fake event object for the macro
+      const fakeEvent = { 
+        preventDefault: () => {},
+        stopPropagation: () => {},
+        type: 'click',
+        target: null,
+        shiftKey: true,  // Try shift+click to bypass dialog
+        ctrlKey: false,
+        altKey: false,
+        metaKey: false
+      };
+      
+      // Use PF2e rollItemMacro method
+      debugLog('Calling game.pf2e.rollItemMacro for attack with path:', macroPath);
+      await game.pf2e.rollItemMacro(macroPath, fakeEvent);
+      
+    } catch (error) {
+      console.error("PF2e attack error:", error);
+      game.folkenQuickMenu.tts.speak('Attack failed');
+      Hooks.off("createChatMessage", hookId);
+    }
+  }
+
+  /**
+   * Execute PF2e item use using rollItemMacro
+   */
+  async executePF2eItemUse(item, actionItem) {
+    debugLog('Executing PF2e item use:', actionItem);
+    
+    // Use the macro path if available, otherwise construct it
+    const macroPath = actionItem.macroPath || `Actor.${actionItem.actorId}.Item.${actionItem.itemId}`;
+    
+    if (!macroPath) {
+      console.error('No macro path available for PF2e item:', actionItem);
+      game.folkenQuickMenu.tts.speak('Item not available');
+      return;
+    }
+    
+    try {
+      // Create a fake event object for the macro
+      const fakeEvent = { 
+        preventDefault: () => {},
+        stopPropagation: () => {},
+        type: 'click',
+        target: null,
+        shiftKey: true,  // Try shift+click to bypass dialog
+        ctrlKey: false,
+        altKey: false,
+        metaKey: false
+      };
+      
+      // Use PF2e rollItemMacro method
+      debugLog('Calling game.pf2e.rollItemMacro for item with path:', macroPath);
+      await game.pf2e.rollItemMacro(macroPath, fakeEvent);
+      
+    } catch (error) {
+      console.error("PF2e item use error:", error);
+      game.folkenQuickMenu.tts.speak('Item use failed');
+    }
+  }
+
+  /**
+   * Execute PF2e spell cast using rollItemMacro
+   */
+  async executePF2eSpellCast(spell, actionItem) {
+    debugLog('Executing PF2e spell cast:', actionItem);
+    
+    // Use the macro path if available, otherwise construct it
+    const macroPath = actionItem.macroPath || `Actor.${actionItem.actorId}.Item.${actionItem.itemId}`;
+    
+    if (!macroPath) {
+      console.error('No macro path available for PF2e spell:', actionItem);
+      game.folkenQuickMenu.tts.speak('Spell not available');
+      return;
+    }
+    
+    // Set up TTS hook for roll results
+    const hookId = Hooks.once("createChatMessage", (message) => {
+      debugLog('PF2e spell cast chat message received:', message);
+      if (message.rolls?.[0]?.total && game.folkenQuickMenu?.tts) {
+        game.folkenQuickMenu.tts.announceRollResult(message.rolls[0].total);
+      }
+    });
+    
+    try {
+      // Create a fake event object for the macro
+      const fakeEvent = { 
+        preventDefault: () => {},
+        stopPropagation: () => {},
+        type: 'click',
+        target: null,
+        shiftKey: true,  // Try shift+click to bypass dialog
+        ctrlKey: false,
+        altKey: false,
+        metaKey: false
+      };
+      
+      // Use PF2e rollItemMacro method
+      debugLog('Calling game.pf2e.rollItemMacro with path:', macroPath);
+      await game.pf2e.rollItemMacro(macroPath, fakeEvent);
+      
+    } catch (error) {
+      console.error("PF2e spell cast error:", error);
+      game.folkenQuickMenu.tts.speak('Spell cast failed');
+      Hooks.off("createChatMessage", hookId);
+    }
+  }
+
+  /**
+   * Execute item equip action
+   */
+  async executeItemEquip(actionItem) {
+    const actor = this.getCurrentActor();
+    if (!actor) return;
+    
+    const item = actor.items.get(actionItem.itemId);
+    if (!item) {
+      game.folkenQuickMenu.tts.speak('Item not found');
+      return;
+    }
+    
+    try {
+      await item.update({ 'system.equipped.value': true });
+      game.folkenQuickMenu.tts.speak(`${item.name} equipped`);
+    } catch (error) {
+      console.error("Item equip error:", error);
+      game.folkenQuickMenu.tts.speak('Equip failed');
+    }
+  }
+
+  /**
+   * Execute item unequip action
+   */
+  async executeItemUnequip(actionItem) {
+    const actor = this.getCurrentActor();
+    if (!actor) return;
+    
+    const item = actor.items.get(actionItem.itemId);
+    if (!item) {
+      game.folkenQuickMenu.tts.speak('Item not found');
+      return;
+    }
+    
+    try {
+      await item.update({ 'system.equipped.value': false });
+      game.folkenQuickMenu.tts.speak(`${item.name} unequipped`);
+    } catch (error) {
+      console.error("Item unequip error:", error);
+      game.folkenQuickMenu.tts.speak('Unequip failed');
+    }
+  }
+
+  /**
+   * Execute item activation (using rollItemMacro for PF2e)
+   */
+  async executeItemActivate(actionItem) {
+    if (game.folkenQuickMenu.systemDetector.isPF2e()) {
+      // Use rollItemMacro for PF2e
+      await this.executePF2eItemUse(null, actionItem);
+    } else {
+      // PF1 implementation
+      const actor = this.getCurrentActor();
+      if (!actor) return;
+      
+      const item = actor.items.get(actionItem.itemId);
+      if (item) {
+        try {
+          await item.use({ skipDialog: true });
+        } catch (error) {
+          console.error("Item activation error:", error);
+          game.folkenQuickMenu.tts.speak('Activation failed');
+        }
+      }
+    }
+  }
+
+  /**
+   * Execute item consumption (for consumables)
+   */
+  async executeItemConsume(actionItem) {
+    if (game.folkenQuickMenu.systemDetector.isPF2e()) {
+      // Use rollItemMacro for PF2e
+      await this.executePF2eItemUse(null, actionItem);
+    } else {
+      // PF1 implementation
+      const actor = this.getCurrentActor();
+      if (!actor) return;
+      
+      const item = actor.items.get(actionItem.itemId);
+      if (item) {
+        try {
+          await item.use({ skipDialog: true });
+        } catch (error) {
+          console.error("Item consumption error:", error);
+          game.folkenQuickMenu.tts.speak('Consumption failed');
+        }
+      }
+    }
+  }
+
+  /**
+   * Execute item inspection (show item sheet)
+   */
+  async executeItemInspect(actionItem) {
+    const actor = this.getCurrentActor();
+    if (!actor) return;
+    
+    const item = actor.items.get(actionItem.itemId);
+    if (item) {
+      item.sheet.render(true);
+      game.folkenQuickMenu.tts.speak(`Inspecting ${item.name}`);
+    } else {
+      game.folkenQuickMenu.tts.speak('Item not found');
+    }
+  }
+
+  /**
+   * Execute PF2e action using game.pf2e.actions
+   */
+  async executePF2eAction(actionItem) {
+    debugLog('Executing PF2e action:', actionItem);
+    
+    const actionKey = actionItem.actionKey || actionItem.id;
+    
+    if (!game.pf2e?.actions?.[actionKey]) {
+      console.error('PF2e action not found:', actionKey);
+      game.folkenQuickMenu.tts.speak('Action not available');
+      return;
+    }
+    
+    // Set up TTS hook for roll results
+    const hookId = Hooks.once("createChatMessage", (message) => {
+      debugLog('PF2e action chat message received:', message);
+      if (message.rolls?.[0]?.total && game.folkenQuickMenu?.tts) {
+        game.folkenQuickMenu.tts.announceRollResult(message.rolls[0].total);
+      }
+    });
+    
+    try {
+      // Create a fake event object for the action
+      // Try different modifier keys to bypass dialogs
+      const fakeEvent = { 
+        preventDefault: () => {},
+        stopPropagation: () => {},
+        type: 'click',
+        target: null,
+        shiftKey: true,  // Try shift+click to bypass dialog
+        ctrlKey: false,
+        altKey: false,
+        metaKey: false
+      };
+      
+      // Call the PF2e action directly as you specified
+      debugLog('Calling game.pf2e.actions.' + actionKey + '({ event });');
+      await game.pf2e.actions[actionKey]({ event: fakeEvent });
+      
+    } catch (error) {
+      console.error("PF2e action error:", error);
+      game.folkenQuickMenu.tts.speak('Action failed');
+      Hooks.off("createChatMessage", hookId);
+    }
+  }
+
 }

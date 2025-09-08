@@ -5,8 +5,10 @@
 
 import { QuickMenuManager } from './menu/QuickMenuManager.js';
 import { CharacterDataExtractor } from './character/CharacterDataExtractor.js';
+import { CharacterDataExtractorPF2e } from './character/CharacterDataExtractorPF2e.js';
 import { TTSManager } from './tts/TTSManager.js';
 import { KeyboardHandler } from './input/KeyboardHandler.js';
+import { SystemDetector } from './system/SystemDetector.js';
 
 // Module constants
 const MODULE_ID = 'folken-games-quick-menu';
@@ -23,7 +25,7 @@ Hooks.once('init', async function() {
   // Initialize core managers
   game.folkenQuickMenu = {
     menuManager: new QuickMenuManager(),
-    characterData: new CharacterDataExtractor(),
+    characterData: null, // Will be set after system detection
     tts: new TTSManager(),
     keyboard: new KeyboardHandler()
   };
@@ -35,6 +37,24 @@ Hooks.once('init', async function() {
 Hooks.once('ready', async function() {
   console.log(`${MODULE_ID} | Setting up FolkenGames Quick Menu`);
   
+  // Initialize system detector
+  game.folkenQuickMenu.systemDetector = new SystemDetector();
+  
+  // Check system compatibility
+  if (!game.folkenQuickMenu.systemDetector.checkCompatibility()) {
+    console.warn(`${MODULE_ID} | Unsupported system detected: ${game.system.id}`);
+    // Continue anyway for testing purposes
+  }
+  
+  // Set appropriate character data extractor based on system
+  if (game.folkenQuickMenu.systemDetector.isPF2e()) {
+    game.folkenQuickMenu.characterData = CharacterDataExtractorPF2e;
+    console.log(`${MODULE_ID} | Using PF2e data extractor`);
+  } else {
+    game.folkenQuickMenu.characterData = new CharacterDataExtractor();
+    console.log(`${MODULE_ID} | Using PF1 data extractor`);
+  }
+  
   // Initialize the menu system
   await game.folkenQuickMenu.menuManager.initialize();
   
@@ -42,6 +62,19 @@ Hooks.once('ready', async function() {
   game.folkenQuickMenu.keyboard.initialize();
   
   console.log(`${MODULE_ID} | FolkenGames Quick Menu ready!`);
+  
+  // Add testing command for PF2e development
+  if (game.folkenQuickMenu.systemDetector.isPF2e()) {
+    window.debugPF2eActor = function() {
+      const actor = game.folkenQuickMenu.menuManager.getCurrentActor();
+      if (actor) {
+        game.folkenQuickMenu.systemDetector.debugActorStructure(actor);
+      } else {
+        console.log('No actor found. Assign a character or select a token.');
+      }
+    };
+    console.log(`${MODULE_ID} | PF2e testing mode: Use debugPF2eActor() in console to inspect actor data`);
+  }
 });
 
 /**
