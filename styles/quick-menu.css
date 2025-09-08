@@ -1,0 +1,296 @@
+/**
+ * FolkenGames Quick Menu - iPod-style Visual UI
+ * CSS for the optional visual debugging interface
+ */
+
+#folken-quick-menu-ui {
+  position: fixed;
+  z-index: 10000;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+  user-select: none;
+  pointer-events: none;
+  font-size: 12px;
+}
+
+.quick-menu-container {
+  background: rgba(20, 20, 25, 0.95);
+  border: 2px solid #4a5568;
+  border-radius: 15px;
+  width: 280px;
+  min-height: 200px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(10px);
+  overflow: hidden;
+}
+
+.quick-menu-container.compact {
+  width: 220px;
+  min-height: 120px;
+  border-radius: 8px;
+  border-width: 1px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.quick-menu-header {
+  background: linear-gradient(135deg, #4a5568, #2d3748);
+  color: #e2e8f0;
+  text-align: center;
+  padding: 12px;
+  font-weight: 600;
+  font-size: 14px;
+  border-bottom: 1px solid #2d3748;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+.compact .quick-menu-header {
+  padding: 6px 8px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.quick-menu-items {
+  padding: 8px 0;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.compact .quick-menu-items {
+  padding: 4px 0;
+  max-height: 200px;
+}
+
+.quick-menu-item {
+  display: flex;
+  align-items: center;
+  padding: 8px 16px;
+  color: #e2e8f0;
+  font-size: 13px;
+  line-height: 1.4;
+  transition: all 0.15s ease;
+  border-left: 3px solid transparent;
+}
+
+.compact .quick-menu-item {
+  padding: 4px 8px;
+  font-size: 11px;
+  line-height: 1.3;
+  border-left-width: 2px;
+}
+
+.quick-menu-item.selected {
+  background: linear-gradient(90deg, rgba(59, 130, 246, 0.3), rgba(59, 130, 246, 0.1));
+  border-left-color: #3b82f6;
+  color: #ffffff;
+  transform: translateX(2px);
+}
+
+.quick-menu-item.header {
+  background: rgba(45, 55, 72, 0.8);
+  color: #cbd5e0;
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 6px 16px;
+  border-left: none;
+}
+
+.quick-menu-item.header.selected {
+  background: rgba(45, 55, 72, 0.8);
+  transform: none;
+  border-left: none;
+}
+
+.item-number {
+  color: #9ca3af;
+  font-weight: 600;
+  font-size: 12px;
+  min-width: 20px;
+  margin-right: 8px;
+}
+
+.compact .item-number {
+  font-size: 10px;
+  min-width: 15px;
+  margin-right: 4px;
+}
+
+.quick-menu-item.selected .item-number {
+  color: #60a5fa;
+}
+
+.item-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Scrollbar styling */
+.quick-menu-items::-webkit-scrollbar {
+  width: 6px;
+}
+
+.quick-menu-items::-webkit-scrollbar-track {
+  background: rgba(45, 55, 72, 0.3);
+  border-radius: 3px;
+}
+
+.quick-menu-items::-webkit-scrollbar-thumb {
+  background: rgba(156, 163, 175, 0.5);
+  border-radius: 3px;
+}
+
+.quick-menu-items::-webkit-scrollbar-thumb:hover {
+  background: rgba(156, 163, 175, 0.7);
+}
+
+/* Animation for menu transitions */
+.quick-menu-container {
+  animation: quickMenuSlideIn 0.2s ease-out;
+}
+
+@keyframes quickMenuSlideIn {
+  from {
+    opacity: 0;
+    transform: translateX(20px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+/* Modern dark theme styling */
+.quick-menu-item:hover:not(.selected):not(.header) {
+  background: rgba(74, 85, 104, 0.3);
+  color: #f7fafc;
+}
+
+/* Status indicators */
+.quick-menu-item::after {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  margin-left: auto;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.quick-menu-item[data-type="submenu"]::after {
+  background: #4ade80;
+  opacity: 0.6;
+}
+
+.quick-menu-item[data-type="action"]::after {
+  background: #f59e0b;
+  opacity: 0.6;
+}
+
+.quick-menu-item.selected::after {
+  opacity: 1;
+}
+
+/* Accessibility improvements */
+@media (prefers-reduced-motion: reduce) {
+  .quick-menu-item,
+  .quick-menu-container {
+    transition: none;
+    animation: none;
+  }
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  .quick-menu-container {
+    background: #000000;
+    border-color: #ffffff;
+  }
+  
+  .quick-menu-item {
+    color: #ffffff;
+  }
+  
+  .quick-menu-item.selected {
+    background: #0066cc;
+    border-left-color: #ffffff;
+  }
+}
+
+/* Responsive sizing for smaller screens */
+@media (max-width: 768px) {
+  #folken-quick-menu-ui {
+    top: 20px;
+    right: 20px;
+  }
+  
+  .quick-menu-container {
+    width: 250px;
+  }
+}
+
+/* Special styling for different item types */
+.quick-menu-item[data-action-type="skill"] .item-label::before {
+  content: "🎯 ";
+  opacity: 0.7;
+}
+
+.quick-menu-item[data-action-type="attack"] .item-label::before {
+  content: "⚔️ ";
+  opacity: 0.7;
+}
+
+.quick-menu-item[data-action-type="spell"] .item-label::before {
+  content: "✨ ";
+  opacity: 0.7;
+}
+
+.quick-menu-item[data-action-type="item"] .item-label::before {
+  content: "📦 ";
+  opacity: 0.7;
+}
+
+.quick-menu-item[data-action-type="save"] .item-label::before {
+  content: "🛡️ ";
+  opacity: 0.7;
+}
+
+/* Modifier display */
+.item-modifier {
+  font-size: 11px;
+  color: #9ca3af;
+  margin-left: 4px;
+  font-weight: 500;
+}
+
+.quick-menu-item.selected .item-modifier {
+  color: #cbd5e0;
+}
+
+/* Loading state */
+.quick-menu-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  color: #9ca3af;
+  font-size: 12px;
+}
+
+.quick-menu-loading::before {
+  content: '';
+  width: 16px;
+  height: 16px;
+  border: 2px solid #4a5568;
+  border-top-color: #3b82f6;
+  border-radius: 50%;
+  margin-right: 8px;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

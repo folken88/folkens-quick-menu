@@ -1,0 +1,138 @@
+{
+  "FOLKEN_QUICK_MENU": {
+    "Title": "FolkenGames Quick Menu",
+    "Description": "A TTS-based hierarchical character navigation system",
+    
+    "Settings": {
+      "Enabled": {
+        "Name": "Enable Quick Menu",
+        "Hint": "Enable or disable the Quick Menu system"
+      },
+      "EnableTTS": {
+        "Name": "Enable Text-to-Speech",
+        "Hint": "Enable TTS announcements for menu navigation"
+      },
+      "TTSSpeed": {
+        "Name": "TTS Speaking Speed",
+        "Hint": "Text-to-speech rate multiplier (100% = normal, 120% = faster, preferred by many accessibility users)"
+      },
+      "DebugMode": {
+        "Name": "Debug Mode",
+        "Hint": "Enable debug logging and visual UI for development"
+      },
+      "ShowVisualUI": {
+        "Name": "Show Visual UI",
+        "Hint": "Display the iPod-style visual interface (for debugging)"
+      },
+      "ActivationKey": {
+        "Name": "Activation Key",
+        "Hint": "Key combination to open the Quick Menu (e.g., 'KeyQ', 'F1')"
+      }
+    },
+    
+    "Menu": {
+      "Root": {
+        "Favorites": "Favorites",
+        "Skills": "Skills",
+        "Attacks": "Attacks",
+        "Spells": "Spells",
+        "Items": "Items",
+        "Abilities": "Abilities",
+        "Saves": "Saving Throws",
+        "Stats": "Statistics"
+      },
+      
+      "Navigation": {
+        "Opening": "Quick Menu opened",
+        "Closing": "Quick Menu closed",
+        "Back": "Back",
+        "Entering": "Entering {name}"
+      },
+      
+      "Actions": {
+        "Rolling": "Rolling {name}",
+        "Attacking": "Attacking with {name}",
+        "Casting": "Casting {name}",
+        "Using": "Using {name}",
+        "Executing": "Executing {name}"
+      }
+    },
+    
+    "Errors": {
+      "NoCharacter": "No character selected or assigned",
+      "ActionFailed": "Failed to execute {action}",
+      "TTSNotAvailable": "Text-to-speech is not available in this browser",
+      "InvalidAction": "Invalid action type: {type}"
+    },
+    
+    "Character": {
+      "Skills": {
+        "Acrobatics": "Acrobatics",
+        "Appraise": "Appraise",
+        "Artistry": "Artistry",
+        "Bluff": "Bluff",
+        "Climb": "Climb",
+        "Craft": "Craft",
+        "Diplomacy": "Diplomacy",
+        "DisableDevice": "Disable Device",
+        "Disguise": "Disguise",
+        "EscapeArtist": "Escape Artist",
+        "Fly": "Fly",
+        "HandleAnimal": "Handle Animal",
+        "Heal": "Heal",
+        "Intimidate": "Intimidate",
+        "KnowledgeArcana": "Knowledge (Arcana)",
+        "KnowledgeDungeoneering": "Knowledge (Dungeoneering)",
+        "KnowledgeEngineering": "Knowledge (Engineering)",
+        "KnowledgeGeography": "Knowledge (Geography)",
+        "KnowledgeHistory": "Knowledge (History)",
+        "KnowledgeLocal": "Knowledge (Local)",
+        "KnowledgeNature": "Knowledge (Nature)",
+        "KnowledgeNobility": "Knowledge (Nobility)",
+        "KnowledgePlanes": "Knowledge (Planes)",
+        "KnowledgeReligion": "Knowledge (Religion)",
+        "Linguistics": "Linguistics",
+        "Lore": "Lore",
+        "Perception": "Perception",
+        "Perform": "Perform",
+        "Profession": "Profession",
+        "Ride": "Ride",
+        "SenseMotive": "Sense Motive",
+        "SleightOfHand": "Sleight of Hand",
+        "Spellcraft": "Spellcraft",
+        "Stealth": "Stealth",
+        "Survival": "Survival",
+        "Swim": "Swim",
+        "UseMagicDevice": "Use Magic Device"
+      },
+      
+      "Abilities": {
+        "Strength": "Strength",
+        "Dexterity": "Dexterity",
+        "Constitution": "Constitution",
+        "Intelligence": "Intelligence",
+        "Wisdom": "Wisdom",
+        "Charisma": "Charisma"
+      },
+      
+      "Saves": {
+        "Fortitude": "Fortitude Save",
+        "Reflex": "Reflex Save",
+        "Will": "Will Save"
+      },
+      
+      "Spells": {
+        "Cantrips": "Cantrips",
+        "Level": "Level {level}"
+      }
+    },
+    
+    "KeyBindings": {
+      "Activation": "Press {key} to open Quick Menu",
+      "Navigation": "Use arrow keys or numbers to navigate",
+      "Selection": "Press Enter or Right arrow to select",
+      "Back": "Press Escape or Left arrow to go back",
+      "Wheel": "Use scroll wheel to navigate, middle-click to select"
+    }
+  }
+}

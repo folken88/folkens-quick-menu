@@ -1,0 +1,51 @@
+{
+  "id": "folken-games-quick-menu",
+  "title": "FolkenGames Quick Menu",
+  "description": "A super fast TTS-based hierarchical menu for navigating character functions with keyboard controls, inspired by iPod navigation.",
+  "version": "0.1.0",
+  "compatibility": {
+    "minimum": "11.315",
+    "verified": "12"
+  },
+  "authors": [
+    {
+      "name": "Folken88",
+      "url": "https://github.com/folken88"
+    }
+  ],
+  "url": "https://github.com/folken88/folkens-quick-menu",
+  "manifest": "https://github.com/folken88/folkens-quick-menu/releases/latest/download/module.json",
+  "download": "https://github.com/folken88/folkens-quick-menu/releases/latest/download/module.zip",
+  "bugs": "https://github.com/folken88/folkens-quick-menu/issues",
+  "changelog": "https://github.com/folken88/folkens-quick-menu/blob/main/CHANGELOG.md",
+  "readme": "https://github.com/folken88/folkens-quick-menu/blob/main/README.md",
+  "esmodules": [
+    "scripts/module.js"
+  ],
+  "styles": [
+    "styles/quick-menu.css"
+  ],
+  "languages": [
+    {
+      "lang": "en",
+      "name": "English",
+      "path": "lang/en.json"
+    }
+  ],
+  "socket": false,
+  "relationships": {
+    "systems": [
+      {
+        "id": "pf1",
+        "type": "system",
+        "compatibility": {}
+      },
+      {
+        "id": "pf2e",
+        "type": "system",
+        "compatibility": {}
+      }
+    ],
+    "requires": []
+  }
+}
