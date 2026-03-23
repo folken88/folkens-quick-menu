@@ -45,14 +45,21 @@ export class ChatCommandInterceptor {
       // Setting not registered yet — allow commands by default
     }
 
-    // Only intercept messages starting with /
+    // Skip non-/ messages and HTML pastes
+    if (!trimmed.startsWith('/') || trimmed.startsWith('<')) return true;
+
+    // Only intercept commands Foundry doesn't recognize (same pattern as advanced-macros)
+    let [parsedCommand] = chatLog.constructor.parse(trimmed);
+    if (parsedCommand !== 'invalid') return true;
+
+    // Parse the /command and optional args
     const match = trimmed.match(/^\/([a-zA-Z0-9]+)(?:\s+(.*))?$/);
     if (!match) return true;
 
-    debugLog('ChatCommandInterceptor: intercepted', trimmed);
-
     const command = match[1].toLowerCase();
     const args = (match[2] || '').trim();
+
+    debugLog('ChatCommandInterceptor: intercepted', trimmed);
 
     // ─── Meta commands ──────────────────────────────────────
 
@@ -85,8 +92,16 @@ export class ChatCommandInterceptor {
 
     // ─── Resolve abbreviation ───────────────────────────────
 
+    // If resolver hasn't been built yet, try to build it now
     if (!this.resolver.isBuilt) {
-      // Game constants aren't loaded yet — pass through
+      const actor = game.folkenQuickMenu?.menuManager?.getCurrentActor();
+      if (actor) {
+        // Synchronous-safe: buildForActor is async but we can kick it off
+        // and for this first command, fall through. It'll work next time.
+        this.resolver.buildForActor(actor);
+        debugLog('ChatCommandInterceptor: triggered lazy build for', actor.name);
+      }
+      // Can't resolve yet — pass through
       return true;
     }
 
@@ -108,7 +123,7 @@ export class ChatCommandInterceptor {
       return false;
     }
 
-    // Not recognized — pass through to Foundry or other modules
+    // Not recognized by us — pass through to Foundry/other modules
     return true;
   }
 
