@@ -9,6 +9,8 @@ export class CollisionResolver {
   constructor() {
     /** @type {{ abbreviation: string, items: Object[], timeout: number }|null} */
     this.pending = null;
+    /** @type {Array<[string, Object[]]>} remaining collisions to walk through */
+    this.queue = [];
   }
 
   /**
@@ -30,8 +32,11 @@ export class CollisionResolver {
       clearTimeout(this.pending.timeout);
     }
 
+    const remaining = this.queue.length;
+    const progressNote = remaining > 0 ? ` (${remaining} more after this)` : '';
+
     // Build whisper message
-    const lines = [`<strong>Multiple matches for /${abbreviation}:</strong>`];
+    const lines = [`<strong>Conflict for /${abbreviation}:${progressNote}</strong>`];
     items.forEach((item, i) => {
       lines.push(`&nbsp; <strong>${i + 1}.</strong> ${item.label} (${item.actionType})`);
     });
@@ -44,24 +49,25 @@ export class CollisionResolver {
     const tts = game.folkenQuickMenu?.tts;
     if (tts) {
       const names = items.map((item, i) => `${i + 1}, ${item.label}`).join('. ');
-      tts.speak(`Conflict: ${items.length} abilities abbreviate to ${abbreviation.split('').join(' ')}. They are: ${names}. Type the number to choose.`);
+      tts.speak(`Conflict for ${abbreviation.split('').join(' ')}. ${names}. Type the number to choose.`);
     }
 
-    // Store pending state with 30-second timeout
+    // Store pending state with 60-second timeout (longer for walkthrough)
     this.pending = {
       abbreviation,
       items,
       timeout: setTimeout(() => {
         this.pending = null;
-        debugLog('CollisionResolver: timeout expired');
-      }, 30000)
+        this.queue = [];
+        debugLog('CollisionResolver: timeout expired, clearing queue');
+      }, 60000)
     };
   }
 
   /**
    * Handle a numeric choice from the player.
    * @param {number} number - The player's choice (1-indexed)
-   * @returns {boolean} true if the choice was valid, false otherwise
+   * @returns {boolean} true if the choice was handled
    */
   async handleChoice(number) {
     if (!this.pending) return false;
@@ -71,19 +77,16 @@ export class CollisionResolver {
     if (number < 1 || number > items.length) {
       this._whisper(`Invalid choice. Pick 1-${items.length}.`);
       game.folkenQuickMenu?.tts?.speak(`Invalid. Pick 1 through ${items.length}.`);
-      return true; // We handled the message (even though choice was bad)
+      return true;
     }
 
     const chosen = items[number - 1];
     clearTimeout(this.pending.timeout);
     this.pending = null;
 
-    // Execute the chosen action immediately
     const actor = game.folkenQuickMenu?.menuManager?.getCurrentActor();
     if (actor) {
-      await game.folkenQuickMenu.actionExecutor.execute(chosen, actor);
-
-      // Save the choice to actor flags
+      // Save the choice to actor flags (don't execute — this is a scan walkthrough)
       await game.folkenQuickMenu.abbreviationResolver.saveCollisionChoice(
         actor, abbreviation, chosen, items
       );
@@ -91,11 +94,14 @@ export class CollisionResolver {
       // Announce what was saved
       const others = items.filter(i => i.id !== chosen.id);
       const tts = game.folkenQuickMenu?.tts;
-      if (tts && others.length > 0) {
+      if (tts) {
         const otherNames = others.map((o, i) => `${o.label} is now /${abbreviation}${i + 2}`).join('. ');
         tts.speak(`${chosen.label} keeps /${abbreviation}. ${otherNames}.`);
       }
     }
+
+    // Advance to next collision in the queue
+    this._advanceQueue();
 
     return true;
   }
@@ -109,10 +115,32 @@ export class CollisionResolver {
     if (collisions.size === 0) return;
 
     const entries = Array.from(collisions.entries());
-    // Start with the first collision — subsequent ones will be triggered
-    // when the player resolves each one. For now, just prompt the first.
+    // Queue all except the first (which we'll prompt immediately)
+    this.queue = entries.slice(1);
+
     const [abbrev, items] = entries[0];
     this.initiatePrompt(abbrev, items);
+  }
+
+  /**
+   * Advance to the next collision in the queue.
+   */
+  _advanceQueue() {
+    if (this.queue.length === 0) {
+      // All done!
+      const tts = game.folkenQuickMenu?.tts;
+      if (tts) {
+        tts.speak('All conflicts resolved.');
+      }
+      this._whisper('<strong>All conflicts resolved.</strong> Your commands are ready.');
+      return;
+    }
+
+    // Small delay so the previous TTS announcement finishes
+    setTimeout(() => {
+      const [abbrev, items] = this.queue.shift();
+      this.initiatePrompt(abbrev, items);
+    }, 2000);
   }
 
   /**
