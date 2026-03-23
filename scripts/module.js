@@ -67,45 +67,47 @@ Hooks.once('ready', async function() {
   // Setup keyboard listeners
   game.folkenQuickMenu.keyboard.initialize();
   
-  // Initialize chat command system
-  if (getSetting('enableChatCommands')) {
-    game.folkenQuickMenu.chatInterceptor = new ChatCommandInterceptor(
-      game.folkenQuickMenu.abbreviationResolver,
-      game.folkenQuickMenu.actionExecutor
-    );
-    game.folkenQuickMenu.chatInterceptor.register();
+  // Initialize chat command system (always register — setting checked inside handler)
+  game.folkenQuickMenu.chatInterceptor = new ChatCommandInterceptor(
+    game.folkenQuickMenu.abbreviationResolver,
+    game.folkenQuickMenu.actionExecutor
+  );
+  game.folkenQuickMenu.chatInterceptor.register();
 
-    // Pre-build game constants (skills, saves, stats) for current actor
+  // Pre-build game constants (skills, saves, stats) for current actor
+  try {
     const actor = game.folkenQuickMenu.menuManager.getCurrentActor();
     if (actor) {
       await game.folkenQuickMenu.abbreviationResolver.buildForActor(actor);
     }
-
-    // Suggest re-scan when actor gains or loses items
-    Hooks.on('createItem', (item) => {
-      const resolverId = game.folkenQuickMenu.abbreviationResolver.currentActorId;
-      if (item.parent?.id === resolverId) {
-        ChatMessage.create({
-          whisper: [game.user.id],
-          content: `<em>${item.name}</em> added. Type <strong>/scan</strong> to update your commands.`,
-          speaker: { alias: 'Quick Menu' }
-        });
-      }
-    });
-
-    Hooks.on('deleteItem', (item) => {
-      const resolverId = game.folkenQuickMenu.abbreviationResolver.currentActorId;
-      if (item.parent?.id === resolverId) {
-        ChatMessage.create({
-          whisper: [game.user.id],
-          content: `<em>${item.name}</em> removed. Type <strong>/scan</strong> to update your commands.`,
-          speaker: { alias: 'Quick Menu' }
-        });
-      }
-    });
-
-    console.log(`${MODULE_ID} | Chat command system initialized`);
+  } catch (err) {
+    console.warn(`${MODULE_ID} | Could not pre-build abbreviations:`, err);
   }
+
+  // Suggest re-scan when actor gains or loses items
+  Hooks.on('createItem', (item) => {
+    const resolverId = game.folkenQuickMenu.abbreviationResolver.currentActorId;
+    if (item.parent?.id === resolverId) {
+      ChatMessage.create({
+        whisper: [game.user.id],
+        content: `<em>${item.name}</em> added. Type <strong>/scan</strong> to update your commands.`,
+        speaker: { alias: 'Quick Menu' }
+      });
+    }
+  });
+
+  Hooks.on('deleteItem', (item) => {
+    const resolverId = game.folkenQuickMenu.abbreviationResolver.currentActorId;
+    if (item.parent?.id === resolverId) {
+      ChatMessage.create({
+        whisper: [game.user.id],
+        content: `<em>${item.name}</em> removed. Type <strong>/scan</strong> to update your commands.`,
+        speaker: { alias: 'Quick Menu' }
+      });
+    }
+  });
+
+  console.log(`${MODULE_ID} | Chat command system initialized`);
 
   console.log(`${MODULE_ID} | FolkenGames Quick Menu ready!`);
 

@@ -38,9 +38,18 @@ export class ChatCommandInterceptor {
   _handleChatMessage(chatLog, message, chatData) {
     const trimmed = message.trim();
 
-    // Only intercept bare /commands (no spaces except for /fqm subcommands)
+    // Check if chat commands are enabled
+    try {
+      if (!game.settings.get('folken-games-quick-menu', 'enableChatCommands')) return true;
+    } catch (e) {
+      // Setting not registered yet — allow commands by default
+    }
+
+    // Only intercept messages starting with /
     const match = trimmed.match(/^\/([a-zA-Z0-9]+)(?:\s+(.*))?$/);
     if (!match) return true;
+
+    debugLog('ChatCommandInterceptor: intercepted', trimmed);
 
     const command = match[1].toLowerCase();
     const args = (match[2] || '').trim();
