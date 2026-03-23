@@ -50,11 +50,14 @@ export class TTSManager {
   }
 
   /**
-   * Speak text using TTS
+   * Speak text using TTS — routes through provider chain:
+   * 1. Talking Actors (if active and actor has a voice)
+   * 2. ElevenLabs (if API key configured)
+   * 3. Browser Web Speech API (fallback)
    */
   speak(text, options = {}) {
     if (!getSetting('enableTTS') || !text) return;
-    
+
     // Prevent rapid TTS calls that cause interruption errors
     const now = Date.now();
     if (now - (this.lastSpeak || 0) < 50) {
@@ -62,57 +65,156 @@ export class TTSManager {
       return;
     }
     this.lastSpeak = now;
-    
+
     debugLog('Speaking:', text);
-    
+
     // Stop current speech if interrupting
     if (options.interrupt !== false) {
       this.stop();
     }
-    
-    // Create utterance
+
+    const provider = getSetting('ttsProvider') || 'auto';
+
+    // Try Talking Actors first (auto or explicit)
+    if (provider === 'auto') {
+      if (this._speakViaTalkingActors(text)) return;
+      if (this._speakViaElevenLabs(text)) return;
+    } else if (provider === 'elevenlabs') {
+      if (this._speakViaElevenLabs(text)) return;
+    }
+
+    // Fallback: browser Web Speech API
+    this._speakViaBrowser(text, options);
+  }
+
+  /**
+   * Try to speak via acd-talking-actors-forked module.
+   * Uses the current actor's configured ElevenLabs voice.
+   * @returns {boolean} true if handled
+   */
+  _speakViaTalkingActors(text) {
+    try {
+      const talkingActors = game.modules.get('acd-talking-actors-forked');
+      if (!talkingActors?.active) return false;
+
+      const actor = game.folkenQuickMenu?.menuManager?.getCurrentActor();
+      if (!actor) return false;
+
+      // Check if the actor has a voice configured via Talking Actors flags
+      const voiceId = actor.getFlag('acd-talking-actors-forked', 'voiceId')
+                   || actor.getFlag('acd-talking-actors', 'voiceId');
+      if (!voiceId) return false;
+
+      // Use the Talking Actors API if available
+      const taApi = game.modules.get('acd-talking-actors-forked')?.api
+                 || window.TalkingActorsApi;
+      if (taApi?.speak) {
+        taApi.speak(actor, text);
+        debugLog('TTS via Talking Actors:', voiceId);
+        return true;
+      }
+    } catch (error) {
+      debugLog('Talking Actors TTS failed, falling back:', error);
+    }
+    return false;
+  }
+
+  /**
+   * Try to speak via ElevenLabs API directly.
+   * @returns {boolean} true if handled
+   */
+  _speakViaElevenLabs(text) {
+    try {
+      const apiKey = getSetting('elevenlabsApiKey');
+      const voiceId = getSetting('elevenlabsVoiceId');
+      if (!apiKey || !voiceId) return false;
+
+      // Fire and forget — don't block the UI
+      this._elevenLabsSpeak(apiKey, voiceId, text);
+      debugLog('TTS via ElevenLabs:', voiceId);
+      return true;
+    } catch (error) {
+      debugLog('ElevenLabs TTS failed, falling back:', error);
+    }
+    return false;
+  }
+
+  /**
+   * ElevenLabs text-to-speech API call.
+   */
+  async _elevenLabsSpeak(apiKey, voiceId, text) {
+    try {
+      const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+        method: 'POST',
+        headers: {
+          'Accept': 'audio/mpeg',
+          'Content-Type': 'application/json',
+          'xi-api-key': apiKey
+        },
+        body: JSON.stringify({
+          text,
+          model_id: 'eleven_monolingual_v1',
+          voice_settings: {
+            stability: 0.5,
+            similarity_boost: 0.5
+          }
+        })
+      });
+
+      if (!response.ok) {
+        console.error('ElevenLabs API error:', response.status);
+        return;
+      }
+
+      const audioBlob = await response.blob();
+      const audioUrl = URL.createObjectURL(audioBlob);
+      const audio = new Audio(audioUrl);
+      audio.onended = () => URL.revokeObjectURL(audioUrl);
+      audio.play();
+    } catch (error) {
+      console.error('ElevenLabs playback error:', error);
+    }
+  }
+
+  /**
+   * Speak via browser Web Speech API (original behavior).
+   */
+  _speakViaBrowser(text, options = {}) {
     const utterance = new SpeechSynthesisUtterance(text);
-    
-    // Set voice and properties
+
     if (this.defaultVoice) {
       utterance.voice = this.defaultVoice;
     }
-    
+
     // Get base rate from settings (convert percentage to decimal)
     const baseRate = (getSetting('ttsSpeed') || 120) / 100;
-    
+
     // Adjust rate based on content length for better comprehension
     let rate = options.rate || baseRate;
-    if (text.length > 100) {
-      rate *= 0.9; // Slow down slightly for longer content
-    }
-    if (text.length > 200) {
-      rate *= 0.85; // Slow down more for very long content
-    }
-    
-    utterance.rate = Math.max(0.5, Math.min(3.0, rate)); // Clamp between 0.5x and 3.0x
+    if (text.length > 100) rate *= 0.9;
+    if (text.length > 200) rate *= 0.85;
+
+    utterance.rate = Math.max(0.5, Math.min(3.0, rate));
     utterance.pitch = options.pitch || 1.0;
     utterance.volume = options.volume || 0.8;
-    
-    // Handle events
+
     utterance.onstart = () => {
       this.speaking = true;
       debugLog('TTS started speaking');
     };
-    
+
     utterance.onend = () => {
       this.speaking = false;
       debugLog('TTS finished speaking');
       this.processQueue();
     };
-    
+
     utterance.onerror = (event) => {
       console.error('TTS error:', event.error);
       this.speaking = false;
       this.processQueue();
     };
-    
-    // Speak or queue
+
     if (this.speaking && options.queue !== false) {
       this.queue.push(utterance);
     } else {

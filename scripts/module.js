@@ -9,6 +9,9 @@ import { CharacterDataExtractorPF2e } from './character/CharacterDataExtractorPF
 import { TTSManager } from './tts/TTSManager.js';
 import { KeyboardHandler } from './input/KeyboardHandler.js';
 import { SystemDetector } from './system/SystemDetector.js';
+import { ActionExecutor } from './executor/ActionExecutor.js';
+import { AbbreviationResolver } from './chat/AbbreviationResolver.js';
+import { ChatCommandInterceptor } from './chat/ChatCommandInterceptor.js';
 
 // Module constants
 const MODULE_ID = 'folken-games-quick-menu';
@@ -27,7 +30,10 @@ Hooks.once('init', async function() {
     menuManager: new QuickMenuManager(),
     characterData: null, // Will be set after system detection
     tts: new TTSManager(),
-    keyboard: new KeyboardHandler()
+    keyboard: new KeyboardHandler(),
+    actionExecutor: new ActionExecutor(),
+    abbreviationResolver: new AbbreviationResolver(),
+    chatInterceptor: null  // Initialized in ready hook
   };
 });
 
@@ -61,8 +67,48 @@ Hooks.once('ready', async function() {
   // Setup keyboard listeners
   game.folkenQuickMenu.keyboard.initialize();
   
+  // Initialize chat command system
+  if (getSetting('enableChatCommands')) {
+    game.folkenQuickMenu.chatInterceptor = new ChatCommandInterceptor(
+      game.folkenQuickMenu.abbreviationResolver,
+      game.folkenQuickMenu.actionExecutor
+    );
+    game.folkenQuickMenu.chatInterceptor.register();
+
+    // Pre-build game constants (skills, saves, stats) for current actor
+    const actor = game.folkenQuickMenu.menuManager.getCurrentActor();
+    if (actor) {
+      await game.folkenQuickMenu.abbreviationResolver.buildForActor(actor);
+    }
+
+    // Suggest re-scan when actor gains or loses items
+    Hooks.on('createItem', (item) => {
+      const resolverId = game.folkenQuickMenu.abbreviationResolver.currentActorId;
+      if (item.parent?.id === resolverId) {
+        ChatMessage.create({
+          whisper: [game.user.id],
+          content: `<em>${item.name}</em> added. Type <strong>/scan</strong> to update your commands.`,
+          speaker: { alias: 'Quick Menu' }
+        });
+      }
+    });
+
+    Hooks.on('deleteItem', (item) => {
+      const resolverId = game.folkenQuickMenu.abbreviationResolver.currentActorId;
+      if (item.parent?.id === resolverId) {
+        ChatMessage.create({
+          whisper: [game.user.id],
+          content: `<em>${item.name}</em> removed. Type <strong>/scan</strong> to update your commands.`,
+          speaker: { alias: 'Quick Menu' }
+        });
+      }
+    });
+
+    console.log(`${MODULE_ID} | Chat command system initialized`);
+  }
+
   console.log(`${MODULE_ID} | FolkenGames Quick Menu ready!`);
-  
+
   // Add testing command for PF2e development
   if (game.folkenQuickMenu.systemDetector.isPF2e()) {
     window.debugPF2eActor = function() {
@@ -136,6 +182,51 @@ function registerSettings() {
     default: true
   });
   
+  // Chat commands
+  game.settings.register(MODULE_ID, 'enableChatCommands', {
+    name: 'Enable Chat Commands',
+    hint: 'Enable /command shortcuts in chat (e.g., /per for Perception, /scan to build commands)',
+    scope: 'client',
+    config: true,
+    type: Boolean,
+    default: true
+  });
+
+  // TTS Provider
+  game.settings.register(MODULE_ID, 'ttsProvider', {
+    name: 'TTS Provider',
+    hint: 'Auto tries Talking Actors → ElevenLabs → Browser. Or pick a specific provider.',
+    scope: 'client',
+    config: true,
+    type: String,
+    default: 'auto',
+    choices: {
+      auto: 'Auto (best available)',
+      browser: 'Browser Speech API',
+      elevenlabs: 'ElevenLabs API'
+    }
+  });
+
+  // ElevenLabs API Key
+  game.settings.register(MODULE_ID, 'elevenlabsApiKey', {
+    name: 'ElevenLabs API Key',
+    hint: 'Optional: Enter your ElevenLabs API key for high-quality TTS voices',
+    scope: 'client',
+    config: true,
+    type: String,
+    default: ''
+  });
+
+  // ElevenLabs Voice ID
+  game.settings.register(MODULE_ID, 'elevenlabsVoiceId', {
+    name: 'ElevenLabs Voice ID',
+    hint: 'The ElevenLabs voice ID to use (if not using Talking Actors)',
+    scope: 'client',
+    config: true,
+    type: String,
+    default: ''
+  });
+
   // Activation key
   game.settings.register(MODULE_ID, 'activationKey', {
     name: 'Activation Key',

@@ -1,11 +1,11 @@
 {
   "id": "folken-games-quick-menu",
   "title": "FolkenGames Quick Menu",
-  "description": "A super fast TTS-based hierarchical menu for navigating character functions with keyboard controls, inspired by iPod navigation.",
-  "version": "0.1.0",
+  "description": "Unified accessibility module for blind and visually impaired players. Provides both an iPod-style TTS quick menu and dynamic chat commands (/per, /str, /scan) that auto-discover your character's skills, spells, attacks, and items. Supports ElevenLabs and Talking Actors for high-quality TTS.",
+  "version": "0.2.0",
   "compatibility": {
-    "minimum": "11.315",
-    "verified": "12"
+    "minimum": "12",
+    "verified": "13"
   },
   "authors": [
     {
