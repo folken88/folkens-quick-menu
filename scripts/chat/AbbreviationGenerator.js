@@ -6,6 +6,14 @@
 // Words to skip when building multi-word acronyms
 const SKIP_WORDS = new Set(['of', 'the', 'a', 'an', 'and', 'or', 'in', 'on', 'to', 'for', 'with', 'at', 'by', 'from']);
 
+// Foundry built-in chat commands and our meta-commands — never generate these as abbreviations
+const RESERVED_COMMANDS = new Set([
+  'r', 'roll', 'gmr', 'gmroll', 'br', 'blindroll', 'sr', 'selfroll',
+  'pr', 'publicroll', 'ic', 'ooc', 'em', 'emote', 'me',
+  'w', 'whisper', 'reply', 'gm', 'players', 'm', 'macro',
+  'scan', 'fqm', 'list', 'find'
+]);
+
 /**
  * Legacy abbreviation table matching the old folkens-macros-pf1 names exactly.
  * These take priority so Josh's muscle memory is preserved.
@@ -125,7 +133,14 @@ export function generateAbbreviation(name, actionItem = null) {
   }
 
   // 4. Single word: first 4 characters
-  return name.replace(/[^a-zA-Z0-9]/g, '').slice(0, 4).toLowerCase();
+  let result = name.replace(/[^a-zA-Z0-9]/g, '').slice(0, 4).toLowerCase();
+
+  // 5. Never collide with Foundry built-in or meta-commands
+  if (RESERVED_COMMANDS.has(result)) {
+    result = result + 'x';
+  }
+
+  return result;
 }
 
 /**

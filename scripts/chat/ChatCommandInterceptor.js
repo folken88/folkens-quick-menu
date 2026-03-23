@@ -96,13 +96,16 @@ export class ChatCommandInterceptor {
     if (!this.resolver.isBuilt) {
       const actor = game.folkenQuickMenu?.menuManager?.getCurrentActor();
       if (actor) {
-        // Synchronous-safe: buildForActor is async but we can kick it off
-        // and for this first command, fall through. It'll work next time.
-        this.resolver.buildForActor(actor);
-        debugLog('ChatCommandInterceptor: triggered lazy build for', actor.name);
+        this.resolver.buildForActor(actor).then(() => {
+          debugLog('ChatCommandInterceptor: lazy build complete for', actor.name);
+        });
+        this._whisper('Building command list... type your command again in a moment, or type <strong>/scan</strong>.');
+        game.folkenQuickMenu?.tts?.speak('Building commands. Try again in a moment.');
+      } else {
+        this._whisper('No character assigned or token selected.');
+        game.folkenQuickMenu?.tts?.speak('No character assigned or token selected.');
       }
-      // Can't resolve yet — pass through
-      return true;
+      return false; // Swallow the command to prevent Foundry's "invalid command" error
     }
 
     const result = this.resolver.resolve(command);
