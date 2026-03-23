@@ -57,6 +57,16 @@ export class ChatCommandInterceptor {
       return false;
     }
 
+    if (command === 'list') {
+      this._handleList(args);
+      return false;
+    }
+
+    if (command === 'find') {
+      this._handleFind(args);
+      return false;
+    }
+
     // ─── Collision resolution (numeric response) ────────────
 
     if (this.collisionResolver.hasPending && /^\d+$/.test(command)) {
@@ -159,33 +169,126 @@ export class ChatCommandInterceptor {
   }
 
   _fqmList() {
+    // Redirect to the new /list system
+    this._handleList('');
+  }
+
+  // ─── /list [category] — TTS-friendly categorical browsing ─
+
+  _handleList(args) {
     if (!this.resolver.isBuilt) {
       this._whisper('No scan data. Type <strong>/scan</strong> first.');
+      game.folkenQuickMenu?.tts?.speak('No scan data. Type /scan first.');
       return;
     }
 
+    const category = args.toLowerCase().trim();
     const all = this.resolver.listAll();
-    if (all.length === 0) {
-      this._whisper('No commands registered.');
-      return;
-    }
 
     // Group by action type
     const groups = {};
     for (const entry of all) {
-      const group = entry.actionType || 'other';
+      const group = this._categoryName(entry.actionType);
       if (!groups[group]) groups[group] = [];
       groups[group].push(entry);
     }
 
-    const lines = ['<strong>All registered commands:</strong>'];
-    for (const [group, entries] of Object.entries(groups)) {
-      lines.push(`<br><strong>${group.toUpperCase()}:</strong>`);
-      for (const e of entries) {
-        lines.push(`&nbsp; /${e.abbrev} → ${e.label}`);
-      }
+    const validCategories = Object.keys(groups);
+
+    if (!category) {
+      // No category specified — give a summary with available categories
+      const summary = validCategories.map(g => `${g} (${groups[g].length})`).join(', ');
+      const ttsMsg = `${all.length} commands. Say /list then a category: ${validCategories.join(', ')}. Or /find to search.`;
+      this._whisper(`<strong>${all.length} commands registered.</strong><br>Categories: ${summary}<br><br>Type <strong>/list skills</strong>, <strong>/list spells</strong>, etc. Or <strong>/find fireball</strong> to search.`);
+      game.folkenQuickMenu?.tts?.speak(ttsMsg);
+      return;
+    }
+
+    // Find matching category (fuzzy: "skill" matches "skills", "atk" matches "attacks")
+    const match = validCategories.find(g =>
+      g.startsWith(category) || g === category || g.includes(category)
+    );
+
+    if (!match) {
+      this._whisper(`Unknown category "<strong>${category}</strong>". Available: ${validCategories.join(', ')}`);
+      game.folkenQuickMenu?.tts?.speak(`Unknown category. Available: ${validCategories.join(', ')}.`);
+      return;
+    }
+
+    const entries = groups[match];
+    // Whisper the list (for sighted GMs who might look)
+    const lines = [`<strong>${match} (${entries.length}):</strong>`];
+    for (const e of entries) {
+      lines.push(`&nbsp; /${e.abbrev} → ${e.label}`);
     }
     this._whisper(lines.join('<br>'));
+
+    // TTS reads them in a compact format
+    const ttsItems = entries.map(e => `/${e.abbrev}, ${e.label}`).join('. ');
+    game.folkenQuickMenu?.tts?.speak(`${match}. ${entries.length} commands. ${ttsItems}.`);
+  }
+
+  // ─── /find <search> — search all commands by name ──────────
+
+  _handleFind(args) {
+    if (!this.resolver.isBuilt) {
+      this._whisper('No scan data. Type <strong>/scan</strong> first.');
+      game.folkenQuickMenu?.tts?.speak('No scan data. Type /scan first.');
+      return;
+    }
+
+    const query = args.toLowerCase().trim();
+    if (!query) {
+      this._whisper('Usage: <strong>/find fireball</strong>');
+      game.folkenQuickMenu?.tts?.speak('Say /find then what you are looking for.');
+      return;
+    }
+
+    const all = this.resolver.listAll();
+    const matches = all.filter(e =>
+      e.label.toLowerCase().includes(query) || e.abbrev.includes(query)
+    );
+
+    if (matches.length === 0) {
+      this._whisper(`No commands matching "<strong>${query}</strong>".`);
+      game.folkenQuickMenu?.tts?.speak(`No matches for ${query}.`);
+      return;
+    }
+
+    const lines = [`<strong>${matches.length} match${matches.length > 1 ? 'es' : ''} for "${query}":</strong>`];
+    for (const e of matches) {
+      lines.push(`&nbsp; /${e.abbrev} → ${e.label}`);
+    }
+    this._whisper(lines.join('<br>'));
+
+    const ttsItems = matches.map(e => `/${e.abbrev}, ${e.label}`).join('. ');
+    game.folkenQuickMenu?.tts?.speak(`${matches.length} match${matches.length > 1 ? 'es' : ''}. ${ttsItems}.`);
+  }
+
+  /**
+   * Map action type codes to friendly category names.
+   */
+  _categoryName(actionType) {
+    const names = {
+      skill: 'skills',
+      attack: 'attacks',
+      strike: 'attacks',
+      spell: 'spells',
+      item: 'items',
+      save: 'saves',
+      ability: 'abilities',
+      initiative: 'combat',
+      stabilize: 'combat',
+      caster_level: 'combat',
+      concentration: 'combat',
+      pf2e_action: 'actions',
+      item_equip: 'items',
+      item_unequip: 'items',
+      item_activate: 'items',
+      item_consume: 'items',
+      item_inspect: 'items'
+    };
+    return names[actionType] || 'other';
   }
 
   async _fqmRename(oldAbbrev, newAbbrev) {
@@ -229,7 +332,8 @@ export class ChatCommandInterceptor {
       '<strong>FolkenGames Quick Menu - Chat Commands</strong>',
       '',
       '<strong>/scan</strong> — Scan your character and build command list',
-      '<strong>/fqm list</strong> — Show all registered commands',
+      '<strong>/list</strong> — Browse commands by category (e.g. /list skills, /list spells)',
+      '<strong>/find [text]</strong> — Search commands (e.g. /find fire)',
       '<strong>/fqm rename [old] [new]</strong> — Rename a command abbreviation',
       '<strong>/fqm reset</strong> — Clear all custom aliases',
       '<strong>/fqm help</strong> — Show this help',
@@ -238,6 +342,7 @@ export class ChatCommandInterceptor {
       'Spells, attacks, items, and feats require <strong>/scan</strong> first.',
     ];
     this._whisper(lines.join('<br>'));
+    game.folkenQuickMenu?.tts?.speak('Commands: /scan to scan character. /list to browse by category. /find to search. /fqm rename to rename a command. /fqm help for help.');
   }
 
   // ─── Utility ───────────────────────────────────────────────
