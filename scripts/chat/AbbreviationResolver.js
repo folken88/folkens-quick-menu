@@ -273,6 +273,18 @@ export class AbbreviationResolver {
       console.error('AbbreviationResolver: error gathering action items:', error);
     }
 
-    return items;
+    // Deduplicate: if two items share the same label + actionType, keep the first
+    const seen = new Set();
+    const deduped = [];
+    for (const item of items) {
+      const key = `${item.label}::${item.actionType}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        deduped.push(item);
+      }
+    }
+
+    debugLog(`AbbreviationResolver: ${items.length} raw items → ${deduped.length} after dedup`);
+    return deduped;
   }
 }
