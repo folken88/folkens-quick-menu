@@ -1,0 +1,281 @@
+FOLKEN GAMES QUICK MENU - BLIND PLAYER GUIDE
+=============================================
+
+This guide is designed for screen readers and provides complete information about all available commands and features in the Folken Games Quick Menu module for FoundryVTT.
+
+TABLE OF CONTENTS
+=================
+1. Quick Menu Overview
+2. Activation and Navigation
+3. Clean TTS Announcements
+4. Complete Slash Command Reference
+5. Audio Feedback System
+6. Menu Structure and Navigation
+7. Accessibility Features
+8. Troubleshooting
+
+1. QUICK MENU OVERVIEW
+=====================
+
+The Folken Games Quick Menu is a TTS-based hierarchical character navigation system designed specifically for blind players. It provides both a visual menu system and muscle-memory slash commands for quick access to all character actions.
+
+KEY FEATURES:
+- Text-to-Speech announcements for all actions
+- First letter navigation (no numbers needed)
+- Audio feedback with specific sound cues
+- Universal favorites system (favorite any item type)
+- Smart submenu execution (favorited submenus execute most common action)
+- Clean TTS announcements (no success/failure assumptions)
+- Enhanced pop-up suppression for blind players
+- Complete slash command coverage (100%)
+- Integration with existing FoundryVTT workflows
+
+2. ACTIVATION AND NAVIGATION
+============================
+
+ACTIVATION:
+- Press Backquote key (default) to open/close Quick Menu
+- Menu can be opened from anywhere in FoundryVTT
+- Requires a character to be assigned or token selected
+
+NAVIGATION:
+- Arrow Up/Down: Navigate through menu items
+- Arrow Right/Enter: Enter submenu or execute action
+- Arrow Left/Escape: Go back to previous menu
+- First Letter: Type first letter(s) of item name to jump to it
+- Mouse Wheel: Scroll up/down to navigate
+- Middle Mouse Click: Select current item
+
+MODIFIER KEY COMMANDS:
+- Ctrl+R: Read total value of current item
+- Ctrl+F: Favorite current item
+- Ctrl+P: Prepare current spell
+- X: Remove from favorites
+- U: Unprepare current spell
+- /: Show item submenu
+
+AUDIO CUES:
+- "Boop" sound: Entering submenu or executing action
+- "Bong" sound: Reaching end of menu or error
+- "Bajinger" sound: Item favorited
+- "Pop" sound: Item removed from favorites
+
+FAVORITES SYSTEM:
+- Ctrl+F: Favorite any item (including submenus and lore skills)
+- X: Remove from favorites (works on any item type)
+- Favorited submenus execute most common action:
+  * Skills → Perception seek action
+  * Attacks → First available attack
+  * Spells → First available spell
+  * Items → First available item
+  * Abilities → First available ability
+  * Saving Throws → Reflex save
+  * Statistics → Current HP announcement
+
+3. CLEAN TTS ANNOUNCEMENTS
+==========================
+
+The Quick Menu provides clean, concise TTS announcements without assumptions:
+
+DEFAULT ANNOUNCEMENTS:
+- Menu items: Just the basic name (e.g., "Stealth")
+- Roll results: Just the numerical result (e.g., "athletics: 20")
+- No success/failure declarations (since DC is unknown)
+
+DETAILED INFORMATION (Ctrl+R):
+- Skills: "Stealth, Trained, +6" (proficiency + modifier)
+- Saves: "Reflex: +8" (just the modifier)
+- Abilities: "Strength: +4" (just the modifier)
+- Items: Quantity and details
+- Stats: Current/max values (e.g., "Hit Points: 45 of 60")
+
+4. COMPLETE SLASH COMMAND REFERENCE
+===================================
+
+All slash commands work by typing the command in the chat window. Commands are case-insensitive and use 3-4 letter abbreviations.
+
+ABILITY SCORES:
+/str - Strength check
+/dex - Dexterity check  
+/con - Constitution check
+/int - Intelligence check
+/wis - Wisdom check
+/cha - Charisma check
+
+SAVING THROWS:
+/ref - Reflex save
+/fort - Fortitude save
+/will - Will save
+
+INITIATIVE:
+/init - Initiative roll
+
+SKILLS:
+/per - Perception check
+/ath - Athletics check
+/acr - Acrobatics check
+/arc - Arcana check
+/cra - Crafting check
+/dec - Deception check
+/dip - Diplomacy check
+/med - Medicine check
+/nat - Nature check
+/occ - Occultism check
+/perf - Performance check
+/rel - Religion check
+/soc - Society check
+/intim - Intimidation check
+/ste - Stealth check
+/sur - Survival check
+/thi - Thievery check
+
+USAGE EXAMPLES:
+- Type "/per" in chat to make a Perception check
+- Type "/str" in chat to make a Strength check
+- Type "/ref" in chat to make a Reflex save
+- All commands work with any assigned character or selected token
+
+4. AUDIO FEEDBACK SYSTEM
+=======================
+
+The module provides specific audio cues for different actions:
+
+NAVIGATION SOUNDS:
+- "Boop" (boop01): Entering submenu or executing action
+- "Bong" (bong01): Reaching end of menu or error
+- "Bajinger" (bajinger01): Item favorited
+- "Pop" (pop01): Item removed from favorites
+
+TTS ANNOUNCEMENTS:
+- Menu items are announced when selected
+- Roll results are announced with details
+- Critical successes and failures are highlighted
+- Attack summaries include damage and effects
+
+SETTINGS:
+- Audio feedback can be enabled/disabled in module settings
+- Volume can be adjusted (0.0 to 1.0)
+- TTS can be enabled/disabled separately
+- TTS speed can be adjusted (50% to 200%)
+
+5. MENU STRUCTURE AND NAVIGATION
+================================
+
+ROOT MENU ITEMS:
+- Favorites: Quick access to favorited items
+- Skills: All character skills with proficiency and modifiers
+- Attacks: Character attacks and strikes
+- Spells: Spells organized by level and tradition
+- Items: Equipment and consumables with quantities
+- Abilities: Character abilities and features
+- Saving Throws: Reflex, Fortitude, and Will saves
+- Statistics: Character stats and information
+
+SKILLS MENU:
+Each skill shows detailed information:
+- Skill name
+- Proficiency level (Untrained, Trained, Expert, Master, Legendary)
+- Modifier (e.g., "+6", "-2")
+- Example: "Perception, Trained, +6"
+
+ITEMS MENU:
+Items are organized by category:
+- Consumables: Potions, scrolls, etc. (shows quantities)
+- Equipment: Weapons, armor, gear
+- Treasure: Valuables and loot
+
+QUANTITY DISPLAY:
+- Items with quantities show the number (e.g., "Heal Lesser, 2")
+- Quantities update in real-time as items are used
+- Only shows quantities greater than 1
+
+6. ACCESSIBILITY FEATURES
+=========================
+
+FIRST LETTER NAVIGATION:
+- Type first letter(s) of any menu item to jump to it
+- Examples: Type "p" to jump to Perception, "str" to jump to Strength
+- Supports partial matching for longer names
+- Clears after 1 second of inactivity
+
+DETAILED INFORMATION:
+- Skills show proficiency level and modifier
+- Items show quantities when applicable
+- All information updates in real-time
+- No need to reference separate character sheets
+
+MUSCLE MEMORY SUPPORT:
+- All slash commands use familiar 3-4 letter abbreviations
+- Commands work exactly like traditional FoundryVTT macros
+- No learning curve for existing macro users
+- Can be used alongside Quick Menu
+
+TTS INTEGRATION:
+- All menu items announced when selected
+- Roll results announced with full details
+- Critical successes and failures highlighted
+- Attack summaries include damage and effects
+- Voice selection and speed adjustment available
+
+7. TROUBLESHOOTING
+=================
+
+COMMON ISSUES:
+
+"No actor found" error:
+- Ensure a character is assigned to your user
+- Or select a token on the canvas
+- Check that the character has the required data
+
+"Command not found" error:
+- Verify the command is typed correctly
+- Check that the module is enabled
+- Ensure you're using the correct 3-4 letter abbreviation
+
+Audio not playing:
+- Check module settings for audio feedback
+- Verify volume is not set to 0
+- Check browser audio permissions
+
+TTS not working:
+- Check module settings for TTS enable
+- Verify TTS is supported by your browser
+- Try adjusting TTS speed in settings
+
+Menu not opening:
+- Check that the module is enabled
+- Verify the activation key (default: Backquote)
+- Try refreshing the page
+
+PERFORMANCE TIPS:
+- Close unused applications for better TTS performance
+- Adjust TTS speed if announcements are too fast/slow
+- Use first letter navigation for faster menu access
+- Favorite frequently used items for quick access
+
+SUPPORT:
+- Check the module documentation for detailed information
+- Report issues with specific error messages
+- Include browser and FoundryVTT version information
+
+8. QUICK REFERENCE CARD
+======================
+
+ACTIVATION: Backquote key
+NAVIGATION: Arrow keys, first letter typing
+AUDIO: Boop (submenu), Bong (end/error), Bajinger (favorite), Pop (unfavorite)
+
+SLASH COMMANDS (27 total):
+Ability Scores: /str /dex /con /int /wis /cha
+Saving Throws: /ref /fort /will
+Initiative: /init
+Skills: /per /ath /acr /arc /cra /dec /dip /med /nat /occ /perf /rel /soc /intim /ste /sur /thi
+
+All commands work in chat window and provide full TTS feedback with roll results.
+
+END OF GUIDE
+============
+
+This guide covers all features of the Folken Games Quick Menu module. The system is designed to provide complete accessibility for blind players while maintaining compatibility with existing FoundryVTT workflows.
+
+For additional support or feature requests, please refer to the module documentation or contact the development team.

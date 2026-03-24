@@ -1,0 +1,25 @@
+# Exclude documentation folder from version control
+docs/
+
+# Exclude development files
+*.log
+*.tmp
+*.temp
+
+# Exclude IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Exclude OS files
+.DS_Store
+Thumbs.db
+
+# Exclude node modules if any
+node_modules/
+
+# Exclude build artifacts
+dist/
+build/
+
