@@ -11,7 +11,8 @@ const RESERVED_COMMANDS = new Set([
   'r', 'roll', 'gmr', 'gmroll', 'br', 'blindroll', 'sr', 'selfroll',
   'pr', 'publicroll', 'ic', 'ooc', 'em', 'emote', 'me',
   'w', 'whisper', 'reply', 'gm', 'players', 'm', 'macro',
-  'scan', 'fqm', 'list', 'find'
+  'scan', 'fqm', 'list', 'find',
+  'status', 'hp', 'conditions', 'cond', 'conds', 'buffs', 'buff'
 ]);
 
 /**

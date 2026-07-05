@@ -510,7 +510,90 @@ export class CharacterDataExtractor {
         modifier: actor.system.attributes.init.total || 0
       });
     }
-    
+
     return stats;
+  }
+
+  /* ─── Character state reads (for /status, /hp, /conditions, /buffs) ─── */
+
+  /** Full state snapshot. Formatting is left to the caller (chat / voice / menu). */
+  getStatus(actor) {
+    return {
+      hp: this.getHP(actor),
+      ac: this.getAC(actor),
+      abilityDamage: this.getAbilityDamage(actor),
+      conditions: this.getConditions(actor),
+      buffs: this.getBuffs(actor)
+    };
+  }
+
+  getHP(actor) {
+    const hp = actor.system?.attributes?.hp || {};
+    return {
+      value: hp.value ?? 0,
+      max: hp.max ?? 0,
+      temp: hp.temp ?? 0,
+      nonlethal: hp.nonlethal ?? 0
+    };
+  }
+
+  getAC(actor) {
+    const ac = actor.system?.attributes?.ac || {};
+    return {
+      normal: ac.normal?.total ?? null,
+      touch: ac.touch?.total ?? null,
+      flatFooted: ac.flatFooted?.total ?? null
+    };
+  }
+
+  getAbilityDamage(actor) {
+    const out = [];
+    const abilities = actor.system?.abilities || {};
+    const names = { str: 'Strength', dex: 'Dexterity', con: 'Constitution', int: 'Intelligence', wis: 'Wisdom', cha: 'Charisma' };
+    for (const [key, ab] of Object.entries(abilities)) {
+      const damage = ab?.damage || 0;
+      const drain = ab?.drain || 0;
+      if (damage || drain) out.push({ key, name: names[key] || key, damage, drain });
+    }
+    return out;
+  }
+
+  getConditions(actor) {
+    const active = [];
+    try {
+      // Core status set (v11+) is the reliable source for applied conditions
+      if (actor.statuses?.size) {
+        for (const id of actor.statuses) active.push(this._conditionLabel(id));
+      }
+      // PF1 also mirrors some conditions as a boolean map — merge any not already listed
+      const conds = actor.system?.conditions;
+      if (conds && typeof conds === 'object') {
+        for (const [key, on] of Object.entries(conds)) {
+          if (on) { const l = this._conditionLabel(key); if (!active.includes(l)) active.push(l); }
+        }
+      }
+    } catch (_) {}
+    return active;
+  }
+
+  _conditionLabel(key) {
+    try {
+      const cfg = globalThis.pf1?.config?.conditions?.[key] ?? CONFIG?.PF1?.conditions?.[key];
+      const raw = typeof cfg === 'string' ? cfg : cfg?.name || cfg?.label;
+      if (raw) return game.i18n?.localize(raw) || raw;
+      const core = CONFIG?.statusEffects?.find(s => s.id === key);
+      if (core) return game.i18n?.localize(core.name || core.label) || key;
+    } catch (_) {}
+    return key.charAt(0).toUpperCase() + key.slice(1);
+  }
+
+  getBuffs(actor) {
+    try {
+      return actor.items
+        .filter(i => i.type === 'buff' && i.system?.active === true)
+        .map(i => i.name);
+    } catch (_) {
+      return [];
+    }
   }
 }

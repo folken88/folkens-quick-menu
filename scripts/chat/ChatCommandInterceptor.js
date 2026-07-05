@@ -93,6 +93,13 @@ export class ChatCommandInterceptor {
       return false;
     }
 
+    // ─── State reads (situational awareness) ────────────────
+
+    if (command === 'status') { this._handleStatus(); return false; }
+    if (command === 'hp') { this._handleHp(); return false; }
+    if (command === 'conditions' || command === 'cond' || command === 'conds') { this._handleConditions(); return false; }
+    if (command === 'buffs' || command === 'buff') { this._handleBuffs(); return false; }
+
     // ─── Collision resolution (numeric response) ────────────
 
     if (this.collisionResolver.hasPending && /^\d+$/.test(command)) {
@@ -300,6 +307,78 @@ export class ChatCommandInterceptor {
 
     const ttsItems = matches.map(e => `slash ${spellOut(e.abbrev)} for ${e.label}`).join('. ');
     game.folkenQuickMenu?.tts?.speak(`${matches.length} match${matches.length > 1 ? 'es' : ''}. ${ttsItems}.`);
+  }
+
+  // ─── State reads: /status /hp /conditions /buffs ───────────
+  // These read the current actor's state and speak it. Kept as thin wrappers over
+  // CharacterDataExtractor so the menu and (future) voice input can reuse the same reads.
+
+  _stateActor() {
+    const actor = game.folkenQuickMenu?.menuManager?.getCurrentActor();
+    if (!actor) {
+      this._whisper('No character assigned or token selected.');
+      game.folkenQuickMenu?.tts?.speak('No character assigned or token selected.');
+      return null;
+    }
+    return actor;
+  }
+
+  _handleStatus() {
+    const actor = this._stateActor();
+    if (!actor) return;
+    const cd = game.folkenQuickMenu?.characterData;
+    if (!cd?.getStatus) { game.folkenQuickMenu?.tts?.speak('Status not available for this system.'); return; }
+    const s = cd.getStatus(actor);
+
+    const parts = [];
+    let hpLine = `${s.hp.value} of ${s.hp.max} hit points`;
+    if (s.hp.temp) hpLine += `, ${s.hp.temp} temporary`;
+    if (s.hp.nonlethal) hpLine += `, ${s.hp.nonlethal} nonlethal`;
+    parts.push(hpLine);
+    if (s.ac.normal != null) parts.push(`AC ${s.ac.normal}, touch ${s.ac.touch}, flat-footed ${s.ac.flatFooted}`);
+    if (s.abilityDamage.length) parts.push('Ability damage: ' + s.abilityDamage.map(a => `${a.name} ${a.damage + a.drain}`).join(', '));
+    parts.push(s.conditions.length ? `Conditions: ${s.conditions.join(', ')}` : 'No conditions');
+    parts.push(s.buffs.length ? `Buffs: ${s.buffs.join(', ')}` : 'No active buffs');
+    const msg = parts.join('. ') + '.';
+
+    this._whisper(`<strong>Status — ${actor.name}</strong><br>${msg}`);
+    game.folkenQuickMenu?.tts?.speak(msg);
+  }
+
+  _handleHp() {
+    const actor = this._stateActor();
+    if (!actor) return;
+    const cd = game.folkenQuickMenu?.characterData;
+    const hp = cd?.getHP ? cd.getHP(actor) : null;
+    if (!hp) { game.folkenQuickMenu?.tts?.speak('HP not available.'); return; }
+    let msg = `${hp.value} of ${hp.max} hit points`;
+    if (hp.temp) msg += `, plus ${hp.temp} temporary`;
+    if (hp.nonlethal) msg += `, ${hp.nonlethal} nonlethal`;
+    msg += '.';
+    this._whisper(`<strong>${actor.name}:</strong> ${msg}`);
+    game.folkenQuickMenu?.tts?.speak(msg);
+  }
+
+  _handleConditions() {
+    const actor = this._stateActor();
+    if (!actor) return;
+    const cd = game.folkenQuickMenu?.characterData;
+    const conds = cd?.getConditions ? cd.getConditions(actor) : [];
+    const msg = conds.length ? `Conditions: ${conds.join(', ')}.` : 'No conditions.';
+    this._whisper(`<strong>${actor.name}:</strong> ${msg}`);
+    game.folkenQuickMenu?.tts?.speak(msg);
+  }
+
+  _handleBuffs() {
+    const actor = this._stateActor();
+    if (!actor) return;
+    const cd = game.folkenQuickMenu?.characterData;
+    const buffs = cd?.getBuffs ? cd.getBuffs(actor) : [];
+    const msg = buffs.length
+      ? `${buffs.length} active buff${buffs.length > 1 ? 's' : ''}: ${buffs.join(', ')}.`
+      : 'No active buffs.';
+    this._whisper(`<strong>${actor.name}:</strong> ${msg}`);
+    game.folkenQuickMenu?.tts?.speak(msg);
   }
 
   /**
