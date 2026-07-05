@@ -4,6 +4,7 @@
  */
 
 import { debugLog } from '../module.js';
+import { spellOut } from './AbbreviationGenerator.js';
 
 export class CollisionResolver {
   constructor() {
@@ -49,7 +50,7 @@ export class CollisionResolver {
     const tts = game.folkenQuickMenu?.tts;
     if (tts) {
       const names = items.map((item, i) => `${i + 1}, ${item.label}`).join('. ');
-      tts.speak(`Conflict for ${abbreviation.split('').join(' ')}. ${names}. Type the number to choose.`);
+      tts.speak(`Conflict for slash ${spellOut(abbreviation)}. ${names}. Type the number to choose.`);
     }
 
     // Store pending state with 60-second timeout (longer for walkthrough)
@@ -95,8 +96,8 @@ export class CollisionResolver {
       const others = items.filter(i => i.id !== chosen.id);
       const tts = game.folkenQuickMenu?.tts;
       if (tts) {
-        const otherNames = others.map((o, i) => `${o.label} is now /${abbreviation}${i + 2}`).join('. ');
-        tts.speak(`${chosen.label} keeps /${abbreviation}. ${otherNames}.`);
+        const otherNames = others.map((o, i) => `${o.label} is now slash ${spellOut(abbreviation + (i + 2))}`).join('. ');
+        tts.speak(`${chosen.label} keeps slash ${spellOut(abbreviation)}. ${otherNames}.`);
       }
     }
 

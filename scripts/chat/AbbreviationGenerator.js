@@ -144,6 +144,17 @@ export function generateAbbreviation(name, actionItem = null) {
 }
 
 /**
+ * Spell an abbreviation out letter-by-letter for TTS, so "balr" is read as
+ * "b a l r" (individual letters the player types) instead of being pronounced
+ * as the word "balrruh". Used wherever a command is read aloud.
+ * @param {string} abbrev
+ * @returns {string}
+ */
+export function spellOut(abbrev) {
+  return String(abbrev || '').split('').join(' ');
+}
+
+/**
  * Check if a name has a legacy abbreviation defined.
  * @param {string} name
  * @returns {boolean}

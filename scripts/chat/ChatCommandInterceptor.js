@@ -8,6 +8,7 @@
 
 import { debugLog } from '../module.js';
 import { CollisionResolver } from './CollisionResolver.js';
+import { spellOut } from './AbbreviationGenerator.js';
 
 const MODULE_ID = 'folken-games-quick-menu';
 
@@ -259,8 +260,8 @@ export class ChatCommandInterceptor {
     }
     this._whisper(lines.join('<br>'));
 
-    // TTS reads them in a compact format
-    const ttsItems = entries.map(e => `/${e.abbrev}, ${e.label}`).join('. ');
+    // TTS spells each command out letter-by-letter so Josh hears exactly what to type
+    const ttsItems = entries.map(e => `slash ${spellOut(e.abbrev)} for ${e.label}`).join('. ');
     game.folkenQuickMenu?.tts?.speak(`${match}. ${entries.length} commands. ${ttsItems}.`);
   }
 
@@ -297,7 +298,7 @@ export class ChatCommandInterceptor {
     }
     this._whisper(lines.join('<br>'));
 
-    const ttsItems = matches.map(e => `/${e.abbrev}, ${e.label}`).join('. ');
+    const ttsItems = matches.map(e => `slash ${spellOut(e.abbrev)} for ${e.label}`).join('. ');
     game.folkenQuickMenu?.tts?.speak(`${matches.length} match${matches.length > 1 ? 'es' : ''}. ${ttsItems}.`);
   }
 
