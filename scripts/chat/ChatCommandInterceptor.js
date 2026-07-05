@@ -95,10 +95,11 @@ export class ChatCommandInterceptor {
 
     // ─── State reads (situational awareness) ────────────────
 
-    if (command === 'status') { this._handleStatus(); return false; }
+    // Short forms are primary (blind players type little): /st /hp /cond /bf
+    if (command === 'st' || command === 'stat' || command === 'status') { this._handleStatus(); return false; }
     if (command === 'hp') { this._handleHp(); return false; }
-    if (command === 'conditions' || command === 'cond' || command === 'conds') { this._handleConditions(); return false; }
-    if (command === 'buffs' || command === 'buff') { this._handleBuffs(); return false; }
+    if (command === 'cond' || command === 'conds' || command === 'conditions') { this._handleConditions(); return false; }
+    if (command === 'bf' || command === 'buff' || command === 'buffs') { this._handleBuffs(); return false; }
 
     // ─── Collision resolution (numeric response) ────────────
 
