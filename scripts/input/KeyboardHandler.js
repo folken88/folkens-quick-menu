@@ -47,7 +47,11 @@ export class KeyboardHandler {
       this.toggleMenu();
       return;
     }
-    
+
+    // Accessibility controls (TTS speed/volume, jump-to-chat) — work whether or not
+    // the menu is open, but never while the player is typing in a field.
+    if (this.handleAccessibilityKeys(event)) return;
+
     // Handle menu navigation if menu is open
     if (game.folkenQuickMenu?.menuManager?.isOpen) {
       // Prevent ALL other keyboard events from reaching FoundryVTT
@@ -57,6 +61,69 @@ export class KeyboardHandler {
       
       this.handleMenuKeydown(event);
     }
+  }
+
+  /**
+   * True when focus is in a text field / rich-text editor, so global single-key
+   * accessibility shortcuts must not fire (the player is typing).
+   */
+  isTypingTarget() {
+    const el = document.activeElement;
+    if (!el) return false;
+    const tag = el.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
+    if (el.isContentEditable) return true;
+    if (el.closest?.('.ProseMirror, [contenteditable="true"], .chat-input, prose-mirror')) return true;
+    return false;
+  }
+
+  /**
+   * Poker/dungeon-parity TTS controls plus jump-to-chat. Returns true if handled.
+   *   [ / ]  reading speed slower / faster
+   *   - / =  voice volume down / up
+   *   (chatFocusKey, default Backslash)  move focus to the chat prompt
+   */
+  handleAccessibilityKeys(event) {
+    if (!getSetting('enabled')) return false;
+    if (event.ctrlKey || event.altKey || event.metaKey) return false; // don't hijack modified combos
+    if (this.isTypingTarget()) return false;
+
+    // Jump to the chat prompt (v14 leaves it unnamed / "new line" to screen readers)
+    const chatKey = getSetting('chatFocusKey') || 'Backslash';
+    if (event.code === chatKey) {
+      event.preventDefault();
+      event.stopPropagation();
+      this.focusChatInput();
+      return true;
+    }
+
+    const tts = game.folkenQuickMenu?.tts;
+    if (!tts) return false;
+    switch (event.code) {
+      case 'BracketLeft':  event.preventDefault(); tts.nudgeRate(-0.1);   return true; // [ slower
+      case 'BracketRight': event.preventDefault(); tts.nudgeRate(+0.1);   return true; // ] faster
+      case 'Minus':        event.preventDefault(); tts.nudgeVolume(-0.1); return true; // - quieter
+      case 'Equal':        event.preventDefault(); tts.nudgeVolume(+0.1); return true; // = louder
+    }
+    return false;
+  }
+
+  /**
+   * Move keyboard focus to the v14 chat prompt. The prompt is a ProseMirror element
+   * that ships without an accessible name (screen readers announce it as "new line"),
+   * so we also (re)apply an aria-label and confirm via TTS.
+   */
+  focusChatInput() {
+    const tts = game.folkenQuickMenu?.tts;
+    const input = document.querySelector(
+      '#chat-message .chat-input, .chat-form .chat-input, .chat-input, prose-mirror.chat-input'
+    );
+    if (!input) { tts?.speak('Chat input not found', { interrupt: true, urgent: true }); return; }
+    try { input.setAttribute('aria-label', 'Chat message'); } catch (_) {}
+    const editable = input.querySelector?.('[contenteditable="true"], .ProseMirror') || input;
+    try { editable.focus?.(); } catch (_) {}
+    try { input.focus?.(); } catch (_) {}
+    tts?.speak('Chat input', { interrupt: true, urgent: true });
   }
 
   /**

@@ -200,6 +200,8 @@ export class ActionExecutor {
     } else {
       await item.use({ skipDialog: true });
     }
+    // Blind confirmation: using an item posts its card/description to chat silently otherwise.
+    this._tts()?.speak(`${item.name} sent to chat`, { interrupt: false, queue: true });
   }
 
   // ─── Save ─────────────────────────────────────────────────
@@ -410,6 +412,7 @@ export class ActionExecutor {
       if (!item) return;
       try {
         await item.use({ skipDialog: true });
+        this._tts()?.speak(`${item.name} activated`, { interrupt: false, queue: true });
       } catch (error) {
         console.error("Item activation error:", error);
         this._tts()?.speak('Activation failed');
@@ -425,6 +428,7 @@ export class ActionExecutor {
       if (!item) return;
       try {
         await item.use({ skipDialog: true });
+        this._tts()?.speak(`${item.name} consumed`, { interrupt: false, queue: true });
       } catch (error) {
         console.error("Item consumption error:", error);
         this._tts()?.speak('Consumption failed');

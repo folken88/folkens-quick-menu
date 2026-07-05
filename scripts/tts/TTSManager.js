@@ -11,10 +11,48 @@ export class TTSManager {
     this.defaultVoice = null;
     this.speaking = false;
     this.queue = [];
-    
+
+    // Live, persisted reading rate & voice volume for the browser voice — parity with the
+    // poker/dungeon blind mode: [ / ] adjust speed, - / = adjust volume, announced and
+    // remembered across reloads (localStorage). Seeded once from the ttsSpeed setting.
+    this.RATE_MIN = 0.8; this.RATE_MAX = 2.5;
+    this.VOL_MIN = 0.1;  this.VOL_MAX = 1.0;
+    this.liveRate = this._loadNum('folken-qm-tts-rate', ((getSetting('ttsSpeed') || 120) / 100), this.RATE_MIN, this.RATE_MAX);
+    this.liveVolume = this._loadNum('folken-qm-tts-volume', 1.0, this.VOL_MIN, this.VOL_MAX);
+
     // Initialize when voices are loaded
     this.initializeVoices();
   }
+
+  /* ---------- Live rate / volume (persisted, poker-parity) ---------- */
+
+  _loadNum(key, fallback, min, max) {
+    try {
+      const v = Number(localStorage.getItem(key));
+      if (Number.isFinite(v) && v > 0) return Math.max(min, Math.min(max, v));
+    } catch (_) {}
+    return Math.max(min, Math.min(max, fallback));
+  }
+
+  _saveNum(key, val) { try { localStorage.setItem(key, String(val)); } catch (_) {} }
+
+  /** Set reading speed (0.8–2.5) for the browser voice, persist, and read it back aloud. */
+  setRate(newRate, announce = true) {
+    const r = Math.max(this.RATE_MIN, Math.min(this.RATE_MAX, Number(newRate) || this.liveRate));
+    this.liveRate = Math.round(r * 100) / 100;
+    this._saveNum('folken-qm-tts-rate', this.liveRate);
+    if (announce) this.speak(`Reading speed ${this.liveRate.toFixed(2)}.`, { interrupt: true, urgent: true });
+  }
+  nudgeRate(delta) { this.setRate(this.liveRate + delta); }
+
+  /** Set browser-voice volume (0.1–1.0), persist, and confirm aloud (at the new volume). */
+  setVolume(newVolume, announce = true) {
+    const v = Math.max(this.VOL_MIN, Math.min(this.VOL_MAX, Number(newVolume) || this.liveVolume));
+    this.liveVolume = Math.round(v * 100) / 100;
+    this._saveNum('folken-qm-tts-volume', this.liveVolume);
+    if (announce) this.speak(`Voice volume ${Math.round(this.liveVolume * 100)} percent.`, { interrupt: true, urgent: true });
+  }
+  nudgeVolume(delta) { this.setVolume(this.liveVolume + delta); }
 
   /**
    * Initialize available voices
@@ -58,9 +96,10 @@ export class TTSManager {
   speak(text, options = {}) {
     if (!getSetting('enableTTS') || !text) return;
 
-    // Prevent rapid TTS calls that cause interruption errors
+    // Prevent rapid TTS calls that cause interruption errors.
+    // Urgent messages (rate/volume feedback) always speak so an adjustment is audible.
     const now = Date.now();
-    if (now - (this.lastSpeak || 0) < 50) {
+    if (!options.urgent && now - (this.lastSpeak || 0) < 50) {
       debugLog('TTS call too rapid, skipping:', text);
       return;
     }
@@ -186,8 +225,8 @@ export class TTSManager {
       utterance.voice = this.defaultVoice;
     }
 
-    // Get base rate from settings (convert percentage to decimal)
-    const baseRate = (getSetting('ttsSpeed') || 120) / 100;
+    // Base rate from the live, player-adjustable value ([ / ] keys)
+    const baseRate = this.liveRate;
 
     // Adjust rate based on content length for better comprehension
     let rate = options.rate || baseRate;
@@ -196,7 +235,7 @@ export class TTSManager {
 
     utterance.rate = Math.max(0.5, Math.min(3.0, rate));
     utterance.pitch = options.pitch || 1.0;
-    utterance.volume = options.volume || 0.8;
+    utterance.volume = options.volume ?? this.liveVolume; // live, player-adjustable ( - / = keys )
 
     utterance.onstart = () => {
       this.speaking = true;
@@ -360,7 +399,7 @@ export class TTSManager {
     }
     
     // Use base rate multiplied by 0.9 for menu listings
-    const baseRate = (getSetting('ttsSpeed') || 120) / 100;
+    const baseRate = this.liveRate;
     
     this.speak(message, { 
       interrupt: true, 
@@ -466,7 +505,7 @@ export class TTSManager {
    * Announce error or warning
    */
   announceError(message) {
-    const baseRate = (getSetting('ttsSpeed') || 120) / 100;
+    const baseRate = this.liveRate;
     
     this.speak(`Error: ${message}`, { 
       interrupt: true, 

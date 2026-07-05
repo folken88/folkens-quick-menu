@@ -2,6 +2,32 @@
 
 All notable changes to the FolkenGames Quick Menu module will be documented in this file.
 
+## [0.3.0] - 2026-07-05
+
+Accessibility + Foundry **v14** update.
+
+### Fixed
+- **Chat commands now work on Foundry v14.** The interceptor read the raw message and
+  bailed on anything starting with `<`, but v14's ProseMirror chat input serializes
+  typed input to HTML (`<p>/per</p>`) — so every `/command` silently failed on v14. It
+  now extracts the plain text first. (Same class of bug fixed in advanced-macros.)
+
+### Added
+- **Live TTS speed & volume controls** (parity with the poker/dungeon blind mode):
+  `[` / `]` slow down / speed up the reading voice, `-` / `=` lower / raise its volume.
+  Announced back aloud and persisted across reloads; suppressed while typing.
+- **Spoken confirmations for item actions.** Using, activating, or consuming an item now
+  speaks a confirmation ("… sent to chat", "… activated", "… consumed") — previously
+  these posted to chat silently with no feedback for a blind player.
+- **Jump-to-Chat hotkey** (default `Backslash`, configurable) — moves focus straight to
+  the chat prompt and confirms via TTS, so the player never has to navigate to it.
+- **Chat prompt accessible name.** The chat input gets `aria-label="Chat message"` on
+  load and every chat re-render, so screen readers stop announcing it as "new line".
+
+### Changed
+- Browser-voice rate/volume now come from the live, persisted values instead of a setting.
+- Compatibility raised to **verified 14**.
+
 ## [0.2.0] - 2026-03-23
 
 ### Added

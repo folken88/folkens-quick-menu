@@ -66,7 +66,13 @@ Hooks.once('ready', async function() {
   
   // Setup keyboard listeners
   game.folkenQuickMenu.keyboard.initialize();
-  
+
+  // Accessibility: name the v14 chat prompt now and on every chat re-render
+  applyChatInputAria();
+  Hooks.on('renderChatLog', () => applyChatInputAria());
+  Hooks.on('renderChatInput', () => applyChatInputAria());
+  Hooks.on('changeSidebarTab', () => applyChatInputAria());
+
   // Initialize chat command system (always register — setting checked inside handler)
   game.folkenQuickMenu.chatInterceptor = new ChatCommandInterceptor(
     game.folkenQuickMenu.abbreviationResolver,
@@ -238,6 +244,30 @@ function registerSettings() {
     type: String,
     default: 'Backquote'
   });
+
+  // Jump-to-chat key (accessibility): focuses the chat prompt, which v14 leaves unnamed
+  game.settings.register(MODULE_ID, 'chatFocusKey', {
+    name: 'Jump-to-Chat Key',
+    hint: 'KeyboardEvent.code that moves focus to the chat prompt (fixes v14 announcing the chat box as "new line"). Default: Backslash. TTS controls are fixed to [ ] (speed) and - = (volume), matching the poker game.',
+    scope: 'client',
+    config: true,
+    type: String,
+    default: 'Backslash'
+  });
+}
+
+/**
+ * Give the v14 chat prompt an accessible name. It is a ProseMirror element that ships
+ * without one, so screen readers announce it as "new line". Re-applied on chat renders.
+ */
+export function applyChatInputAria() {
+  try {
+    document.querySelectorAll('.chat-input, prose-mirror.chat-input').forEach((el) => {
+      if (!el.getAttribute('aria-label')) el.setAttribute('aria-label', 'Chat message');
+      const inner = el.querySelector?.('[contenteditable="true"], .ProseMirror');
+      if (inner && !inner.getAttribute('aria-label')) inner.setAttribute('aria-label', 'Chat message');
+    });
+  } catch (_) { /* non-fatal */ }
 }
 
 /**

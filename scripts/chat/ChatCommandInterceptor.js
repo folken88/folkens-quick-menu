@@ -36,7 +36,16 @@ export class ChatCommandInterceptor {
    * Core message handler. Returns false to consume the message, true to pass through.
    */
   _handleChatMessage(chatLog, message, chatData) {
-    const trimmed = message.trim();
+    // Foundry v13+ ProseMirror chat input serializes typed input to HTML ("<p>/per</p>").
+    // Extract the plain text so slash-command detection sees "/per", not the markup —
+    // otherwise the old startsWith('<') guard bailed and every command failed on v14.
+    let text = typeof message === 'string' ? message : '';
+    try {
+      const div = document.createElement('div');
+      div.innerHTML = text;
+      text = div.textContent ?? text;
+    } catch (_) { /* fall back to raw */ }
+    const trimmed = text.trim();
 
     // Check if chat commands are enabled
     try {
@@ -45,8 +54,8 @@ export class ChatCommandInterceptor {
       // Setting not registered yet — allow commands by default
     }
 
-    // Skip non-/ messages and HTML pastes
-    if (!trimmed.startsWith('/') || trimmed.startsWith('<')) return true;
+    // Skip anything that isn't a slash command
+    if (!trimmed.startsWith('/')) return true;
 
     // Only intercept commands Foundry doesn't recognize (same pattern as advanced-macros)
     let [parsedCommand] = chatLog.constructor.parse(trimmed);
