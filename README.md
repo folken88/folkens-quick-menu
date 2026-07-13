@@ -5,9 +5,11 @@ A unified accessibility module for FoundryVTT designed for blind and visually im
 1. **Chat Commands** — Type `/per` to roll Perception, `/scan` to discover all your abilities, `/list spells` to browse commands by category.
 2. **iPod-Style Quick Menu** — Press backtick to open a TTS-driven hierarchical menu navigated with arrow keys and numbers.
 
-Both interfaces share a common engine that dynamically discovers your character's skills, spells, attacks, items, and abilities. No static macros to maintain, no collisions that silently break things.
+Both interfaces share a common engine that dynamically discovers your character's skills, spells, attacks, items, and abilities. No static macros to maintain, no collisions that silently break things. A planned third interface — **push-to-talk voice** — will route spoken words ("perception", "balrog", "status") through the same engine.
 
-**Supported Systems:** Pathfinder 1e (PF1), Pathfinder 2e (PF2e), Starfinder (via PF2e)
+Commands are deliberately short (3-4 characters) because blind players type little: `/per`, `/st`, `/hp`, `/eq`.
+
+**Supported:** Foundry **v13 and v14** · Pathfinder 1e (PF1) · Pathfinder 2e (PF2e, partial)
 
 ## Chat Commands
 
@@ -36,6 +38,21 @@ For spells, attacks, items, and feats, type `/scan` first:
 /list spells   → TTS reads spell abbreviations
 /find fire     → Search all commands matching "fire"
 ```
+
+Commands are always **spelled out** in TTS so you hear exactly what to type — `/find balrog` says *"slash b, a, l, r, for Balrog"*, never "balrruh."
+
+### Situational Awareness (state reads)
+
+Instant reads of your current condition — no navigation needed:
+
+```
+/st     → Full status: HP, AC, ability damage, conditions, buffs
+/hp     → Hit points (plus temp / nonlethal)
+/cond   → Active conditions
+/bf     → Active buffs
+```
+
+> `/st` → "70 of 70 hit points. AC 22, touch 15, flat-footed 18. No conditions. Buffs: Inspire Courage, Haste."
 
 ### Abbreviation System
 
@@ -114,6 +131,18 @@ Quick Menu
 | `1-9` | Number navigation |
 | `Scroll wheel` | Navigate |
 
+## Global Accessibility Keys
+
+These work anywhere in Foundry (whether or not the menu is open), and are suppressed while you're typing in a text field so they never interfere with chat. They mirror the poker/dungeon game's blind mode.
+
+| Key | Action |
+|-----|--------|
+| `[` / `]` | Reading speed slower / faster (announced, persisted) |
+| `-` / `=` | Voice volume down / up (announced, persisted) |
+| `\` (Backslash) | Jump focus to the chat prompt (fixes v14 announcing it as "new line"); configurable |
+
+Item actions also speak a confirmation when triggered from the menu ("Blood Caimon Hide sent to chat", "… equipped", "… consumed"), so you always know something happened.
+
 ## TTS Providers
 
 The module supports three TTS providers with automatic fallback:
@@ -137,7 +166,10 @@ Configure via module settings: *TTS Provider*, *ElevenLabs API Key*, *ElevenLabs
 | ElevenLabs Voice ID | — | Voice ID for ElevenLabs |
 | Show Visual UI | On | Show the iPod-style visual interface |
 | Activation Key | Backtick | Key to open the quick menu |
+| Jump-to-Chat Key | Backslash | Key to move focus to the chat prompt |
 | Debug Mode | Off | Enable debug logging |
+
+*Reading speed and voice volume are adjusted live with `[` `]` and `-` `=` (see Global Accessibility Keys) and persist across reloads.*
 
 ## Architecture
 
@@ -170,8 +202,8 @@ This module replaces the old `folkens-macros-pf1` static macro compendium. The c
 
 ## Requirements
 
-- FoundryVTT v12+
-- PF1 or PF2e game system
+- FoundryVTT **v13 or v14** (minimum v12)
+- PF1 (full) or PF2e (partial) game system
 - Modern browser with Web Speech API support
 
 ## License
