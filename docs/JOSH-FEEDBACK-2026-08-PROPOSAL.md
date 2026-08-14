@@ -5,12 +5,11 @@ Tobias/Josh should ratify are marked **DECIDE**.
 
 ## 1. Saves: /fort /ref /will inconsistency
 **Finding:** fort and will grew to 4 letters, reflex stayed 3.
-**Diagnosis:** the legacy abbreviation table mixes eras.
-**Fix:** canonical 4-letter saves — `/fort`, `/refl`, `/will` — AND keep
-every historical short form (`/for`, `/ref`, `/wil`) as permanent aliases.
-Muscle memory from both eras keeps working; TTS and `/list` teach the
-canonical form. Aliases are free — there is no collision cost (checked
-against skill keys and reserved commands).
+**RULED (Tobias 2026-08-27): saves are THREE letters — `/for` `/ref`
+`/wil` — because saves are among the most-typed commands and every
+keystroke counts for a blind typist.** The current 4-letter forms
+(`/fort`, `/will`) stay as silent aliases so nothing Josh learned this
+month breaks; TTS and `/list` teach the 3-letter canonicals.
 
 ## 2. /init — works, unchanged.
 
@@ -83,16 +82,22 @@ resolver stays as the fallback for same-level collisions.
 - Voice-input future: the same level-scoped structure maps cleanly to
   "cast haste" / "cast third-level haste" disambiguation.
 
-## 9. Global 3-vs-4-letter decision  **DECIDE (recommended: mixed, by category)**
-Uniform 4 everywhere is tidy but fights iconic PF1 shorthand.
-Recommended ruleset (deterministic, teachable in one sentence each):
-- **Abilities:** 3 letters, fixed (str dex con int wis cha). `/con` =
-  Constitution; Concentration check gets `/conc` (4). Ability wins ties.
-- **Saves:** 4 letters canonical (fort refl will) + legacy aliases.
-- **Skills:** PF1's own keys (mostly 3) — they're the system's lingua
-  franca; subskills 4-letter from their name (#3).
-- **Spells:** level-prefix scheme (#8).
-- **Items/feats:** generated 3-4 letters as today, spelled out via TTS.
+## 9. Global letter-count rule  **RULED (Tobias 2026-08-27): brevity-first**
+"3 letters is best and should be used for most common functions. 4
+letters when you have to, more only if there's no other way." The rule,
+made deterministic:
+- **Frequency wins the short form.** When two things want the same 3
+  letters, the one Josh uses MORE in play gets it; the rarer one grows.
+- **Abilities:** 3 fixed (str dex con int wis cha). `/con` =
+  Constitution; Concentration check → `/conc`.
+- **Saves:** 3 — `/for` `/ref` `/wil` (see #1); `/fort`/`/will` aliases.
+- **Skills:** PF1's own keys (mostly 3); subskills from their own name,
+  shortest unique (≥3): `/sai` (Sailor) if unique, else `/sail`.
+- **Spells:** level-prefix scheme (#8) — level digit + shortest-unique
+  letters within that level (initials for multi-word), so most spells
+  land at 3-4 chars total incl. the digit.
+- **Items/feats:** generated shortest-unique ≥2 significant letters,
+  spelled out via TTS.
 
 ## 10. Voice not announcing spells
 Two separate problems:
