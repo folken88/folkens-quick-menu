@@ -83,6 +83,44 @@ chat front-end, so misspellings produce the same did-you-mean behaviour. The wir
 (message envelope, request/response correlation, error shape) is owned solely by
 `AgentSchema.js`; neither the helper nor `AgentBridge` defines message shapes inline.
 
+## GM presence — what works when Josh plays alone
+
+Measured against f1/Shackles. **Only one user has `isGM` ("GM Toby", role 4)** — there is no
+Assistant GM, so `game.users.activeGM` is `null` whenever Tobias is offline
+(`get activeGM() { return this.getDesignatedUser(u => u.active && u.isGM); }`).
+
+**Works with no GM online** — because quickmenu has *zero* GM dependency. A grep of all of
+`scripts/` for `isGM`, `activeGM` and `socketlib` returns nothing; every action runs as the
+acting user. Same for `folkens-auto-buff-pf1`, which gates on `actor.isOwner`, not on a GM
+broker. So: skill/save/ability rolls, attacks, spell casts, item use, reading the sheet, and
+buff toggles on Ser Toche (he is OWNER) all function with Josh alone.
+
+**Silently degrades with no GM online.** This is the dangerous class, because it produces no
+error and no notification — it just does nothing, which a blind player cannot detect. pf1
+guards seven paths with `game.users.activeGM?.isSelf` and returns early when absent:
+currency transfers between actors, the auto-save prompt on certain buff creation, and
+combat skipped-turn handling. Global pause is similar — `togglePause` only broadcasts
+`if (options.broadcast && game.user.isGM)`, so a player toggling pause changes it locally
+only and the world stays paused for everyone else.
+
+**Design consequence:** the conduit MUST surface GM presence rather than let these fail
+silently. `get_character` and `get_combat_state` both return a `gm_online` boolean, and
+`execute_action` includes it in its result. That lets Claude say "no GM is online, so that
+currency transfer will not take effect" instead of reporting a success that did not happen —
+the same principle as auto-buff reporting `skipped-ownership` rather than a false success.
+
+Josh's measured visibility in Shackles, which is the conduit's entire reachable surface:
+
+| permission | count | which |
+|---|---|---|
+| OWNER | 4 | **Ser Toche** (his PC), PC BOx, Whale Killing Ship, Kill Steal |
+| OBSERVER | 11 | the other party PCs, plus Imp and Slobber Devil |
+| LIMITED | 2 | |
+| NONE | **311** | every NPC and monster |
+
+Foundry's permission layer therefore delivers the scoping for free — no module-side
+allowlist, and no spoiler surface.
+
 ## Security
 
 The loopback exemption cuts both ways: **any website Josh visits can open
