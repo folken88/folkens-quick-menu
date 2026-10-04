@@ -1,4 +1,4 @@
-import { ownedFrom, pickActor } from "./ActorScope.js";
+import { ownedFrom, pickActor, pickPreferringMine, splitOwnership } from "./ActorScope.js";
 import { snapshotActor } from "./Snapshot.js";
 import { summary, spellsByLevel, consumables, search, money } from "./Report.js";
 import { renderCharacter, renderInventory } from "./TextRender.js";
@@ -15,7 +15,12 @@ import { renderCharacter, renderInventory } from "./TextRender.js";
  */
 export function buildApi(moduleId) {
   const owned = () => ownedFrom(game.actors?.contents ?? []);
-  const snap = who => snapshotActor(pickActor(owned(), game.user?.character?.id ?? null, who));
+  const split = () => splitOwnership(game.actors?.contents ?? [],
+    game.user?.id, game.user?.character?.id ?? null);
+  const snap = who => {
+    const { mine, shared } = split();
+    return snapshotActor(pickPreferringMine(mine, shared, game.user?.character?.id ?? null, who));
+  };
 
   return {
     version: game.modules.get(moduleId)?.version ?? "unknown",
@@ -29,7 +34,10 @@ export function buildApi(moduleId) {
       return {
         user: game.user?.name ?? null,
         character: game.user?.character?.name ?? null,
-        myCharacters: owned().map(a => a.name),
+        myCharacters: split().mine.map(a => a.name),
+        // Owned only because the world left them owned by everybody. Not the
+        // player's characters; do not offer them unless asked for by name.
+        alsoOwnedByEveryone: split().shared.map(a => a.name),
         gmOnline: game.users?.activeGM?.name ?? null,
       };
     },

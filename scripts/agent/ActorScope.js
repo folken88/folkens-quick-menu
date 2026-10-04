@@ -12,6 +12,26 @@ export function ownedFrom(actors) {
   return (actors ?? []).filter(a => a?.isOwner);
 }
 
+const OWNER = 3;
+
+/**
+ * Split owned actors into the ones that are genuinely this player's and the
+ * ones they can only touch because the actor is owned by everybody.
+ *
+ * Worlds often leave shared props, vehicles and spare NPCs on default OWNER,
+ * which makes a player look like they have five characters when they have one.
+ * Reading that list aloud is noise, so the API reports them separately.
+ */
+export function splitOwnership(actors, userId, assignedId) {
+  const mine = [], shared = [];
+  for (const a of actors ?? []) {
+    if (!a?.isOwner) continue;
+    const explicit = (a.ownership?.[userId] ?? -1) >= OWNER;
+    (explicit || a.id === assignedId ? mine : shared).push(a);
+  }
+  return { mine, shared };
+}
+
 const norm = s => String(s ?? "").trim().toLowerCase();
 
 /**
@@ -36,4 +56,16 @@ export function pickActor(owned, assignedId, wanted) {
   if (assigned) return assigned;
   if (owned.length === 1) return owned[0];
   throw new Error(`Which character? ${owned.map(a => a.name).join(", ")}`);
+}
+
+/**
+ * Same as pickActor, but when no character is named it ignores actors the
+ * player only owns because the world left them owned by everybody.
+ */
+export function pickPreferringMine(mine, shared, assignedId, wanted) {
+  if (wanted !== undefined && wanted !== null && String(wanted).length) {
+    return pickActor([...mine, ...shared], assignedId, wanted);
+  }
+  if (mine.length) return pickActor(mine, assignedId);
+  return pickActor(shared, assignedId);
 }
