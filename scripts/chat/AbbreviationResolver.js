@@ -3,7 +3,7 @@
  * Handles auto-generation, collision detection, player alias persistence.
  */
 
-import { LEGACY_ALIASES, generateAbbreviation } from './AbbreviationGenerator.js';
+import { LEGACY_ALIASES, expandAbbreviation, generateAbbreviation } from './AbbreviationGenerator.js';
 import { debugLog } from '../module.js';
 
 const MODULE_ID = 'folken-games-quick-menu';
@@ -89,21 +89,27 @@ export class AbbreviationResolver {
             suffix++;
           }
         } else {
-          // Genuine unresolved collision — store for interactive resolution
-          this.collisions.set(abbrev, items);
-
-          // Also register suffixed versions so they're usable immediately
-          items.forEach((item, idx) => {
-            if (idx === 0) {
-              // First item gets the bare abbreviation tentatively
-              this.abbreviationMap.set(abbrev, item);
-              this.reverseMap.set(item.id, abbrev);
-            } else {
-              const suffixed = `${abbrev}${idx + 1}`;
-              this.abbreviationMap.set(suffixed, item);
-              this.reverseMap.set(item.id, suffixed);
+          // Pull them apart by extending the last word until every one is
+          // distinct, instead of handing out a pick-a-number prompt. The old
+          // behaviour gave item one the bare code "tentatively" and then
+          // shadowed it with the collision list, so that item had no working
+          // command at all.
+          const spread = this._spreadCollision(items);
+          if (spread) {
+            for (const [code, item] of spread) {
+              this.abbreviationMap.set(code, item);
+              this.reverseMap.set(item.id, code);
             }
-          });
+          } else {
+            // Could not separate them; still give every item something that
+            // fires, and keep the group only for reporting in /list.
+            this.collisions.set(abbrev, items);
+            items.forEach((item, idx) => {
+              const code = idx === 0 ? abbrev : `${abbrev}${idx + 1}`;
+              this.abbreviationMap.set(code, item);
+              this.reverseMap.set(item.id, code);
+            });
+          }
         }
       }
     }
@@ -125,6 +131,24 @@ export class AbbreviationResolver {
   }
 
   /**
+   * Try to give every item in a colliding group its own command by taking more
+   * letters from the last word. Returns a Map(code -> item), or null if they
+   * could not be separated.
+   */
+  _spreadCollision(items) {
+    for (let extra = 1; extra <= 6; extra++) {
+      const codes = items.map(i => expandAbbreviation(i.label, extra));
+      const unique = new Set(codes);
+      if (unique.size !== items.length) continue;
+      if (codes.some(c => !c || this.abbreviationMap.has(c))) continue;
+      const out = new Map();
+      codes.forEach((c, i) => out.set(c, items[i]));
+      return out;
+    }
+    return null;
+  }
+
+  /**
    * Resolve an abbreviation to an action item.
    * @param {string} abbreviation
    * @returns {{ found: boolean, actionItem?: Object, collision?: boolean, items?: Object[] }}
@@ -132,13 +156,15 @@ export class AbbreviationResolver {
   resolve(abbreviation) {
     const lower = abbreviation.toLowerCase();
 
-    // Check for unresolved collision first
-    if (this.collisions.has(lower)) {
-      return { found: false, collision: true, items: this.collisions.get(lower) };
-    }
-
+    // An assigned command wins. The collision group is only consulted when the
+    // code resolves to nothing, otherwise a command that was handed out would
+    // be shadowed and never fire.
     if (this.abbreviationMap.has(lower)) {
       return { found: true, actionItem: this.abbreviationMap.get(lower) };
+    }
+
+    if (this.collisions.has(lower)) {
+      return { found: false, collision: true, items: this.collisions.get(lower) };
     }
 
     return { found: false, collision: false };

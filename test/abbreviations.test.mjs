@@ -3,7 +3,7 @@
  * on Olbryn in Iron Gods. Run: node test/abbreviations.test.mjs
  */
 import assert from "node:assert/strict";
-import { generateAbbreviation, LEGACY_ALIASES } from "../scripts/chat/AbbreviationGenerator.js";
+import { generateAbbreviation, expandAbbreviation, LEGACY_ALIASES } from "../scripts/chat/AbbreviationGenerator.js";
 
 let pass = 0;
 const t = (name, fn) => { fn(); pass++; console.log("  ok -", name); };
@@ -18,10 +18,8 @@ t("Will is /wil, not /will", () =>
 t("Reflex stays /ref", () =>
   assert.equal(generateAbbreviation("Reflex Save", { saveType: "ref" }), "ref"));
 
-t("old save forms are kept as aliases", () => {
-  assert.deepEqual(LEGACY_ALIASES.for, ["fort"]);
-  assert.deepEqual(LEGACY_ALIASES.wil, ["will"]);
-});
+t("no aliases - one command per thing", () =>
+  assert.deepEqual(LEGACY_ALIASES, {}));
 
 // --- the /int collision: PF1 names the Intimidate skill "int" ---
 t("Intimidate moves to /itm", () =>
@@ -30,8 +28,6 @@ t("Intimidate moves to /itm", () =>
 t("Intelligence keeps /int", () =>
   assert.equal(generateAbbreviation("Intelligence Check", { abilityKey: "int" }), "int"));
 
-t("Intimidate keeps its old forms as aliases", () =>
-  assert.ok(LEGACY_ALIASES.itm.includes("inti")));
 
 // --- the /st bug: multi-word names skipped the reserved-word check ---
 t("Scroll of Technomancy does not take the status command", () => {
@@ -60,5 +56,30 @@ t("two professions do not collapse onto the same command", () => {
 // --- Heal: the skill map used "hel" but PF1's key is "hea" ---
 t("Heal resolves to /hea", () =>
   assert.equal(generateAbbreviation("Heal", { skillKey: "hea" }), "hea"));
+
+// --- separating two things that land on the same code ---
+t("extra = 0 reproduces the normal abbreviation", () => {
+  assert.equal(expandAbbreviation("Wand of Cure Light Wounds", 0), "wclw");
+  assert.equal(expandAbbreviation("Haste", 0), "hast");
+});
+
+t("the two scrolls separate by extending the last word", () => {
+  const tech = expandAbbreviation("Scroll of Technomancy", 2);
+  const tele = expandAbbreviation("Scroll of Teleport", 2);
+  assert.notEqual(tech, tele);
+  assert.equal(tech, "stec");
+  assert.equal(tele, "stel");
+});
+
+t("extending further keeps them distinct", () => {
+  assert.equal(expandAbbreviation("Scroll of Technomancy", 3), "stech");
+  assert.equal(expandAbbreviation("Scroll of Teleport", 3), "stele");
+});
+
+t("the skipped word stays skipped while extending", () =>
+  assert.equal(expandAbbreviation("Wand of Cure Light Wounds", 2), "wclwou"));
+
+t("a reserved result is still guarded when extending", () =>
+  assert.equal(expandAbbreviation("Status", 0), "statx"));
 
 console.log(`\n${pass} assertions passed.`);

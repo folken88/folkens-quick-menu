@@ -115,14 +115,11 @@ const SAVE_KEY_OVERRIDES = { fort: 'for', will: 'wil', ref: 'ref' };
 const SKILL_KEY_OVERRIDES = { int: 'itm' };
 
 /**
- * Older forms kept working so nothing a player already learned breaks.
- * canonical -> aliases. The resolver registers these when the alias is free.
+ * No aliases. Josh, 2026-10-04: "Why do we need multiple macros to fire the
+ * same thing? One command per thing is easier to learn and leaves fewer codes
+ * to clash with later." One name, one command.
  */
-export const LEGACY_ALIASES = {
-  for: ['fort'],
-  wil: ['will'],
-  itm: ['inti', 'intim'],
-};
+export const LEGACY_ALIASES = {};
 
 /** Never hand back a command Foundry or our own meta-commands already own. */
 function safe(abbrev) {
@@ -188,6 +185,28 @@ export function generateAbbreviation(name, actionItem = null) {
 
   // 5. Never collide with Foundry built-in or meta-commands
   return safe(result);
+}
+
+/**
+ * Build an abbreviation with `extra` additional letters taken from the last
+ * significant word. Used to pull two things apart when they land on the same
+ * code, rather than asking the player to pick a number.
+ *
+ *   Scroll of Technomancy -> st, ste, stec, stech
+ *   Scroll of Teleport    -> st, ste, stel, stele
+ *
+ * extra = 0 reproduces the normal abbreviation, so nothing that already works
+ * moves: Wand of Cure Light Wounds stays wclw.
+ */
+export function expandAbbreviation(name, extra = 0) {
+  const words = String(name || '')
+    .split(/[^A-Za-z0-9]+/)
+    .filter(w => w && !SKIP_WORDS.has(w.toLowerCase()));
+  if (!words.length) return '';
+  if (words.length === 1) return safe(words[0].slice(0, 4 + extra).toLowerCase());
+  const head = words.slice(0, -1).map(w => w[0].toLowerCase()).join('');
+  const tail = words[words.length - 1].slice(0, 1 + extra).toLowerCase();
+  return safe((head + tail).slice(0, 8));
 }
 
 /**
