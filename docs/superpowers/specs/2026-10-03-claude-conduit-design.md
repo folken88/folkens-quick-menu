@@ -109,17 +109,38 @@ silently. `get_character` and `get_combat_state` both return a `gm_online` boole
 currency transfer will not take effect" instead of reporting a success that did not happen —
 the same principle as auto-buff reporting `skipped-ownership` rather than a false success.
 
-Josh's measured visibility in Shackles, which is the conduit's entire reachable surface:
+## Scoping — CORRECTED by live measurement
 
-| permission | count | which |
-|---|---|---|
-| OWNER | 4 | **Ser Toche** (his PC), PC BOx, Whale Killing Ship, Kill Steal |
-| OBSERVER | 11 | the other party PCs, plus Imp and Slobber Devil |
-| LIMITED | 2 | |
-| NONE | **311** | every NPC and monster |
+An earlier draft of this spec claimed Foundry's permission layer would scope the conduit
+"for free". **That is wrong**, and it was disproved by logging into f1/Iron Gods as Josh
+(role 1) and inspecting his live session:
 
-Foundry's permission layer therefore delivers the scoping for free — no module-side
-allowlist, and no spoiler surface.
+- `game.actors.size` is **133** — the client receives *every* actor document, including the
+  **93** he has NONE permission on. `actor.visible` is `false` for those, but that is a UI
+  flag, not a data barrier.
+- Reading a NONE-permission NPC (`Adamantine Golem`) from his browser returned full system
+  data: `hp 306/306`, `AC 37`, 11 items including `Amulet of Natural Armor +5`.
+- **69 journals he cannot open in the UI have their page bodies in his client anyway**:
+  100 pages, **1,741,463 characters** of GM-only prose.
+
+Foundry's model is that the client holds the data and permission governs the interface and
+the write path. **So scoping must be explicit in our API; it is not inherited.**
+
+Requirements that follow:
+
+1. Every read tool resolves actors through an **owned-actors allowlist**
+   (`game.user.character` plus `game.actors.filter(a => a.isOwner)`), never `game.actors`.
+   Measured for Josh in Iron Gods: **5 owned** — Olbryn, Obs, Ratfolk Scrapper, Silverhawk
+   Scrapper, Silverhawk Shooter — plus 34 observer-only.
+2. **No journal tool, in any phase.** The conduit must not become a convenient index into
+   1.7 MB of plot the UI already hides from him.
+3. Observer-only actors are readable but never actionable, and are returned only when
+   explicitly asked for by name.
+
+This exposure exists today, with or without this project — any player's browser holds it,
+and a browser-attached agent can already read it. The conduit's obligation is not to
+*amplify* it: it should hand Claude a deliberately small, owned-only surface rather than
+the whole world.
 
 ## Security
 
