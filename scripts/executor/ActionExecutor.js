@@ -182,6 +182,10 @@ export class ActionExecutor {
     const hookId = this._hookRollResult();
     try {
       await spell.use({ skipDialog: true });
+      // Blind confirmation. Only failures used to speak, so a spell with no
+      // sound effect gave no sign it had gone through and the player had to go
+      // read chat to find out.
+      this._tts()?.speak(`${spell.name}, cast`, { interrupt: false, queue: true });
     } catch (error) {
       console.error('Error casting spell:', error);
       this._tts()?.speak('Cast failed');

@@ -32,8 +32,8 @@ const LEGACY_ABBREVIATIONS = {
   'Fly': 'fly',
   'Handle Animal': 'han',
   'Heal': 'hea',
-  'Intimidate': 'intim',
-  'Intimidation': 'intim',
+  'Intimidate': 'itm',
+  'Intimidation': 'itm',
   'Knowledge (Arcana)': 'kar',
   'Knowledge (Dungeoneering)': 'kdu',
   'Knowledge (Engineering)': 'ken',
@@ -75,16 +75,16 @@ const LEGACY_ABBREVIATIONS = {
   'Dexterity Check': 'dex',
   'Constitution': 'con',
   'Constitution Check': 'con',
-  'Intelligence': 'intc',
-  'Intelligence Check': 'intc',
+  'Intelligence': 'int',
+  'Intelligence Check': 'int',
   'Wisdom': 'wis',
   'Wisdom Check': 'wis',
   'Charisma': 'cha',
   'Charisma Check': 'cha',
 
   // Saves
-  'Fortitude': 'fort',
-  'Fortitude Save': 'fort',
+  'Fortitude': 'for',
+  'Fortitude Save': 'for',
   'Reflex': 'ref',
   'Reflex Save': 'ref',
   'Will': 'wil',
@@ -96,6 +96,39 @@ const LEGACY_ABBREVIATIONS = {
   'Concentration Check': 'conc',
   'Caster Level Check': 'clc',
 };
+
+/**
+ * Overrides for system keys that are wrong or that collide.
+ *
+ * The raw PF1 key wins over everything else (step 1 below), so these are the
+ * only way to correct it. Ratified by Tobias 2026-08-27: saves are three
+ * letters because they are among the most-typed commands and every keystroke
+ * costs a blind typist.
+ */
+const SAVE_KEY_OVERRIDES = { fort: 'for', will: 'wil', ref: 'ref' };
+
+/**
+ * PF1 uses the skill key "int" for Intimidate, which collides with the
+ * Intelligence ability check. Abilities own the iconic three-letter set, so
+ * Intimidate moves to "itm".
+ */
+const SKILL_KEY_OVERRIDES = { int: 'itm' };
+
+/**
+ * Older forms kept working so nothing a player already learned breaks.
+ * canonical -> aliases. The resolver registers these when the alias is free.
+ */
+export const LEGACY_ALIASES = {
+  for: ['fort'],
+  wil: ['will'],
+  itm: ['inti', 'intim'],
+};
+
+/** Never hand back a command Foundry or our own meta-commands already own. */
+function safe(abbrev) {
+  const a = String(abbrev || '').toLowerCase();
+  return RESERVED_COMMANDS.has(a) ? a + 'x' : a;
+}
 
 /**
  * Generate a 3-4 letter abbreviation for a name.
@@ -113,35 +146,48 @@ const LEGACY_ABBREVIATIONS = {
 export function generateAbbreviation(name, actionItem = null) {
   if (!name) return '';
 
-  // 1. System key takes priority for skills/saves/abilities
+  // 0. Subskills abbreviate from their own name. Their skillKey is a path like
+  //    "pro.subSkills.pro1", which would otherwise collapse every Profession
+  //    onto the same command.
+  if (actionItem && actionItem.abbrevHint) {
+    const hint = String(actionItem.abbrevHint).replace(/[^a-zA-Z0-9]/g, '').slice(0, 4).toLowerCase();
+    if (hint) return safe(hint);
+  }
+
+  // 1. System key takes priority for skills/saves/abilities, after correction
   if (actionItem) {
-    if (actionItem.skillKey) return actionItem.skillKey.toLowerCase();
-    if (actionItem.saveType) return actionItem.saveType.toLowerCase();
-    if (actionItem.abilityKey) return actionItem.abilityKey.toLowerCase();
+    if (actionItem.skillKey) {
+      const k = actionItem.skillKey.toLowerCase();
+      return safe(SKILL_KEY_OVERRIDES[k] || k);
+    }
+    if (actionItem.saveType) {
+      const k = actionItem.saveType.toLowerCase();
+      return safe(SAVE_KEY_OVERRIDES[k] || k);
+    }
+    if (actionItem.abilityKey) return safe(actionItem.abilityKey.toLowerCase());
   }
 
   // 2. Legacy table
   if (LEGACY_ABBREVIATIONS[name]) {
-    return LEGACY_ABBREVIATIONS[name];
+    return safe(LEGACY_ABBREVIATIONS[name]);
   }
 
   // 3. Multi-word acronym
   const words = name.split(/[\s\-\/]+/).filter(w => !SKIP_WORDS.has(w.toLowerCase()) && w.length > 0);
 
   if (words.length >= 2) {
+    // Must go through safe(): "Scroll of Technomancy" reduces to "st", which
+    // the status command already owns, and this path used to return early and
+    // skip the reserved check entirely.
     const acronym = words.map(w => w[0].toLowerCase()).join('');
-    return acronym.slice(0, 4);
+    return safe(acronym.slice(0, 4));
   }
 
   // 4. Single word: first 4 characters
-  let result = name.replace(/[^a-zA-Z0-9]/g, '').slice(0, 4).toLowerCase();
+  const result = name.replace(/[^a-zA-Z0-9]/g, '').slice(0, 4).toLowerCase();
 
   // 5. Never collide with Foundry built-in or meta-commands
-  if (RESERVED_COMMANDS.has(result)) {
-    result = result + 'x';
-  }
-
-  return result;
+  return safe(result);
 }
 
 /**

@@ -3,7 +3,7 @@
  * Handles auto-generation, collision detection, player alias persistence.
  */
 
-import { generateAbbreviation } from './AbbreviationGenerator.js';
+import { LEGACY_ALIASES, generateAbbreviation } from './AbbreviationGenerator.js';
 import { debugLog } from '../module.js';
 
 const MODULE_ID = 'folken-games-quick-menu';
@@ -105,6 +105,18 @@ export class AbbreviationResolver {
             }
           });
         }
+      }
+    }
+
+    // 5. Legacy aliases. Saves moved to three letters and Intimidate moved off
+    //    "int", so the forms a player already learned keep working as long as
+    //    nothing else has claimed them.
+    for (const [canonical, aliases] of Object.entries(LEGACY_ALIASES)) {
+      const target = this.abbreviationMap.get(canonical);
+      if (!target) continue;
+      for (const alias of aliases) {
+        if (this.abbreviationMap.has(alias) || this.collisions.has(alias)) continue;
+        this.abbreviationMap.set(alias, target);
       }
     }
 

@@ -46,7 +46,7 @@ export class CharacterDataExtractor {
       'esc': 'Escape Artist',
       'fly': 'Fly',
       'han': 'Handle Animal',
-      'hel': 'Heal',
+      'hea': 'Heal',
       'int': 'Intimidate',
       'kar': 'Knowledge (Arcana)',
       'kdu': 'Knowledge (Dungeoneering)',
@@ -82,6 +82,29 @@ export class CharacterDataExtractor {
           actionType: 'skill',
           skillKey: key,
           modifier: actorSkills[key].mod || 0
+        });
+      }
+    }
+
+    // Subskills. PF1 stores Profession/Craft/Perform/Artistry/Lore entries under
+    // skills.<key>.subSkills with their own names, so walking only the top level
+    // leaves "Profession (Sailor)" with no command of its own.
+    for (const [key, name] of Object.entries(skillMap)) {
+      const subs = actorSkills[key]?.subSkills;
+      if (!subs) continue;
+      for (const [subKey, sub] of Object.entries(subs)) {
+        if (!sub) continue;
+        const subName = sub.name || subKey;
+        skills.push({
+          id: `skill_${key}_${subKey}`,
+          label: `${name} (${subName})`,
+          type: 'action',
+          actionType: 'skill',
+          skillKey: `${key}.subSkills.${subKey}`,
+          // Abbreviate from the parenthetical, not the parent: Sailor -> sail,
+          // so every Profession does not collapse onto the same command.
+          abbrevHint: subName,
+          modifier: sub.mod || 0
         });
       }
     }
@@ -138,27 +161,32 @@ export class CharacterDataExtractor {
       actionType: 'stabilize'
     });
 
-    // Add caster level check for primary spellcaster
-    const spellbooks = actor.items.filter(item => item.type === 'spellbook');
-    if (spellbooks.length > 0) {
-      const primarySpellbook = spellbooks[0]; // Use first spellbook as primary
+    // Caster level and concentration.
+    // PF1 does NOT model spellbooks as items - they live on the actor at
+    // system.attributes.spells.spellbooks - so the old items-of-type-spellbook
+    // lookup always found nothing and these two commands never existed.
+    const books = actor.system?.attributes?.spells?.spellbooks ?? {};
+    const inUse = Object.entries(books).filter(([, b]) => b && b.inUse);
+    if (inUse.length > 0) {
+      const [bookKey, book] = inUse[0];
+      const label = book.label || book.name || bookKey;
       combatActions.push({
         id: 'caster_level',
         label: 'Caster Level Check',
         type: 'action',
         actionType: 'caster_level',
-        spellbook: primarySpellbook.name,
-        casterLevel: primarySpellbook.system.cl?.total || actor.system.details.level?.value || 1
+        spellbookKey: bookKey,
+        spellbook: label,
+        casterLevel: book.cl?.total ?? actor.system.details?.level?.value ?? 1
       });
-
-      // Add concentration check
       combatActions.push({
         id: 'concentration',
         label: 'Concentration Check',
         type: 'action',
         actionType: 'concentration',
-        spellbook: primarySpellbook.name,
-        concentrationBonus: primarySpellbook.system.concentration?.total || 0
+        spellbookKey: bookKey,
+        spellbook: label,
+        concentrationBonus: book.concentration?.total ?? 0
       });
     }
 
