@@ -205,8 +205,8 @@ await a.performRest();           // long rest
 ## Step 4b — the token HUD
 
 The token HUD is the ring of controls a sighted player gets by right-clicking their token.
-These are its player-available functions. Conditions and HP are verified; the rest follow
-from the documented API but were not exercised live, so read the value back after each.
+These are its player-available functions. HP, conditions, elevation and targeting are all
+verified working for an ordinary player. Read the value back after every write anyway.
 
 ```js
 const a = game.user.character;
@@ -231,12 +231,18 @@ Object.keys(a.system.attributes.conditions ?? {}).filter(k => a.system.attribute
 
 To list what can be toggled: `pf1.registry.conditions.contents.map(c => c.id)`.
 
-**Add or remove self from combat** — the HUD's crossed-swords toggle:
+**Add or remove self from combat** — the HUD's crossed-swords toggle. This only works once
+the GM has started an encounter; a player can join or leave one but cannot create one. With
+no encounter running it throws *"There is no active Encounter in your currently viewed
+Scene"*, which is normal, not a permissions problem — say so rather than reporting a failure.
 
 ```js
 const piece = game.user.character.getActiveTokens()[0];
-await piece.document.toggleCombatant();
-game.combat?.combatants.some(c => c.actorId === game.user.character.id)
+if (!game.combat) "no encounter running - the GM has not started combat";
+else {
+  await piece.document.toggleCombatant();
+  game.combat.combatants.some(c => c.actorId === game.user.character.id);
+}
 ```
 
 **Elevation** — flying matters for this character:
