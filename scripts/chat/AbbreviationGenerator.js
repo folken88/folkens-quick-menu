@@ -210,6 +210,25 @@ export function expandAbbreviation(name, extra = 0) {
 }
 
 /**
+ * Second separation strategy: extend the FIRST word instead of the last.
+ *
+ * Needed when the last word is the one they share. "Detect Magic" and
+ * "Dispel Magic" both end in Magic, so taking more of the last word gives
+ * dma, dmag, dmagi for both forever. Taking more of the first gives dem and
+ * dim at the first step.
+ */
+export function expandAbbreviationHead(name, extra = 1) {
+  const words = String(name || '')
+    .split(/[^A-Za-z0-9]+/)
+    .filter(w => w && !SKIP_WORDS.has(w.toLowerCase()));
+  if (!words.length) return '';
+  if (words.length === 1) return safe(words[0].slice(0, 4 + extra).toLowerCase());
+  const head = words[0].slice(0, 1 + extra).toLowerCase();
+  const rest = words.slice(1).map(w => w[0].toLowerCase()).join('');
+  return safe((head + rest).slice(0, 8));
+}
+
+/**
  * Spell an abbreviation out letter-by-letter for TTS, so "balr" is read as
  * "b a l r" (individual letters the player types) instead of being pronounced
  * as the word "balrruh". Used wherever a command is read aloud.

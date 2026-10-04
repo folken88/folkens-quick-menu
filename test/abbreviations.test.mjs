@@ -3,7 +3,7 @@
  * on Olbryn in Iron Gods. Run: node test/abbreviations.test.mjs
  */
 import assert from "node:assert/strict";
-import { generateAbbreviation, expandAbbreviation, LEGACY_ALIASES } from "../scripts/chat/AbbreviationGenerator.js";
+import { generateAbbreviation, expandAbbreviation, expandAbbreviationHead, LEGACY_ALIASES } from "../scripts/chat/AbbreviationGenerator.js";
 
 let pass = 0;
 const t = (name, fn) => { fn(); pass++; console.log("  ok -", name); };
@@ -81,5 +81,13 @@ t("the skipped word stays skipped while extending", () =>
 
 t("a reserved result is still guarded when extending", () =>
   assert.equal(expandAbbreviation("Status", 0), "statx"));
+
+t("a shared last word is separated from the front instead", () => {
+  // Detect Magic / Dispel Magic: extending "Magic" never separates them.
+  assert.equal(expandAbbreviation("Detect Magic", 2), expandAbbreviation("Dispel Magic", 2));
+  assert.notEqual(expandAbbreviationHead("Detect Magic", 1), expandAbbreviationHead("Dispel Magic", 1));
+  assert.equal(expandAbbreviationHead("Detect Magic", 1), "dem");
+  assert.equal(expandAbbreviationHead("Dispel Magic", 1), "dim");
+});
 
 console.log(`\n${pass} assertions passed.`);

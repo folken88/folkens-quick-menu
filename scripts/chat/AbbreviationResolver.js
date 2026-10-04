@@ -3,7 +3,7 @@
  * Handles auto-generation, collision detection, player alias persistence.
  */
 
-import { LEGACY_ALIASES, expandAbbreviation, generateAbbreviation } from './AbbreviationGenerator.js';
+import { LEGACY_ALIASES, expandAbbreviation, expandAbbreviationHead, generateAbbreviation } from './AbbreviationGenerator.js';
 import { debugLog } from '../module.js';
 
 const MODULE_ID = 'folken-games-quick-menu';
@@ -136,14 +136,20 @@ export class AbbreviationResolver {
    * could not be separated.
    */
   _spreadCollision(items) {
-    for (let extra = 1; extra <= 6; extra++) {
-      const codes = items.map(i => expandAbbreviation(i.label, extra));
-      const unique = new Set(codes);
-      if (unique.size !== items.length) continue;
-      if (codes.some(c => !c || this.abbreviationMap.has(c))) continue;
-      const out = new Map();
-      codes.forEach((c, i) => out.set(c, items[i]));
-      return out;
+    // Two strategies. Extending the last word handles "Scroll of Technomancy"
+    // vs "Scroll of Teleport". Extending the first handles "Detect Magic" vs
+    // "Dispel Magic", where the shared word is the last one and no amount of
+    // extending it will ever separate them.
+    const strategies = [expandAbbreviation, expandAbbreviationHead];
+    for (const build of strategies) {
+      for (let extra = 1; extra <= 6; extra++) {
+        const codes = items.map(i => build(i.label, extra));
+        if (new Set(codes).size !== items.length) continue;
+        if (codes.some(c => !c || this.abbreviationMap.has(c))) continue;
+        const out = new Map();
+        codes.forEach((c, i) => out.set(c, items[i]));
+        return out;
+      }
     }
     return null;
   }
