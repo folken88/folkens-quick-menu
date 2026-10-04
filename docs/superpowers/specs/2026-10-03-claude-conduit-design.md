@@ -239,11 +239,71 @@ actions, this single tool covers every current *and future* action — adding `/
 - **Helper `--selftest`:** verifies it can bind and reports state without Foundry.
 - **Manual:** f1 only; Josh's own browser; Safari-vs-Chrome check first.
 
+## Division of labour with the existing front-ends
+
+**The conduit is not a second way to play combat.** Quickmenu's menu, chat commands and
+macros already cover rolls, saves, attacks, casts and item use, and for those they are
+strictly better: four keystrokes beats a round trip through a language model, and they cost
+far less of the contended audio channel. It is fine for the conduit to be clumsier there.
+
+The conduit owns what quickmenu cannot do:
+
+| conduit | why |
+|---|---|
+| **inventory management** | add / remove / equip / quantity / split — quickmenu has no inventory CRUD |
+| **money** | spend, convert, reconcile — absent from quickmenu entirely |
+| **spell-book bookkeeping** | prepare/unprepare across a 59-spell list; `/prep` is still TODO |
+| **cross-cutting questions** | "what do I have that heals", "how many charges left", "which spells are still unprepared" |
+| **comprehension** | read and explain a long item or spell description |
+| **state reconstruction** | "what is active on me, what changed since last session" |
+| **export** | see below |
+
+Rule of thumb: **in combat, keystrokes; for bookkeeping and understanding, the conduit.**
+
+## Export — compensatory, not convenience
+
+Sight is a re-scannable medium: a sighted player rebuilds state by glancing again and never
+needs to retain it. A blind player must externalise to retain. Export is therefore a
+first-class Phase 1 feature, not a nice-to-have.
+
+`export_character`, `export_inventory`, `export_spellbook`, `export_actions` return clean
+plain text — stable ordering, no markup, screen-reader friendly — which the client writes to
+a file. Every read tool also takes a `format: "text"` option so anything can be saved.
+
+`export_actions` is the highest-value one: it emits the character's state **and** its chat
+abbreviations together (`Perception … /per`, `Haste … /3hast`), producing a single file that
+doubles as a memorisation aid and a command reference. No sighted player needs that artifact,
+and it costs us nothing because the resolver already holds the data.
+
+## Distribution — generic, not Josh-specific
+
+This must work for **any user who logs into any Foundry world with a Claude Desktop client
+active**. Nothing may be hardcoded to Josh, Olbryn, Iron Gods, or f1:
+
+- The actor set is always resolved at runtime from `game.user.character` plus
+  `game.actors.filter(a => a.isOwner)` for whoever is logged in.
+- `docs/CLAUDE-CONDUIT-SETUP.md` is written for **an agent to execute**, not a human to
+  interpret: what to download and from where (the repo release), the exact install commands,
+  the literal Claude Desktop config block, where to find the token in Foundry's module
+  settings, and a `--selftest` to confirm before declaring success.
+- The module's README and its in-Foundry settings both surface that document's URL, so a
+  player can hand their Claude one link and have it set itself up.
+- Because the helper binds loopback per machine, two players on two machines never collide;
+  the port only needs to be unique on one computer.
+
+This makes Claude Desktop + the MCP helper the **supported** path. The Chrome-extension
+route still works with nothing installed and stays documented as an alternative — but it
+passes tool output through a redactor outside our control, which during testing replaced
+legitimate Foundry values (`token`, `system.abilities.*`) with `[BLOCKED: …]`. Returning
+rendered text rather than raw JSON avoids most of it; structured tools over MCP avoid it
+entirely.
+
 ## Out of scope (YAGNI)
 
-No GM tools. No world mutation, scene control, or access to actors Josh does not own. No
-relay unless Safari forces it. No voice input — quickmenu's planned STT is a separate
-front-end that will ride the same `ActionExecutor`.
+No GM tools. No world mutation, scene control, or access to actors the user does not own.
+**No journal tool in any phase.** No relay unless a browser denies the loopback exemption.
+No voice input — quickmenu's planned STT is a separate front-end riding the same
+`ActionExecutor`. No attempt to beat quickmenu at combat activation.
 
 ## Accessibility constraints
 
