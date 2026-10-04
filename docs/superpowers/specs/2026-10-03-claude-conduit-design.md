@@ -64,6 +64,25 @@ actual browser is implementation step 1**, before anything else is built. If his
 denies it, we fall back to a relay on the NAS behind Traefik (`wss://`, real Let's Encrypt
 cert) behind the same `AgentBridge` interface — a config change, not a redesign.
 
+## Lifecycle
+
+Claude Desktop **spawns the helper over stdio**, so the helper process — and therefore the
+ws listener the browser connects to — exists only while Claude Desktop is running. Two
+consequences the implementation must handle explicitly rather than leave to chance:
+
+- **Claude Desktop closed:** nothing is listening, so `AgentBridge` must sit in backoff
+  retry without logging noise or erroring in Foundry, and reconnect silently when the
+  helper reappears.
+- **Foundry tab closed or reloaded:** the helper keeps running with no peer. Tools must
+  return "Foundry tab not connected" rather than hanging until timeout.
+- **Claude Desktop restarted while Foundry stays open:** a fresh helper binds the port and
+  the browser reconnects on its own. This is the common case and must need no user action.
+
+The `describe` tool takes a name argument and resolves it through the same resolver as the
+chat front-end, so misspellings produce the same did-you-mean behaviour. The wire protocol
+(message envelope, request/response correlation, error shape) is owned solely by
+`AgentSchema.js`; neither the helper nor `AgentBridge` defines message shapes inline.
+
 ## Security
 
 The loopback exemption cuts both ways: **any website Josh visits can open
