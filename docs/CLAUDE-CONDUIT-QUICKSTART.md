@@ -42,6 +42,38 @@ fail *silently* when no GM is connected — currency transfers between actors, s
 side-effects, and combat skipped-turn handling. If it is null, say so before doing anything
 that depends on it. Never report success you have not verified.
 
+## Step 2b — prefer the module API
+
+Check for it first. If it exists, **use it instead of the raw snippets below**: it is scoped
+to the player's own characters, it cannot reach anything they do not own, and it will not
+break when Foundry changes its internals.
+
+```js
+game.modules.get("folken-games-quick-menu")?.api ? "API available" : "no API - use raw snippets"
+```
+
+```js
+const api = game.modules.get("folken-games-quick-menu").api;
+api.whoAmI();            // user, character, my characters, whether a GM is online
+api.getCharacter();      // HP, AC, saves, abilities, active buffs
+api.getSpells();         // grouped by level, with known and prepared counts
+api.getConsumables();    // quantities and charges, zero-quantity items omitted
+api.getMoney();          // both coin pools, plus a note on which one holds the money
+api.getBuffs();          // every buff and whether it is active
+api.getInventory();      // all items
+api.find("cure");        // search their own items by name or description
+api.describe("Wand of Cure Light Wounds");   // full text, markup stripped
+api.exportCharacter();   // flat text, ready to write to a file
+api.exportInventory();   // flat text, grouped by type, equipped marked
+```
+
+Every call takes an optional character name or id as its last argument, for players who own
+more than one — `api.getCharacter("Obs")`. Asking for one they do not own throws and names
+the ones they do.
+
+The raw snippets below still work and remain the fallback on servers running 0.3.0 or
+earlier, where `api` is undefined.
+
 ## Step 3 — core reads
 
 **Character summary**
