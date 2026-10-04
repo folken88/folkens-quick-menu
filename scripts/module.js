@@ -12,6 +12,7 @@ import { SystemDetector } from './system/SystemDetector.js';
 import { ActionExecutor } from './executor/ActionExecutor.js';
 import { AbbreviationResolver } from './chat/AbbreviationResolver.js';
 import { ChatCommandInterceptor } from './chat/ChatCommandInterceptor.js';
+import { buildApi } from './agent/AgentApi.js';
 
 // Module constants
 const MODULE_ID = 'folken-games-quick-menu';
@@ -66,6 +67,13 @@ Hooks.once('ready', async function() {
   
   // Setup keyboard listeners
   game.folkenQuickMenu.keyboard.initialize();
+
+  // Agent API: a stable, owned-actor-scoped read surface for a player's AI
+  // assistant. Exposed on the module object so it survives Foundry internals
+  // changing underneath it.
+  const self = game.modules.get(MODULE_ID);
+  if (self) self.api = buildApi(MODULE_ID);
+  console.log(`${MODULE_ID} | agent API ready`);
 
   // Accessibility: name the v14 chat prompt now and on every chat re-render
   applyChatInputAria();
