@@ -29,6 +29,9 @@ const snap = {
   items: [
     { name: "Wand of Cure Light Wounds", type: "consumable", qty: 1, equipped: null, description: "cures wounds" },
     { name: "Chain Shirt", type: "equipment", qty: 1, equipped: true, description: "armor" },
+    { name: "Scroll of Fog Cloud", type: "consumable", qty: 1, equipped: null, description: "obscures vision" },
+    { name: "Power Attack", type: "feat", qty: 1, equipped: null, description: "a feat" },
+    { name: "Haste", type: "spell", qty: 1, equipped: null, description: "a spell" },
   ],
   money: { carried: { gp: 0, cp: 0 }, weightless: { gp: 12, cp: 7654 } },
 };
@@ -70,6 +73,17 @@ t("consumables hide zero-quantity entries", () =>
 t("search matches name or description", () =>
   assert.deepEqual(search(snap, "cure").map(i => i.name), ["Wand of Cure Light Wounds"]));
 
+t("search does not match mid-word - cure must not hit obscures", () =>
+  assert.equal(search(snap, "cure").some(i => i.name === "Scroll of Fog Cloud"), false));
+
+t("search ranks name matches above description matches", () => {
+  const r = search(snap, "wand");
+  assert.equal(r[0].name, "Wand of Cure Light Wounds");
+});
+
+t("search tolerates regex characters in the query", () =>
+  assert.doesNotThrow(() => search(snap, "cure (light)")));
+
 t("search is case-insensitive", () =>
   assert.equal(search(snap, "CHAIN").length, 1));
 
@@ -107,6 +121,13 @@ t("inventory export groups by type and marks equipped", () => {
   const txt = renderInventory(snap);
   assert.match(txt, /^equipment:$/m);
   assert.match(txt, /Chain Shirt \(equipped\)/);
+});
+
+t("inventory is gear only - no feats, spells, buffs or classes", () => {
+  const txt = renderInventory(snap);
+  assert.equal(/Power Attack/.test(txt), false);
+  assert.equal(/^spell:$/m.test(txt), false);
+  assert.match(txt, /Wand of Cure Light Wounds/);
 });
 
 console.log(`\n${pass} assertions passed.`);

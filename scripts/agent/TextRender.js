@@ -37,10 +37,20 @@ export function renderCharacter(s) {
   return L.join("\n");
 }
 
+/**
+ * Things the character actually carries. PF1 models feats, classes, races,
+ * buffs and spells as "items" too, but reading 59 spells aloud under the
+ * heading "inventory" is noise, so gear only.
+ */
+export const GEAR_TYPES = ["weapon", "equipment", "consumable", "loot", "container"];
+
 /** Inventory as flat text, grouped by item type. */
 export function renderInventory(s) {
   const byType = {};
-  for (const i of s.items) (byType[i.type] ??= []).push(i);
+  for (const i of s.items) {
+    if (!GEAR_TYPES.includes(i.type)) continue;
+    (byType[i.type] ??= []).push(i);
+  }
   const L = [`${s.name} - inventory`, ""];
   for (const type of Object.keys(byType).sort()) {
     L.push(`${type}:`);

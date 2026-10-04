@@ -31,11 +31,23 @@ export function consumables(s) {
   return s.consumables.filter(c => (c.qty ?? 0) > 0);
 }
 
+/**
+ * Search this character's own items.
+ *
+ * Matches on a word boundary rather than a bare substring: "cure" must not drag
+ * in "obscures". Every false positive gets read aloud to a blind player, so
+ * precision costs them less than recall does. Name matches rank above
+ * description matches for the same reason.
+ */
 export function search(s, query) {
   const q = String(query ?? "").trim().toLowerCase();
   if (!q) return [];
-  return s.items.filter(i =>
-    i.name.toLowerCase().includes(q) || (i.description ?? "").toLowerCase().includes(q));
+  const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const rx = new RegExp("\\b" + escaped, "i");
+  const byName = s.items.filter(i => rx.test(i.name ?? ""));
+  const seen = new Set(byName);
+  const byDesc = s.items.filter(i => !seen.has(i) && rx.test(i.description ?? ""));
+  return [...byName, ...byDesc];
 }
 
 /**
