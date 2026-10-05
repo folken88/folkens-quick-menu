@@ -9,6 +9,7 @@
 import { debugLog } from '../module.js';
 import { CollisionResolver } from './CollisionResolver.js';
 import { spellOut } from './AbbreviationGenerator.js';
+import { renderAC } from './StateSpeech.js';
 
 const MODULE_ID = 'folken-games-quick-menu';
 
@@ -98,6 +99,7 @@ export class ChatCommandInterceptor {
     // Short forms are primary (blind players type little): /st /hp /cond /bf
     if (command === 'st' || command === 'stat' || command === 'status') { this._handleStatus(); return false; }
     if (command === 'hp') { this._handleHp(); return false; }
+    if (command === 'ac') { this._handleAc(); return false; }
     if (command === 'cond' || command === 'conds' || command === 'conditions') { this._handleConditions(); return false; }
     if (command === 'bf' || command === 'buff' || command === 'buffs') { this._handleBuffs(); return false; }
 
@@ -360,6 +362,23 @@ export class ChatCommandInterceptor {
     game.folkenQuickMenu?.tts?.speak(msg);
   }
 
+  async _handleAc() {
+    const actor = this._stateActor();
+    if (!actor) return;
+    const cd = game.folkenQuickMenu?.characterData;
+    if (!cd?.getACDetail) { game.folkenQuickMenu?.tts?.speak('AC not available for this system.'); return; }
+
+    const detail = cd.getACDetail(actor);
+    // Notes are enriched asynchronously by PF1. A missing or slow note must not
+    // cost the player the numbers, so the read goes ahead either way.
+    let notes = [];
+    try { notes = cd.getACNotes ? await cd.getACNotes(actor) : []; } catch (_) {}
+
+    const msg = renderAC(detail, notes);
+    this._whisper(`<strong>${actor.name}:</strong> ${msg}`);
+    game.folkenQuickMenu?.tts?.speak(msg);
+  }
+
   _handleConditions() {
     const actor = this._stateActor();
     if (!actor) return;
@@ -451,6 +470,7 @@ export class ChatCommandInterceptor {
       '<strong>/scan</strong> — Scan your character and build command list',
       '<strong>/list</strong> — Browse commands by category (e.g. /list skills, /list spells)',
       '<strong>/find [text]</strong> — Search commands (e.g. /find fire)',
+      '<strong>/st /hp /ac /cond /bf</strong> — Read your status, hit points, armour class, conditions, buffs',
       '<strong>/fqm rename [old] [new]</strong> — Rename a command abbreviation',
       '<strong>/fqm reset</strong> — Clear all custom aliases',
       '<strong>/fqm help</strong> — Show this help',
@@ -459,7 +479,7 @@ export class ChatCommandInterceptor {
       'Spells, attacks, items, and feats require <strong>/scan</strong> first.',
     ];
     this._whisper(lines.join('<br>'));
-    game.folkenQuickMenu?.tts?.speak('Commands: /scan to scan character. /list to browse by category. /find to search. /fqm rename to rename a command. /fqm help for help.');
+    game.folkenQuickMenu?.tts?.speak('Commands: /scan to scan character. /list to browse by category. /find to search. /st for status, /hp for hit points, /ac for armour class, /cond for conditions, /bf for buffs. /fqm rename to rename a command. /fqm help for help.');
   }
 
   // ─── Utility ───────────────────────────────────────────────

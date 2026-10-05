@@ -580,6 +580,65 @@ export class CharacterDataExtractor {
     };
   }
 
+  /**
+   * AC with its breakdown and CMD, for /ac.
+   *
+   * Kept separate from getAC() because getStatus() is synchronous and is used by
+   * /st; this one reaches into PF1's own source-detail machinery, which is what
+   * draws the tooltip a sighted player gets by hovering the AC box.
+   */
+  getACDetail(actor) {
+    const cmd = actor.system?.attributes?.cmd || {};
+    return {
+      ...this.getAC(actor),
+      cmd: cmd.total ?? null,
+      cmdFlatFooted: cmd.flatFootedTotal ?? null,
+      base: 10,
+      sources: this._acSources(actor)
+    };
+  }
+
+  /**
+   * The individual bonuses making up AC.
+   *
+   * PF1 11.x exposes these through getSourceDetails(path) - sourceDetails as a
+   * property is deprecated and logs a warning, so it is not used here. Entries
+   * come back as { name, value, modifier, disabled }, where `disabled` marks a
+   * non-stacking bonus that something else has superseded. Those are dropped:
+   * reading out a bonus that is not actually applying would mislead a player who
+   * cannot see it greyed out, and the numbers would not add up to the total.
+   * PF1 also keeps the inherent base 10 out of this list.
+   */
+  _acSources(actor) {
+    try {
+      const raw = actor.getSourceDetails?.('system.attributes.ac.normal.total') ?? [];
+      return raw
+        .filter(s => s && !s.disabled && s.value !== 0 && s.value !== null)
+        .map(s => ({
+          name: String(s.name ?? '').trim(),
+          value: s.value,
+          type: s.modifier || null
+        }))
+        .filter(s => s.name);
+    } catch (error) {
+      debugLog('AC sources unavailable:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Roll notes that apply to AC, already enriched by PF1 (async - it resolves
+   * inline rolls). Returns [{ text, source }].
+   */
+  async getACNotes(actor) {
+    try {
+      return (await actor.getContextNotesParsed?.('ac')) ?? [];
+    } catch (error) {
+      debugLog('AC notes unavailable:', error);
+      return [];
+    }
+  }
+
   getAbilityDamage(actor) {
     const out = [];
     const abilities = actor.system?.abilities || {};

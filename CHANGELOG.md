@@ -2,6 +2,25 @@
 
 All notable changes to the FolkenGames Quick Menu module will be documented in this file.
 
+## [0.8.0] - 2026-10-05
+
+### Added
+- **`/ac`** - reads AC, touch, flat-footed, CMD and flat-footed CMD, then where every
+  bonus comes from, then any roll notes that apply to AC. The breakdown is PF1's own
+  source data, the same thing a sighted player gets by hovering the AC box.
+  Non-stacking bonuses that something else has superseded are left out, so the numbers
+  read aloud actually add up to the total, and the inherent base 10 is stated because
+  PF1 keeps it out of that list.
+- `/ac` is reserved, so no item or spell can take the command.
+- New `scripts/chat/StateSpeech.js` holds the sentence building as pure functions, so
+  the wording is covered by tests rather than only verifiable by listening to it.
+
+### Notes
+- Uses `actor.getSourceDetails(path)` and `actor.getContextNotesParsed('ac')`. The
+  older `actor.sourceDetails` property is deprecated in PF1 v11 and logs a warning on
+  every access, so it is deliberately not used.
+- 13 new assertions, 84 across the suite.
+
 ## [0.7.0] - 2026-10-04
 
 Level-first spell commands, to Josh's specification.

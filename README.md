@@ -48,11 +48,14 @@ Instant reads of your current condition — no navigation needed:
 ```
 /st     → Full status: HP, AC, ability damage, conditions, buffs
 /hp     → Hit points (plus temp / nonlethal)
+/ac     → AC, touch, flat-footed, CMD, where each bonus comes from, and AC roll notes
 /cond   → Active conditions
 /bf     → Active buffs
 ```
 
 > `/st` → "70 of 70 hit points. AC 22, touch 15, flat-footed 18. No conditions. Buffs: Inspire Courage, Haste."
+
+> `/ac` → "AC 21, touch 13, flat-footed 19. CMD 18, flat-footed 15. From base 10, Armor +7, Shield +2, Dexterity +2. Ring of Protection: +2 vs evil outsiders."
 
 ### Abbreviation System
 
