@@ -3,7 +3,8 @@
  * on Olbryn in Iron Gods. Run: node test/abbreviations.test.mjs
  */
 import assert from "node:assert/strict";
-import { generateAbbreviation, expandAbbreviation, expandAbbreviationHead, LEGACY_ALIASES } from "../scripts/chat/AbbreviationGenerator.js";
+import { generateAbbreviation, expandAbbreviation, expandAbbreviationHead, LEGACY_ALIASES,
+         spellAbbreviation, spellAbbreviationHead, isLevelledSpell } from "../scripts/chat/AbbreviationGenerator.js";
 
 let pass = 0;
 const t = (name, fn) => { fn(); pass++; console.log("  ok -", name); };
@@ -102,5 +103,71 @@ t("the primary spellbook keeps the documented conc", () =>
 
 t("an explicit abbreviation is still guarded against reserved commands", () =>
   assert.equal(generateAbbreviation("Anything", { forceAbbrev: "st" }), "stx"));
+
+// --- level-first spells. Josh's spec, 2026-10-04, example for example ---
+
+const spell = (name, level) => generateAbbreviation(name, { actionType: "spell", level });
+
+t("a one-word spell takes four letters after the level", () => {
+  assert.equal(spell("Haste", 3), "3hast");
+  assert.equal(spell("Slow", 3), "3slow");
+  assert.equal(spell("Teleport", 5), "5tele");
+});
+
+t("a multi-word spell takes the initials after the level", () => {
+  assert.equal(spell("Magic Missile", 1), "1mm");
+  assert.equal(spell("Dispel Magic", 3), "3dm");
+  assert.equal(spell("Telekinetic Charge", 4), "4tc");
+});
+
+t("cantrips are level 0, and Detect Magic is /0dm not /0", () =>
+  assert.equal(spell("Detect Magic", 0), "0dm"));
+
+t("Teleport, Greater is /7tg as PF1 names it", () =>
+  assert.equal(spell("Teleport, Greater", 7), "7tg"));
+
+t("only 'of' is dropped, so the command still falls out of the name", () => {
+  assert.equal(spell("Protection from Evil", 1), "1pfe");
+  assert.equal(spell("Shield of Faith", 1), "1sf");
+});
+
+t("an apostrophe does not become its own word", () =>
+  assert.equal(spell("Mage's Faithful Hound", 5), "5mfh"));
+
+t("the level form replaces the old spell codes entirely", () => {
+  assert.notEqual(spell("Haste", 3), "hast");
+  assert.notEqual(spell("True Strike", 1), "tst");
+  assert.equal(spell("True Strike", 1), "1ts");
+});
+
+t("two same-level spells separate by extending the last word", () => {
+  const fire = spellAbbreviation("Faerie Fire", 1, 1);
+  const fall = spellAbbreviation("Feather Fall", 1, 1);
+  assert.equal(fire, "1ffi");
+  assert.equal(fall, "1ffa");
+  assert.notEqual(fire, fall);
+});
+
+t("extra = 0 is the plain form, so a tiebreak never moves what works", () =>
+  assert.equal(spellAbbreviation("Magic Missile", 1, 0), spell("Magic Missile", 1)));
+
+t("spells at different levels never collide in the first place", () =>
+  assert.notEqual(spell("Detect Magic", 0), spell("Dispel Magic", 3)));
+
+t("a shared last word falls back to extending the front, keeping the level", () => {
+  assert.equal(spellAbbreviationHead("Detect Magic", 2, 1), "2dem");
+  assert.equal(spellAbbreviationHead("Dispel Magic", 2, 1), "2dim");
+});
+
+t("scrolls and wands are untouched by the spell scheme", () => {
+  assert.equal(isLevelledSpell({ actionType: "item", level: 1 }), false);
+  assert.equal(generateAbbreviation("Scroll of Technomancy", { actionType: "item" }), "stx");
+  assert.equal(generateAbbreviation("Wand of Cure Light Wounds", { actionType: "item" }), "wclw");
+});
+
+t("a spell with no level recorded still gets a command", () => {
+  assert.equal(isLevelledSpell({ actionType: "spell", level: undefined }), false);
+  assert.equal(generateAbbreviation("Haste", { actionType: "spell" }), "hast");
+});
 
 console.log(`\n${pass} assertions passed.`);

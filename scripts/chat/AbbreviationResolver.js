@@ -3,7 +3,8 @@
  * Handles auto-generation, collision detection, player alias persistence.
  */
 
-import { LEGACY_ALIASES, expandAbbreviation, expandAbbreviationHead, generateAbbreviation } from './AbbreviationGenerator.js';
+import { LEGACY_ALIASES, expandAbbreviation, expandAbbreviationHead, generateAbbreviation,
+         isLevelledSpell, spellAbbreviation, spellAbbreviationHead } from './AbbreviationGenerator.js';
 import { debugLog } from '../module.js';
 
 const MODULE_ID = 'folken-games-quick-menu';
@@ -140,10 +141,19 @@ export class AbbreviationResolver {
     // vs "Scroll of Teleport". Extending the first handles "Detect Magic" vs
     // "Dispel Magic", where the shared word is the last one and no amount of
     // extending it will ever separate them.
-    const strategies = [expandAbbreviation, expandAbbreviationHead];
+    // Spells keep their level prefix while being pulled apart, so a tiebreak
+    // never costs them the thing that makes the command derivable.
+    const strategies = [
+      (i, extra) => isLevelledSpell(i)
+        ? spellAbbreviation(i.label, i.level, extra)
+        : expandAbbreviation(i.label, extra),
+      (i, extra) => isLevelledSpell(i)
+        ? spellAbbreviationHead(i.label, i.level, extra)
+        : expandAbbreviationHead(i.label, extra),
+    ];
     for (const build of strategies) {
       for (let extra = 1; extra <= 6; extra++) {
-        const codes = items.map(i => build(i.label, extra));
+        const codes = items.map(i => build(i, extra));
         if (new Set(codes).size !== items.length) continue;
         if (codes.some(c => !c || this.abbreviationMap.has(c))) continue;
         const out = new Map();

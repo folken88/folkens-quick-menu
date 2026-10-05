@@ -2,6 +2,72 @@
 
 All notable changes to the FolkenGames Quick Menu module will be documented in this file.
 
+## [0.7.0] - 2026-10-04
+
+Level-first spell commands, to Josh's specification.
+
+### Changed
+- **Spells are now named by level first.** The spell level leads as a digit (`0` for
+  cantrips), then four letters for a one-word name or the initials for a multi-word
+  one: Haste is `/3hast`, Teleport `/5tele`, Magic Missile `/1mm`, Detect Magic `/0dm`,
+  Teleport, Greater `/7tg`. Only "of" is dropped, so Protection from Evil is `/1pfe`,
+  and an apostrophe no longer starts a word, so Mage's Faithful Hound is `/5mfh`.
+  The command now falls out of the spell instead of having to be memorised.
+- This **replaces** the old spell codes (`/hast`, `/dem`, `/dim`, `/tst`, `/tse`) with
+  no aliases kept, the same as the saves change in 0.5.2.
+- A tiebreak between two spells of the same level keeps the level prefix:
+  Faerie Fire `/1ffi`, Feather Fall `/1ffa`.
+
+### Unchanged
+- Wands, scrolls and potions keep their initials and the extend rule (`/stec`, `/stel`).
+- Skills, saves, ability checks and the combat commands are untouched.
+
+## [0.6.1] - 2026-10-04
+
+### Fixed
+- `/ini` for Initiative, as the old macro set documented it (had become `/init`).
+- The secondary spellbook's commands were missing. Every in-use spellbook now gets its
+  own caster-level and concentration commands: `/clc`, `/conc`, `/clc2`, `/conc2`.
+
+## [0.6.0] - 2026-10-04
+
+### Fixed
+- **Menu navigation wraps instead of clamping.** At either end the menu re-announced
+  the same entry, which to someone listening is indistinguishable from a stuck menu.
+  A one-entry list now says so out loud rather than repeating itself.
+
+## [0.5.4] - 2026-10-04
+
+### Fixed
+- A GM owns every actor in the world, so the agent API offered 132 characters as
+  "yours". A GM now gets their assigned character and must name anyone else.
+
+## [0.5.3] - 2026-10-04
+
+### Fixed
+- Two names sharing their *last* word could never be separated by extending it
+  (Detect Magic / Dispel Magic). They now separate from the front: `/dem`, `/dim`.
+
+## [0.5.2] - 2026-10-04
+
+### Changed
+- **Clashes are separated by taking more letters, not by a pick-a-number prompt.**
+- **Aliases removed.** One name, one command: `/for`, `/ref`, `/wil`, `/itm` stand alone.
+
+### Fixed
+- An assigned command now wins over the clash list. Previously the item handed the
+  bare code was shadowed by the clash group and its command never fired.
+- Multi-word names skipped the reserved-command check, so "Scroll of Technomancy"
+  took `/st` from the status command.
+
+## [0.5.0] - 2026-10-03
+
+### Added
+- **Agent API** on `game.modules.get('folken-games-quick-menu').api` — an owned-actor
+  scoped read surface for a blind player's AI assistant, with plain-text exports.
+- **State reads**: `/st`, `/hp`, `/cond`, `/bf`.
+- **`/list` and `/find`** for browsing and searching commands, spoken letter by letter.
+
 ## [0.3.0] - 2026-07-05
 
 Accessibility + Foundry **v14** update.

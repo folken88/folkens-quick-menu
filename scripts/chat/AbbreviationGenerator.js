@@ -147,6 +147,12 @@ export function generateAbbreviation(name, actionItem = null) {
   //     documented a specific code, such as conc2 for the secondary spellbook.
   if (actionItem && actionItem.forceAbbrev) return safe(actionItem.forceAbbrev);
 
+  // 0b. Spells are level-first. Josh, 2026-10-04: "This is how I already think
+  //     of my spells, so level-first means less to relearn for me, not more."
+  //     The level makes the command derivable from the spell rather than
+  //     memorised: knowing Haste is 3rd level is knowing it is /3hast.
+  if (isLevelledSpell(actionItem)) return spellAbbreviation(name, actionItem.level);
+
   // 0. Subskills abbreviate from their own name. Their skillKey is a path like
   //    "pro.subSkills.pro1", which would otherwise collapse every Profession
   //    onto the same command.
@@ -230,6 +236,72 @@ export function expandAbbreviationHead(name, extra = 1) {
   const head = words[0].slice(0, 1 + extra).toLowerCase();
   const rest = words.slice(1).map(w => w[0].toLowerCase()).join('');
   return safe((head + rest).slice(0, 8));
+}
+
+/**
+ * Does this action item carry a spell level? Only spells use the level-first
+ * scheme; scrolls, wands and potions keep the initials-with-extend rule, which
+ * is what Josh asked for ("/stec and /stel are good").
+ */
+export function isLevelledSpell(item) {
+  return !!item && item.actionType === 'spell'
+    && item.level !== undefined && item.level !== null && item.level !== '';
+}
+
+/**
+ * Split a spell name into significant words.
+ *
+ * Only "of" is dropped - the general SKIP_WORDS list is deliberately not used
+ * here. The whole value of the scheme is that the command falls out of the name
+ * without having to remember which small words the module considers
+ * insignificant, so Protection from Evil is pfe, not pe. Apostrophes are
+ * removed first so Mage's Faithful Hound is mfh and not msfh.
+ */
+function spellWords(name) {
+  return String(name || '')
+    .replace(/['’]/g, '')
+    .split(/[^A-Za-z0-9]+/)
+    .filter(w => w && w.toLowerCase() !== 'of');
+}
+
+function levelPrefix(level) {
+  const n = Number(level);
+  return Number.isFinite(n) ? String(n) : '0';
+}
+
+/**
+ * The level-first spell command, exactly as Josh specified it on 2026-10-04:
+ *
+ *   level digit, 0 for cantrips
+ *   one word   -> its first four letters   Haste /3hast, Teleport /5tele
+ *   many words -> the initials, "of" dropped   Magic Missile /1mm, Detect Magic /0dm
+ *
+ * `extra` takes more letters from the last word, which is the tiebreaker for two
+ * spells of the same level that still come out the same: Faerie Fire /1ffi and
+ * Feather Fall /1ffa.
+ */
+export function spellAbbreviation(name, level, extra = 0) {
+  const words = spellWords(name);
+  if (!words.length) return '';
+  const lvl = levelPrefix(level);
+  if (words.length === 1) return safe((lvl + words[0].slice(0, 4 + extra)).toLowerCase().slice(0, 10));
+  const head = words.slice(0, -1).map(w => w[0]).join('');
+  const tail = words[words.length - 1].slice(0, 1 + extra);
+  return safe((lvl + head + tail).toLowerCase().slice(0, 10));
+}
+
+/**
+ * Last-resort tiebreaker for two same-level spells that share their last word,
+ * where extending it can never separate them. Mirrors expandAbbreviationHead.
+ */
+export function spellAbbreviationHead(name, level, extra = 1) {
+  const words = spellWords(name);
+  if (!words.length) return '';
+  const lvl = levelPrefix(level);
+  if (words.length === 1) return safe((lvl + words[0].slice(0, 4 + extra)).toLowerCase().slice(0, 10));
+  const head = words[0].slice(0, 1 + extra);
+  const rest = words.slice(1).map(w => w[0]).join('');
+  return safe((lvl + head + rest).toLowerCase().slice(0, 10));
 }
 
 /**

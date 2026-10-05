@@ -56,21 +56,53 @@ Instant reads of your current condition — no navigation needed:
 
 ### Abbreviation System
 
-The module auto-generates 3-4 letter abbreviations from ability names:
+Commands are generated from the thing's own name, so you can work out the command
+without having been told it.
 
-| Name | Abbreviation | Rule |
-|------|-------------|------|
-| Perception | `/per` | PF1 system skill key |
-| Fortitude Save | `/fort` | Legacy table |
-| Wand of Cure Light Wounds | `/wclw` | First letter of each significant word |
-| Destructinator | `/dest` | First 4 characters |
-| Sneak Attack | `/sa` | First letter of each word |
+**Skills, saves and checks** use the system's own key, corrected where it collides:
 
-When two abilities share an abbreviation (e.g., "Sneak Attack" and "Silent Advance" both map to `/sa`), the module guides you through resolving the conflict via TTS:
+| Name | Command | Rule |
+|------|---------|------|
+| Perception | `/per` | PF1 skill key |
+| Fortitude Save | `/for` | Saves are three letters |
+| Reflex Save | `/ref` | |
+| Will Save | `/wil` | |
+| Intimidate | `/itm` | Moved off `int`, which Intelligence owns |
+| Initiative | `/ini` | |
+| Concentration / Caster level | `/conc`, `/clc` | Second spellbook: `/conc2`, `/clc2` |
 
-> "Conflict for S A. 1, Sneak Attack. 2, Silent Advance. Type the number to choose."
+**Spells are level-first.** The spell level comes first as a digit, `0` for cantrips:
 
-Your choice is saved to the actor's flags and persists across sessions.
+| Spell | Command | Rule |
+|-------|---------|------|
+| Haste (3rd) | `/3hast` | One word: its first four letters |
+| Teleport (5th) | `/5tele` | |
+| Magic Missile (1st) | `/1mm` | Several words: the initials |
+| Detect Magic (cantrip) | `/0dm` | |
+| Teleport, Greater (7th) | `/7tg` | |
+| Protection from Evil (1st) | `/1pfe` | Only "of" is dropped |
+| Mage's Faithful Hound (5th) | `/5mfh` | An apostrophe does not start a word |
+
+**Everything else** — wands, scrolls, potions, gear, feats, attacks — takes the
+initials of each significant word, or the first four letters of a one-word name:
+
+| Name | Command |
+|------|---------|
+| Wand of Cure Light Wounds | `/wclw` |
+| Sneak Attack | `/sa` |
+| Destructinator | `/dest` |
+
+**When two things come out the same**, the module pulls them apart by taking more
+letters rather than asking you to pick a number:
+
+- Faerie Fire and Feather Fall, both 1st level → `/1ffi` and `/1ffa`
+- Scroll of Technomancy and Scroll of Teleport → `/stec` and `/stel`
+- When the shared word is the *last* one, it takes more of the first instead:
+  Detect Magic and Dispel Magic at the same level → `/2dem` and `/2dim`
+
+Every command is handed to exactly one thing, and there are no aliases: one name,
+one command. A command that would collide with a Foundry built-in or one of this
+module's own meta-commands gets an `x` appended (`/statx`, not `/stat`).
 
 ### Managing Aliases
 
