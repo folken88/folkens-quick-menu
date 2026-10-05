@@ -15,11 +15,37 @@ import { renderCharacter, renderInventory } from "./TextRender.js";
  */
 export function buildApi(moduleId) {
   const owned = () => ownedFrom(game.actors?.contents ?? []);
-  const split = () => splitOwnership(game.actors?.contents ?? [],
-    game.user?.id, game.user?.character?.id ?? null);
+  const isGM = () => !!game.user?.isGM;
+
+  /**
+   * A GM owns every actor in the world, so the ordinary split would hand back
+   * the entire bestiary as "your characters" - 132 of them in Iron Gods. Read
+   * aloud that is worse than useless, so a GM gets only their assigned
+   * character and must name anyone else explicitly.
+   */
+  const split = () => {
+    const assignedId = game.user?.character?.id ?? null;
+    if (isGM()) {
+      return { mine: game.user?.character ? [game.user.character] : [], shared: [] };
+    }
+    return splitOwnership(game.actors?.contents ?? [], game.user?.id, assignedId);
+  };
+
   const snap = who => {
+    const assignedId = game.user?.character?.id ?? null;
+    if (isGM()) {
+      if (!who) {
+        if (game.user?.character) return snapshotActor(game.user.character);
+        throw new Error('You are logged in as a GM, so every actor in the world is "yours". Name the one you want, for example getCharacter("Olbryn").');
+      }
+      const wanted = String(who).toLowerCase();
+      const hit = game.actors.get(who)
+        ?? game.actors.find(a => a.name.toLowerCase() === wanted);
+      if (!hit) throw new Error(`No actor named "${who}" in this world.`);
+      return snapshotActor(hit);
+    }
     const { mine, shared } = split();
-    return snapshotActor(pickPreferringMine(mine, shared, game.user?.character?.id ?? null, who));
+    return snapshotActor(pickPreferringMine(mine, shared, assignedId, who));
   };
 
   return {
@@ -31,15 +57,21 @@ export function buildApi(moduleId) {
      * cannot see happen.
      */
     whoAmI() {
-      return {
+      const { mine, shared } = split();
+      const out = {
         user: game.user?.name ?? null,
         character: game.user?.character?.name ?? null,
-        myCharacters: split().mine.map(a => a.name),
+        myCharacters: mine.map(a => a.name),
         // Owned only because the world left them owned by everybody. Not the
         // player's characters; do not offer them unless asked for by name.
-        alsoOwnedByEveryone: split().shared.map(a => a.name),
+        alsoOwnedByEveryone: shared.map(a => a.name),
         gmOnline: game.users?.activeGM?.name ?? null,
       };
+      if (isGM()) {
+        out.isGM = true;
+        out.note = 'You are a GM. This API serves one character at a time; name the one you want rather than listing the world.';
+      }
+      return out;
     },
 
     getCharacter(who) { return summary(snap(who)); },
