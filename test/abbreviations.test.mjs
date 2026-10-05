@@ -90,4 +90,17 @@ t("a shared last word is separated from the front instead", () => {
   assert.equal(expandAbbreviationHead("Dispel Magic", 1), "dim");
 });
 
+// --- the old macro set is the reference for these, not the system key ---
+t("Initiative is /ini, as the old macros documented", () =>
+  assert.equal(generateAbbreviation("Initiative"), "ini"));
+
+t("an explicit abbreviation wins outright", () =>
+  assert.equal(generateAbbreviation("Concentration Check (Spelllike)", { forceAbbrev: "conc2" }), "conc2"));
+
+t("the primary spellbook keeps the documented conc", () =>
+  assert.equal(generateAbbreviation("Concentration Check", { forceAbbrev: "conc" }), "conc"));
+
+t("an explicit abbreviation is still guarded against reserved commands", () =>
+  assert.equal(generateAbbreviation("Anything", { forceAbbrev: "st" }), "stx"));
+
 console.log(`\n${pass} assertions passed.`);

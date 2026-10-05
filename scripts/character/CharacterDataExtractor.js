@@ -165,30 +165,36 @@ export class CharacterDataExtractor {
     // PF1 does NOT model spellbooks as items - they live on the actor at
     // system.attributes.spells.spellbooks - so the old items-of-type-spellbook
     // lookup always found nothing and these two commands never existed.
+    // Every spellbook in use, not just the first. The old macro set documented
+    // conc for the primary book and conc2 for the secondary, and a character
+    // like Olbryn has both a class book and a spell-like book.
     const books = actor.system?.attributes?.spells?.spellbooks ?? {};
     const inUse = Object.entries(books).filter(([, b]) => b && b.inUse);
-    if (inUse.length > 0) {
-      const [bookKey, book] = inUse[0];
+    inUse.forEach(([bookKey, book], idx) => {
+      const suffix = idx === 0 ? '' : String(idx + 1);
       const label = book.label || book.name || bookKey;
+      const named = idx === 0 ? '' : ` (${label})`;
       combatActions.push({
-        id: 'caster_level',
-        label: 'Caster Level Check',
+        id: `caster_level${suffix}`,
+        label: `Caster Level Check${named}`,
         type: 'action',
         actionType: 'caster_level',
+        forceAbbrev: `clc${suffix}`,
         spellbookKey: bookKey,
         spellbook: label,
         casterLevel: book.cl?.total ?? actor.system.details?.level?.value ?? 1
       });
       combatActions.push({
-        id: 'concentration',
-        label: 'Concentration Check',
+        id: `concentration${suffix}`,
+        label: `Concentration Check${named}`,
         type: 'action',
         actionType: 'concentration',
+        forceAbbrev: `conc${suffix}`,
         spellbookKey: bookKey,
         spellbook: label,
         concentrationBonus: book.concentration?.total ?? 0
       });
-    }
+    });
 
     return combatActions;
   }

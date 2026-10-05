@@ -91,7 +91,7 @@ const LEGACY_ABBREVIATIONS = {
   'Will Save': 'wil',
 
   // Combat
-  'Initiative': 'init',
+  'Initiative': 'ini',
   'Stabilize': 'stab',
   'Concentration Check': 'conc',
   'Caster Level Check': 'clc',
@@ -142,6 +142,10 @@ function safe(abbrev) {
  */
 export function generateAbbreviation(name, actionItem = null) {
   if (!name) return '';
+
+  // 0a. An explicit abbreviation wins outright. Used where the old macro set
+  //     documented a specific code, such as conc2 for the secondary spellbook.
+  if (actionItem && actionItem.forceAbbrev) return safe(actionItem.forceAbbrev);
 
   // 0. Subskills abbreviate from their own name. Their skillKey is a path like
   //    "pro.subSkills.pro1", which would otherwise collapse every Profession
