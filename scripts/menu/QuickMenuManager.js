@@ -144,10 +144,28 @@ export class QuickMenuManager {
    */
   navigateUp() {
     if (!this.isOpen || !this.currentMenu) return;
-    
-    this.selectedIndex = Math.max(0, this.selectedIndex - 1);
+    if (this._announceIfStuck()) return;
+
+    // Wrap instead of clamping. Clamping re-announces the same item, which to
+    // someone listening is indistinguishable from the menu being broken - it is
+    // what Josh reported as "it only gives me the first item".
+    const n = this.currentMenu.length;
+    this.selectedIndex = (this.selectedIndex - 1 + n) % n;
     this.announceCurrentSelection();
     this.render();
+  }
+
+  /**
+   * A list with one entry is at both ends at once, so moving does nothing.
+   * Say so rather than repeating the entry, which sounds like a stuck menu.
+   * @returns {boolean} true if the caller should stop here
+   */
+  _announceIfStuck() {
+    if (this.currentMenu.length > 1) return false;
+    const only = this.currentMenu[0];
+    game.folkenQuickMenu?.tts?.speak(
+      only ? `${only.label}. Only item. Left to go back.` : 'Empty. Left to go back.');
+    return true;
   }
 
   /**
@@ -155,8 +173,10 @@ export class QuickMenuManager {
    */
   navigateDown() {
     if (!this.isOpen || !this.currentMenu) return;
-    
-    this.selectedIndex = Math.min(this.currentMenu.length - 1, this.selectedIndex + 1);
+    if (this._announceIfStuck()) return;
+
+    const n = this.currentMenu.length;
+    this.selectedIndex = (this.selectedIndex + 1) % n;
     this.announceCurrentSelection();
     this.render();
   }
