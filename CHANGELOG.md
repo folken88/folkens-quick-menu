@@ -2,6 +2,14 @@
 
 All notable changes to the FolkenGames Quick Menu module will be documented in this file.
 
+## [0.9.1] - 2026-10-07
+
+### Changed
+- **Josh Morrison is credited as co-developer**, in the module manifest and the README.
+  He is the blind player this module is built for, and the command scheme, the audio
+  ordering and most of what it gets right came out of his field reports. His email is
+  deliberately not published in the manifest; that is his to share, not ours.
+
 ## [0.9.0] - 2026-10-07
 
 All of this came from two field reports by Josh, the blind player the module is for.

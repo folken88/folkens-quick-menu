@@ -251,4 +251,7 @@ MIT License
 
 ## Credits
 
-Created by **Folken Games** for the FoundryVTT community. Designed with and for blind players.
+Created by **Folken Games** for the FoundryVTT community.
+
+Co-developed with **Josh Morrison**, who is blind and plays with it. The command scheme, the audio ordering and most of what this module gets right came out of his field reports: level-first spell commands, one command per question, and the rule that a value which groups correctly on a character sheet can group wrongly by ear. He found bugs by adding up what he heard.
+
