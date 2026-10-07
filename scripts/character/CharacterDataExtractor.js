@@ -737,12 +737,43 @@ export class CharacterDataExtractor {
     return key.charAt(0).toUpperCase() + key.slice(1);
   }
 
+  /**
+   * Buffs that are ON and actually affecting the character.
+   *
+   * Josh asked outright whether /bf lists what is available or what is live.
+   * It is what is live: PF1 gates a buff Changes behind ItemBuffPF.isActive,
+   * which is system.active, so an inactive buff contributes nothing. We read
+   * PF1 own getter rather than the raw field so this stays true if the data
+   * model moves.
+   */
   getBuffs(actor) {
+    return this._buffNames(actor, true);
+  }
+
+  /**
+   * Buffs present on the sheet but switched OFF.
+   *
+   * This is the list he actually needs. Josh, 2026-10-07: "That is one thing I
+   * always feel like a bit of a heel bugging people to do is make sure my buffs
+   * are on for me... I can then know with a couple key strokes what is on for my
+   * character. And then tell my Claude or my fellow players hey, can you turn
+   * haste on for me." Knowing what is on does not tell him what is missing.
+   */
+  getInactiveBuffs(actor) {
+    return this._buffNames(actor, false);
+  }
+
+  _buffNames(actor, wantActive) {
     try {
       return actor.items
-        .filter(i => i.type === 'buff' && i.system?.active === true)
+        .filter(i => i.type === 'buff')
+        .filter(i => {
+          const on = (typeof i.isActive === 'boolean') ? i.isActive : (i.system?.active === true);
+          return on === wantActive;
+        })
         .map(i => i.name);
-    } catch (_) {
+    } catch (error) {
+      debugLog('buff read failed:', error);
       return [];
     }
   }

@@ -4,6 +4,7 @@
  */
 
 import { debugLog, getSetting } from '../module.js';
+import { menuClaimsKey } from './MenuKeys.js';
 
 export class KeyboardHandler {
   constructor() {
@@ -58,16 +59,25 @@ export class KeyboardHandler {
 
     // Handle menu navigation if menu is open
     if (game.folkenQuickMenu?.menuManager?.isOpen) {
-      // Leave screen-reader chords alone. VoiceOver drives on Ctrl+Option, so
-      // swallowing modified keys would stop him inspecting the screen while the
-      // menu is up. Only unmodified keys belong to the menu.
-      if (event.ctrlKey || event.altKey || event.metaKey) return;
+      // Claim ONLY the keys the menu actually uses, and only unmodified.
+      //
+      // 0.9.0 swallowed every unmodified key while the menu was open and let
+      // Ctrl/Alt/Cmd chords through, on the reasoning that a screen reader
+      // drives on Ctrl+Option. Josh, 2026-10-07: VoiceOver's modifier is
+      // configurable - his is Caps Lock, because Pro Tools has taken
+      // Ctrl+Option - and someone else may have set it to something different
+      // again. So guessing which chord belongs to the screen reader cannot be
+      // made correct.
+      //
+      // Claiming only what we use needs no guess, and it stops the menu eating
+      // Tab, letters, function keys and anything else bound by the browser,
+      // Foundry or an assistive tool, whatever modifier that tool happens to use.
+      if (!menuClaimsKey(event)) return;
 
-      // Prevent ALL other keyboard events from reaching FoundryVTT
       event.preventDefault();
       event.stopPropagation();
       event.stopImmediatePropagation();
-      
+
       this.handleMenuKeydown(event);
     }
   }

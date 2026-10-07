@@ -52,7 +52,8 @@ Instant reads of your current condition — no navigation needed:
 /cmd    → CMD and flat-footed CMD
 /cmb    → Roll a combat maneuver (trip, grapple, bull rush, disarm, any of them)
 /cond   → Active conditions
-/bf     → Active buffs
+/bf     → Buffs that are ON and affecting you
+/bfo    → Buffs on your sheet that are OFF - the list to hand someone
 ```
 
 > `/st` → "70 of 70 hit points. AC 22, touch 15, flat-footed 18. No conditions. Buffs: Inspire Courage, Haste."

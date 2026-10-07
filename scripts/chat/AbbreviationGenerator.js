@@ -13,7 +13,7 @@ const RESERVED_COMMANDS = new Set([
   'w', 'whisper', 'reply', 'gm', 'players', 'm', 'macro',
   'scan', 'fqm', 'list', 'find',
   'st', 'stat', 'status', 'hp', 'cond', 'conds', 'conditions', 'bf', 'buff', 'buffs',
-  'ac', 'cmd'
+  'ac', 'cmd', 'bfo'
 ]);
 
 /**

@@ -50,6 +50,26 @@ export function renderACBreakdown(d) {
   return sentence(line);
 }
 
+/**
+ * Buffs that are on. Says the count first so he knows how long the list is
+ * before it starts.
+ */
+export function renderActiveBuffs(names = []) {
+  if (!names.length) return 'No buffs active.';
+  const n = names.length;
+  return sentence(`${n} buff${n > 1 ? 's' : ''} active: ${names.join(', ')}`);
+}
+
+/**
+ * Buffs on the sheet that are switched off - the actionable list, the one he can
+ * hand to a GM or another player.
+ */
+export function renderInactiveBuffs(names = []) {
+  if (!names.length) return 'Nothing inactive. Every buff on your sheet is on.';
+  const n = names.length;
+  return sentence(`${n} buff${n > 1 ? 's' : ''} not active: ${names.join(', ')}`);
+}
+
 /** "+2" / "-1"; a non-numeric value such as "Set to 24" passes through. */
 export function signed(value) {
   if (typeof value === 'number') return (value >= 0 ? '+' : '') + value;

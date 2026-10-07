@@ -5,7 +5,8 @@
  * Run: node test/state-speech.test.mjs
  */
 import assert from "node:assert/strict";
-import { renderAC, renderCMD, renderACBreakdown, renderNotes, signed, noteText, stripMarkup, sentence }
+import { renderAC, renderCMD, renderACBreakdown, renderNotes, renderActiveBuffs, renderInactiveBuffs,
+         signed, noteText, stripMarkup, sentence }
   from "../scripts/chat/StateSpeech.js";
 
 let pass = 0;
@@ -123,5 +124,33 @@ t("signed handles zero as positive", () => assert.equal(signed(0), "+0"));
 
 t("a set-to value passes through as PF1 worded it", () =>
   assert.equal(signed("Set to 24"), "Set to 24"));
+
+// --- buffs: on versus off (Josh, 2026-10-07) ---
+
+t("/bf says how many before it starts listing", () =>
+  assert.equal(renderActiveBuffs(["Haste", "Barkskin"]), "2 buffs active: Haste, Barkskin."));
+
+t("one active buff is not pluralised", () =>
+  assert.equal(renderActiveBuffs(["Haste"]), "1 buff active: Haste."));
+
+t("nothing active says so plainly", () =>
+  assert.equal(renderActiveBuffs([]), "No buffs active."));
+
+t("/bfo names what is switched off - the actionable list", () =>
+  assert.equal(renderInactiveBuffs(["Haste", "Shield"]), "2 buffs not active: Haste, Shield."));
+
+t("one inactive buff is not pluralised", () =>
+  assert.equal(renderInactiveBuffs(["Haste"]), "1 buff not active: Haste."));
+
+t("everything already on is worth hearing as such", () =>
+  assert.equal(renderInactiveBuffs([]), "Nothing inactive. Every buff on your sheet is on."));
+
+t("the two reads can never be confused for one another", () => {
+  const on = renderActiveBuffs(["Haste"]);
+  const off = renderInactiveBuffs(["Haste"]);
+  assert.notEqual(on, off);
+  assert.ok(on.includes("active") && !on.includes("not active"));
+  assert.ok(off.includes("not active"));
+});
 
 console.log(`\n${pass} assertions passed.`);

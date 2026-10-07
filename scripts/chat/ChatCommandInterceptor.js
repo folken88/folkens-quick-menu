@@ -9,7 +9,7 @@
 import { debugLog } from '../module.js';
 import { CollisionResolver } from './CollisionResolver.js';
 import { spellOut } from './AbbreviationGenerator.js';
-import { renderAC, renderCMD } from './StateSpeech.js';
+import { renderAC, renderCMD, renderActiveBuffs, renderInactiveBuffs } from './StateSpeech.js';
 
 const MODULE_ID = 'folken-games-quick-menu';
 
@@ -103,6 +103,7 @@ export class ChatCommandInterceptor {
     if (command === 'cmd') { this._handleCmd(); return false; }
     if (command === 'cond' || command === 'conds' || command === 'conditions') { this._handleConditions(); return false; }
     if (command === 'bf' || command === 'buff' || command === 'buffs') { this._handleBuffs(); return false; }
+    if (command === 'bfo') { this._handleInactiveBuffs(); return false; }
 
     // ─── Collision resolution (numeric response) ────────────
 
@@ -402,14 +403,23 @@ export class ChatCommandInterceptor {
     game.folkenQuickMenu?.tts?.speak(msg);
   }
 
+  /** What is ON and affecting the character. */
   _handleBuffs() {
     const actor = this._stateActor();
     if (!actor) return;
     const cd = game.folkenQuickMenu?.characterData;
-    const buffs = cd?.getBuffs ? cd.getBuffs(actor) : [];
-    const msg = buffs.length
-      ? `${buffs.length} active buff${buffs.length > 1 ? 's' : ''}: ${buffs.join(', ')}.`
-      : 'No active buffs.';
+    const msg = renderActiveBuffs(cd?.getBuffs ? cd.getBuffs(actor) : []);
+    this._whisper(`<strong>${actor.name}:</strong> ${msg}`);
+    game.folkenQuickMenu?.tts?.speak(msg);
+  }
+
+  /** What is on the sheet but switched OFF - the list worth handing to someone. */
+  _handleInactiveBuffs() {
+    const actor = this._stateActor();
+    if (!actor) return;
+    const cd = game.folkenQuickMenu?.characterData;
+    if (!cd?.getInactiveBuffs) { game.folkenQuickMenu?.tts?.speak('Not available for this system.'); return; }
+    const msg = renderInactiveBuffs(cd.getInactiveBuffs(actor));
     this._whisper(`<strong>${actor.name}:</strong> ${msg}`);
     game.folkenQuickMenu?.tts?.speak(msg);
   }
@@ -484,7 +494,8 @@ export class ChatCommandInterceptor {
       '<strong>/scan</strong> — Scan your character and build command list',
       '<strong>/list</strong> — Browse commands by category (e.g. /list skills, /list spells)',
       '<strong>/find [text]</strong> — Search commands (e.g. /find fire)',
-      '<strong>/st /hp /ac /cmd /cond /bf</strong> — Read your status, hit points, AC, CMD, conditions, buffs',
+      '<strong>/st /hp /ac /cmd /cond</strong> — Read your status, hit points, AC, CMD, conditions',
+      '<strong>/bf</strong> — Buffs that are ON. <strong>/bfo</strong> — Buffs on your sheet that are OFF',
       '<strong>/cmb</strong> — Roll a combat maneuver (trip, grapple, bull rush, disarm …)',
       '<strong>/fqm rename [old] [new]</strong> — Rename a command abbreviation',
       '<strong>/fqm reset</strong> — Clear all custom aliases',
@@ -494,7 +505,7 @@ export class ChatCommandInterceptor {
       'Spells, attacks, items, and feats require <strong>/scan</strong> first.',
     ];
     this._whisper(lines.join('<br>'));
-    game.folkenQuickMenu?.tts?.speak('Commands: /scan to scan character. /list to browse by category. /find to search. /st for status, /hp for hit points, /ac for armour class, /cmd for combat maneuver defense, /cmb to roll a maneuver, /cond for conditions, /bf for buffs. /fqm rename to rename a command. /fqm help for help.');
+    game.folkenQuickMenu?.tts?.speak('Commands: /scan to scan character. /list to browse by category. /find to search. /st for status, /hp for hit points, /ac for armour class, /cmd for combat maneuver defense, /cmb to roll a maneuver, /cond for conditions, /bf for the buffs that are on, /bfo for the buffs that are off. /fqm rename to rename a command. /fqm help for help.');
   }
 
   // ─── Utility ───────────────────────────────────────────────

@@ -2,6 +2,47 @@
 
 All notable changes to the FolkenGames Quick Menu module will be documented in this file.
 
+## [0.10.0] - 2026-10-07
+
+From Josh field report of 2026-10-07.
+
+### Fixed
+- **The open menu no longer swallows keys it does not use.** 0.9.0 consumed every
+  unmodified keystroke while the menu was open and passed Ctrl/Alt/Cmd chords back,
+  on the reasoning that a screen reader drives on Ctrl+Option. Josh pointed out that
+  VoiceOver modifier is configurable - his is **Caps Lock**, because Pro Tools has
+  claimed Ctrl+Option, and another user may have set it to something else again. So
+  no chord can reliably be handed back, and the accommodation did nothing for the one
+  person it was written for.
+
+  The menu now claims only the keys it actually responds to, and only unmodified.
+  Tab, letters, function keys, Home, End and anything else bound by the browser,
+  Foundry or an assistive tool pass straight through, whatever modifier that tool
+  uses. The rule lives in `scripts/input/MenuKeys.js` as a pure function with 14
+  assertions, rather than buried in an event handler.
+
+  One case this cannot solve, stated plainly: if a screen reader passes a plain arrow
+  key through as part of its own chord, nothing in the page can tell it apart from the
+  player pressing that arrow.
+
+### Added
+- **`/bfo`** - the buffs on your sheet that are switched **off**. Josh asked whether
+  `/bf` lists what is available or what is live; it is what is live, and he then named
+  the thing he actually needs: "I always feel like a bit of a heel bugging people to
+  make sure my buffs are on... I can then know with a couple key strokes what is on
+  for my character. And then tell my Claude or my fellow players hey, can you turn
+  haste on for me." Knowing what is on does not tell you what is missing, so that is
+  its own command.
+
+### Changed
+- Both buff reads now say the count before the list, so you know how long it is before
+  it starts.
+- `getBuffs` reads PF1 own `ItemBuffPF.isActive` rather than the raw `system.active`
+  field, so it stays correct if the data model moves. Confirmed against the pf1 11.11
+  source: PF1 gates a buff Changes behind that getter, so `/bf` reports buffs that are
+  genuinely affecting the character - not merely present.
+- 128 assertions over 6 suites.
+
 ## [0.9.2] - 2026-10-07
 
 ### Fixed
