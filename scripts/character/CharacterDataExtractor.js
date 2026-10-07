@@ -4,6 +4,8 @@
  */
 
 import { debugLog } from '../module.js';
+import { stripMarkup } from '../chat/StateSpeech.js';
+import { distinctSpellbooks } from './Spellbooks.js';
 
 export class CharacterDataExtractor {
   constructor() {
@@ -168,32 +170,41 @@ export class CharacterDataExtractor {
     // Every spellbook in use, not just the first. The old macro set documented
     // conc for the primary book and conc2 for the secondary, and a character
     // like Olbryn has both a class book and a spell-like book.
+    // Caster level and concentration, one pair per DISTINCT set of numbers.
+    // The rule itself lives in Spellbooks.js so it can be tested without Foundry.
     const books = actor.system?.attributes?.spells?.spellbooks ?? {};
-    const inUse = Object.entries(books).filter(([, b]) => b && b.inUse);
-    inUse.forEach(([bookKey, book], idx) => {
-      const suffix = idx === 0 ? '' : String(idx + 1);
-      const label = book.label || book.name || bookKey;
-      const named = idx === 0 ? '' : ` (${label})`;
+    const fallbackLevel = actor.system?.details?.level?.value ?? 1;
+    for (const book of distinctSpellbooks(books, fallbackLevel)) {
       combatActions.push({
-        id: `caster_level${suffix}`,
-        label: `Caster Level Check${named}`,
+        id: `caster_level${book.suffix}`,
+        label: `Caster Level Check${book.named}`,
         type: 'action',
         actionType: 'caster_level',
-        forceAbbrev: `clc${suffix}`,
-        spellbookKey: bookKey,
-        spellbook: label,
-        casterLevel: book.cl?.total ?? actor.system.details?.level?.value ?? 1
+        forceAbbrev: `clc${book.suffix}`,
+        spellbookKey: book.key,
+        spellbook: book.label,
+        casterLevel: book.cl
       });
       combatActions.push({
-        id: `concentration${suffix}`,
-        label: `Concentration Check${named}`,
+        id: `concentration${book.suffix}`,
+        label: `Concentration Check${book.named}`,
         type: 'action',
         actionType: 'concentration',
-        forceAbbrev: `conc${suffix}`,
-        spellbookKey: bookKey,
-        spellbook: label,
-        concentrationBonus: book.concentration?.total ?? 0
+        forceAbbrev: `conc${book.suffix}`,
+        spellbookKey: book.key,
+        spellbook: book.label,
+        concentrationBonus: book.conc
       });
+    }
+
+    // Combat maneuver. PF1 has no rollCMB; rollAttack({maneuver:true}) is its
+    // own CMB roll, which brings the real total and its context notes with it.
+    combatActions.push({
+      id: 'maneuver',
+      label: 'Combat Maneuver',
+      type: 'action',
+      actionType: 'maneuver',
+      forceAbbrev: 'cmb'
     });
 
     return combatActions;
@@ -580,20 +591,28 @@ export class CharacterDataExtractor {
     };
   }
 
-  /**
-   * AC with its breakdown and CMD, for /ac.
-   *
-   * Kept separate from getAC() because getStatus() is synchronous and is used by
-   * /st; this one reaches into PF1's own source-detail machinery, which is what
-   * draws the tooltip a sighted player gets by hovering the AC box.
-   */
-  getACDetail(actor) {
+  /** CMD on its own. By ear it answers a different question from AC. */
+  getCMD(actor) {
     const cmd = actor.system?.attributes?.cmd || {};
     return {
+      total: cmd.total ?? null,
+      flatFooted: cmd.flatFootedTotal ?? null
+    };
+  }
+
+  /**
+   * AC with its full breakdown, for the agent API.
+   *
+   * Deliberately NOT used by /ac any more. Josh, 2026-10-05: "Mid-game I'm
+   * usually after one or two numbers, while listening to everyone else at the
+   * same time... It's like having a book read to me while I'm trying to follow
+   * the table." Reconciling the sheet is work he gives his own assistant, so the
+   * breakdown lives where that happens and /ac stays three numbers long.
+   */
+  getACDetail(actor) {
+    return {
       ...this.getAC(actor),
-      cmd: cmd.total ?? null,
-      cmdFlatFooted: cmd.flatFootedTotal ?? null,
-      base: 10,
+      cmd: this.getCMD(actor),
       sources: this._acSources(actor)
     };
   }
@@ -601,25 +620,33 @@ export class CharacterDataExtractor {
   /**
    * The individual bonuses making up AC.
    *
-   * PF1 11.x exposes these through getSourceDetails(path) - sourceDetails as a
-   * property is deprecated and logs a warning, so it is not used here. Entries
-   * come back as { name, value, modifier, disabled }, where `disabled` marks a
-   * non-stacking bonus that something else has superseded. Those are dropped:
-   * reading out a bonus that is not actually applying would mislead a player who
-   * cannot see it greyed out, and the numbers would not add up to the total.
-   * PF1 also keeps the inherent base 10 out of this list.
+   * PF1 11.x exposes these through getSourceDetails(path); the sourceDetails
+   * property is deprecated and logs a warning, so it is not used.
+   *
+   * Two things learned from Josh's field test of 0.8.0:
+   *
+   * 1. PF1's list ALREADY contains the inherent "Base +10". 0.8.0 added another
+   *    one on top, so the figures read out summed to 42 against a real AC of 36.
+   *    Nothing is added here now - the list is reported as PF1 built it.
+   *
+   * 2. 0.8.0 dropped every entry flagged `disabled` on the theory that those are
+   *    superseded non-stacking bonuses. That silently lost his Shield spell's
+   *    +4, which was genuinely counting. PF1's own consumers of this data do not
+   *    filter on the flag, so neither do we: every entry is reported, with
+   *    `applies` saying whether PF1 counted it. An assistant reconciling a sheet
+   *    needs to see what was overridden, not have it hidden.
    */
   _acSources(actor) {
     try {
       const raw = actor.getSourceDetails?.('system.attributes.ac.normal.total') ?? [];
       return raw
-        .filter(s => s && !s.disabled && s.value !== 0 && s.value !== null)
+        .filter(s => s && s.value !== null && s.value !== undefined)
         .map(s => ({
-          name: String(s.name ?? '').trim(),
+          name: this._sourceLabel(s.name),
           value: s.value,
-          type: s.modifier || null
-        }))
-        .filter(s => s.name);
+          type: s.modifier || null,
+          applies: !s.disabled
+        }));
     } catch (error) {
       debugLog('AC sources unavailable:', error);
       return [];
@@ -627,16 +654,46 @@ export class CharacterDataExtractor {
   }
 
   /**
-   * Roll notes that apply to AC, already enriched by PF1 (async - it resolves
-   * inline rolls). Returns [{ text, source }].
+   * Some source labels arrive as an un-localized i18n key - Josh heard
+   * "PF1.Subtypes.Item.equipment.other.Single" read out letter soup. Localize
+   * it, and if that gives the key straight back, say something sayable instead.
    */
-  async getACNotes(actor) {
+  _sourceLabel(name) {
+    const raw = String(name ?? '').trim();
+    if (!raw) return '';
+    if (!/^[A-Za-z0-9_.]+$/.test(raw) || !raw.includes('.')) return raw;
     try {
-      return (await actor.getContextNotesParsed?.('ac')) ?? [];
+      const localized = game.i18n?.localize(raw);
+      if (localized && localized !== raw) return localized;
+    } catch (_) {}
+    const leaf = raw.split('.').filter(Boolean).pop() || raw;
+    return leaf === 'Single' || leaf === raw ? 'Item' : leaf;
+  }
+
+  /**
+   * Roll notes for a PF1 context, as plain spoken text.
+   *
+   * PF1 enriches these, so they come back carrying anchor markup for things like
+   * @UUID links. The chat card renders that correctly; the voice read it out as
+   * raw link code, which is what Josh heard happen to his Resist Energy note.
+   * @param {string} context e.g. 'ac', 'cmd', 'cmb', 'attack'
+   */
+  async getNotes(actor, context) {
+    try {
+      const notes = (await actor.getContextNotesParsed?.(context)) ?? [];
+      return notes.map(n => ({
+        text: stripMarkup(n?.text),
+        source: String(n?.source ?? '').trim()
+      })).filter(n => n.text);
     } catch (error) {
-      debugLog('AC notes unavailable:', error);
+      debugLog(`notes unavailable for ${context}:`, error);
       return [];
     }
+  }
+
+  /** Kept for callers that only want AC notes. */
+  getACNotes(actor) {
+    return this.getNotes(actor, 'ac');
   }
 
   getAbilityDamage(actor) {

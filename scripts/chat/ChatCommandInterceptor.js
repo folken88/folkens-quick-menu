@@ -9,7 +9,7 @@
 import { debugLog } from '../module.js';
 import { CollisionResolver } from './CollisionResolver.js';
 import { spellOut } from './AbbreviationGenerator.js';
-import { renderAC } from './StateSpeech.js';
+import { renderAC, renderCMD } from './StateSpeech.js';
 
 const MODULE_ID = 'folken-games-quick-menu';
 
@@ -100,6 +100,7 @@ export class ChatCommandInterceptor {
     if (command === 'st' || command === 'stat' || command === 'status') { this._handleStatus(); return false; }
     if (command === 'hp') { this._handleHp(); return false; }
     if (command === 'ac') { this._handleAc(); return false; }
+    if (command === 'cmd') { this._handleCmd(); return false; }
     if (command === 'cond' || command === 'conds' || command === 'conditions') { this._handleConditions(); return false; }
     if (command === 'bf' || command === 'buff' || command === 'buffs') { this._handleBuffs(); return false; }
 
@@ -362,19 +363,31 @@ export class ChatCommandInterceptor {
     game.folkenQuickMenu?.tts?.speak(msg);
   }
 
-  async _handleAc() {
+  /**
+   * AC, touch, flat-footed. Three numbers, nothing else.
+   *
+   * 0.8.0 also read CMD, the base 10, every contributing bonus and the roll
+   * notes. Josh's verdict on that (2026-10-05): "It's like having a book read to
+   * me while I'm trying to follow the table." The breakdown now lives on the
+   * agent API, which is where he reconciles his sheet anyway.
+   */
+  _handleAc() {
     const actor = this._stateActor();
     if (!actor) return;
     const cd = game.folkenQuickMenu?.characterData;
-    if (!cd?.getACDetail) { game.folkenQuickMenu?.tts?.speak('AC not available for this system.'); return; }
+    if (!cd?.getAC) { game.folkenQuickMenu?.tts?.speak('AC not available for this system.'); return; }
+    const msg = renderAC(cd.getAC(actor));
+    this._whisper(`<strong>${actor.name}:</strong> ${msg}`);
+    game.folkenQuickMenu?.tts?.speak(msg);
+  }
 
-    const detail = cd.getACDetail(actor);
-    // Notes are enriched asynchronously by PF1. A missing or slow note must not
-    // cost the player the numbers, so the read goes ahead either way.
-    let notes = [];
-    try { notes = cd.getACNotes ? await cd.getACNotes(actor) : []; } catch (_) {}
-
-    const msg = renderAC(detail, notes);
+  /** CMD, on its own, because by ear it is not part of AC. */
+  _handleCmd() {
+    const actor = this._stateActor();
+    if (!actor) return;
+    const cd = game.folkenQuickMenu?.characterData;
+    if (!cd?.getCMD) { game.folkenQuickMenu?.tts?.speak('CMD not available for this system.'); return; }
+    const msg = renderCMD(cd.getCMD(actor));
     this._whisper(`<strong>${actor.name}:</strong> ${msg}`);
     game.folkenQuickMenu?.tts?.speak(msg);
   }
@@ -417,6 +430,7 @@ export class ChatCommandInterceptor {
       stabilize: 'combat',
       caster_level: 'combat',
       concentration: 'combat',
+      maneuver: 'combat',
       pf2e_action: 'actions',
       item_equip: 'items',
       item_unequip: 'items',
@@ -470,7 +484,8 @@ export class ChatCommandInterceptor {
       '<strong>/scan</strong> — Scan your character and build command list',
       '<strong>/list</strong> — Browse commands by category (e.g. /list skills, /list spells)',
       '<strong>/find [text]</strong> — Search commands (e.g. /find fire)',
-      '<strong>/st /hp /ac /cond /bf</strong> — Read your status, hit points, armour class, conditions, buffs',
+      '<strong>/st /hp /ac /cmd /cond /bf</strong> — Read your status, hit points, AC, CMD, conditions, buffs',
+      '<strong>/cmb</strong> — Roll a combat maneuver (trip, grapple, bull rush, disarm …)',
       '<strong>/fqm rename [old] [new]</strong> — Rename a command abbreviation',
       '<strong>/fqm reset</strong> — Clear all custom aliases',
       '<strong>/fqm help</strong> — Show this help',
@@ -479,7 +494,7 @@ export class ChatCommandInterceptor {
       'Spells, attacks, items, and feats require <strong>/scan</strong> first.',
     ];
     this._whisper(lines.join('<br>'));
-    game.folkenQuickMenu?.tts?.speak('Commands: /scan to scan character. /list to browse by category. /find to search. /st for status, /hp for hit points, /ac for armour class, /cond for conditions, /bf for buffs. /fqm rename to rename a command. /fqm help for help.');
+    game.folkenQuickMenu?.tts?.speak('Commands: /scan to scan character. /list to browse by category. /find to search. /st for status, /hp for hit points, /ac for armour class, /cmd for combat maneuver defense, /cmb to roll a maneuver, /cond for conditions, /bf for buffs. /fqm rename to rename a command. /fqm help for help.');
   }
 
   // ─── Utility ───────────────────────────────────────────────

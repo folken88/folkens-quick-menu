@@ -2,6 +2,61 @@
 
 All notable changes to the FolkenGames Quick Menu module will be documented in this file.
 
+## [0.9.0] - 2026-10-07
+
+All of this came from two field reports by Josh, the blind player the module is for.
+
+### Fixed
+- **The menu could open and then ignore every arrow key.** The real bug, not the one
+  0.6.0 guessed at. The menu opened, announced Favorites, and then no arrow key
+  reached it until he had pressed Escape and reopened it several times. Two causes,
+  both fixed: the keydown listener was on the bubble phase, so a focused ProseMirror
+  chat editor consumed the arrows before they ever got to the document; and the menu
+  never took focus, so a screen reader stayed in browse mode and kept the arrows for
+  its own navigation. The menu now takes focus on open (restoring it on close) inside
+  a `role="application"` container, and listens on the capture phase. Modified keys
+  are passed through untouched so VoiceOver chords still work while the menu is up.
+- **`/ac` figures summed to 42 against an AC of 36.** PF1 already includes the
+  inherent `Base +10` in its source list and 0.8.0 added a second one. Nothing is
+  added now.
+- **A bonus that was counting could be left out.** 0.8.0 dropped every entry PF1
+  flagged `disabled`, which silently lost a Shield spell +4 that was genuinely
+  applying. Every entry is now reported with an `applies` flag instead. PF1 own
+  consumers of this data do not filter on the flag either.
+- **Raw translation keys were read aloud** - he heard
+  "PF1.Subtypes.Item.equipment.other.Single". Labels are localized, with a sayable
+  fallback.
+- **Roll notes were read out as raw link markup.** PF1 enriches notes before handing
+  them over, so a note referencing an item arrives as an anchor tag; the chat card
+  rendered it correctly but the voice read the markup. Notes are reduced to plain
+  speech, content links to their visible label. `TTSManager.speak` also strips markup
+  defensively, so no future caller can put markup into his ear by forgetting to.
+- **Double full stop** after a note that already ended in one.
+- **Duplicate spellbook commands.** A second caster-level and concentration pair is
+  only created when the numbers actually differ. Olbryn second book is his racial
+  spell-like abilities at the same caster level 15 and concentration 23, so `/clc2`
+  and `/conc2` rolled exactly what `/clc` and `/conc` already rolled. Deduplicating on
+  the figures rather than excluding spell-like books keeps the useful case: a book
+  that ever diverges gets its pair back automatically.
+
+### Changed
+- **`/ac` is three numbers: AC, touch, flat-footed.** No base, no breakdown, no CMD,
+  no notes. In his words: "It is like having a book read to me while I am trying to
+  follow the table." Each quick command now answers one question and stops.
+- **CMD moved to its own `/cmd`.** Hearing it in the same breath as AC made it sound
+  like part of AC. It sits beside AC on the sheet, which groups them for the eye, but
+  by ear it answers a different question.
+- **The AC breakdown moved to the agent API** (`api.getAC()`), which is where he does
+  reconcile his sheet. Also new: `api.getNotes(context)` for any PF1 roll-note context.
+
+### Added
+- **`/cmb`** rolls a combat maneuver. One command covers trip, grapple, bull rush,
+  disarm and the rest, since all of them are d20 plus CMB. It goes through PF1 own
+  `rollAttack({ maneuver: true })`, so the real total and any maneuver roll notes come
+  with it rather than being reassembled here. PF1 has no `rollCMB`.
+- `scripts/character/Spellbooks.js` and `scripts/chat/StateSpeech.js` hold these rules
+  as pure functions. 107 assertions over 5 suites.
+
 ## [0.8.0] - 2026-10-05
 
 ### Added

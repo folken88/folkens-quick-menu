@@ -4,6 +4,7 @@
  */
 
 import { debugLog, getSetting } from '../module.js';
+import { stripMarkup } from '../chat/StateSpeech.js';
 
 export class TTSManager {
   constructor() {
@@ -95,6 +96,13 @@ export class TTSManager {
    */
   speak(text, options = {}) {
     if (!getSetting('enableTTS') || !text) return;
+
+    // Last line of defence. PF1 hands back enriched roll notes carrying anchor
+    // markup; one of those reached the voice in 0.8.0 and Josh heard the raw
+    // link code read out. Callers strip at the source, but nothing should be
+    // able to put markup into his ear by forgetting to.
+    text = stripMarkup(text);
+    if (!text) return;
 
     // Prevent rapid TTS calls that cause interruption errors.
     // Urgent messages (rate/volume feedback) always speak so an adjustment is audible.

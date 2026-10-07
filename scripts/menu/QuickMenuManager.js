@@ -35,10 +35,10 @@ export class QuickMenuManager {
   async initialize() {
     debugLog('QuickMenuManager initializing...');
     
-    // Create visual UI if enabled
-    if (getSetting('showVisualUI')) {
-      this.createVisualUI();
-    }
+    // The container is always created, even with the visual UI switched off: it
+    // is the menu's focus holder, and owning focus is what keeps the arrow keys
+    // from being eaten by whatever the player was last typing in.
+    this.createVisualUI();
     
     debugLog('QuickMenuManager initialized');
   }
@@ -105,12 +105,12 @@ export class QuickMenuManager {
     // Refresh favorites for this character
     this.refreshFavoritesForActor();
     
-    // Show visual UI if enabled
-    if (getSetting('showVisualUI') && this.ui) {
-      this.positionUI();
-      this.ui.style.display = 'block';
-    }
-    
+    this._applyVisibility(true);
+
+    // Own the keyboard before announcing anything, so the first arrow key he
+    // presses is already reaching us.
+    this._captureFocus();
+
     // Suspend FoundryVTT controls
     this.suspendFoundryControls();
     
@@ -133,10 +133,8 @@ export class QuickMenuManager {
     // Resume FoundryVTT controls
     this.resumeFoundryControls();
     
-    // Hide visual UI
-    if (this.ui) {
-      this.ui.style.display = 'none';
-    }
+    this._applyVisibility(false);
+    this._restoreFocus();
   }
 
   /**
@@ -1015,8 +1013,73 @@ export class QuickMenuManager {
   createVisualUI() {
     this.ui = document.createElement('div');
     this.ui.id = 'folken-quick-menu-ui';
-    this.ui.style.display = 'none';
+
+    // role="application" is the one that matters. In its normal browse mode a
+    // screen reader keeps the arrow keys for its own navigation and the page
+    // never sees them; inside an application region it hands keystrokes
+    // straight through. Paired with taking focus on open, this is the fix for
+    // Josh's "it opens, says Favorites, and then no arrow key reaches it".
+    this.ui.setAttribute('role', 'application');
+    this.ui.setAttribute('aria-label', 'Quick Menu');
+    this.ui.tabIndex = -1;
+
     document.body.appendChild(this.ui);
+    this._applyVisibility(false);
+  }
+
+  /**
+   * Show or park the container.
+   *
+   * Parking is deliberately NOT display:none. An element that is not rendered
+   * cannot hold focus, and focus is the whole mechanism here - so when the
+   * visual UI is off, or the menu is closed, the container stays rendered and
+   * focusable but sits off-screen at one pixel.
+   */
+  _applyVisibility(visible) {
+    if (!this.ui) return;
+    const s = this.ui.style;
+    if (visible && getSetting('showVisualUI')) {
+      s.width = ''; s.height = ''; s.overflow = ''; s.opacity = '';
+      s.pointerEvents = ''; s.clip = '';
+      s.display = 'block';
+      this.positionUI();
+      return;
+    }
+    s.display = 'block';
+    s.position = 'fixed';
+    s.left = '-9999px';
+    s.top = '0';
+    s.width = '1px';
+    s.height = '1px';
+    s.overflow = 'hidden';
+    s.opacity = '0';
+    s.pointerEvents = 'none';
+  }
+
+  /**
+   * Take focus, remembering where it was.
+   *
+   * He often opens the menu straight from the chat prompt. That prompt is a
+   * ProseMirror editor, which consumes arrow keys for its own caret and never
+   * lets them bubble - so the menu looked dead until he had poked around enough
+   * for focus to land somewhere harmless. Moving focus here on open removes the
+   * randomness.
+   */
+  _captureFocus() {
+    try {
+      this._previousFocus = document.activeElement;
+      this.ui?.focus({ preventScroll: true });
+    } catch (_) { /* non-fatal */ }
+  }
+
+  _restoreFocus() {
+    try {
+      const prev = this._previousFocus;
+      this._previousFocus = null;
+      if (prev && typeof prev.focus === 'function' && document.contains(prev)) {
+        prev.focus({ preventScroll: true });
+      }
+    } catch (_) { /* non-fatal */ }
   }
 
   /**

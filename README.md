@@ -48,14 +48,18 @@ Instant reads of your current condition — no navigation needed:
 ```
 /st     → Full status: HP, AC, ability damage, conditions, buffs
 /hp     → Hit points (plus temp / nonlethal)
-/ac     → AC, touch, flat-footed, CMD, where each bonus comes from, and AC roll notes
+/ac     → AC, touch, flat-footed
+/cmd    → CMD and flat-footed CMD
+/cmb    → Roll a combat maneuver (trip, grapple, bull rush, disarm, any of them)
 /cond   → Active conditions
 /bf     → Active buffs
 ```
 
 > `/st` → "70 of 70 hit points. AC 22, touch 15, flat-footed 18. No conditions. Buffs: Inspire Courage, Haste."
 
-> `/ac` → "AC 21, touch 13, flat-footed 19. CMD 18, flat-footed 15. From base 10, Armor +7, Shield +2, Dexterity +2. Ring of Protection: +2 vs evil outsiders."
+> `/ac` → "AC 36, touch 22, flat-footed 28."    `/cmd` → "CMD 35, flat-footed 27."
+
+Each of these answers one question and stops. That is deliberate: a blind player hears one thing at a time, with the rest of the table talking over it, so a command that reads out a paragraph is worse than useless mid-combat. The full AC breakdown (every contributing bonus, including the ones PF1 overrode, plus roll notes) is on the **agent API** instead, where an assistant can reconcile a sheet properly.
 
 ### Abbreviation System
 

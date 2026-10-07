@@ -31,6 +31,26 @@ export function buildApi(moduleId) {
     return splitOwnership(game.actors?.contents ?? [], game.user?.id, assignedId);
   };
 
+  /**
+   * The live actor, for the reads that need PF1's own derived data rather than a
+   * snapshot. Scoped through exactly the same rules as snap().
+   */
+  const resolve = who => {
+    const assignedId = game.user?.character?.id ?? null;
+    if (isGM()) {
+      if (!who) {
+        if (game.user?.character) return game.user.character;
+        throw new Error('You are logged in as a GM, so every actor in the world is "yours". Name the one you want.');
+      }
+      const wanted = String(who).toLowerCase();
+      const hit = game.actors.get(who) ?? game.actors.find(a => a.name.toLowerCase() === wanted);
+      if (!hit) throw new Error(`No actor named "${who}" in this world.`);
+      return hit;
+    }
+    const { mine, shared } = split();
+    return pickPreferringMine(mine, shared, assignedId, who);
+  };
+
   const snap = who => {
     const assignedId = game.user?.character?.id ?? null;
     if (isGM()) {
@@ -83,6 +103,40 @@ export function buildApi(moduleId) {
 
     /** Search this character's own items by name or description text. */
     find(query, who) { return search(snap(who), query); },
+
+    /**
+     * Armour class with every contributing bonus, and the roll notes.
+     *
+     * This is where the breakdown lives. It was briefly read aloud by /ac and
+     * Josh's verdict (2026-10-05) was that a spoken breakdown mid-combat is "like
+     * having a book read to me while I'm trying to follow the table" - but that
+     * checking whether every item really adds in "is when I ask my Claude".
+     *
+     * `sources[].applies` is false for a bonus PF1 overrode as non-stacking. They
+     * are reported rather than hidden: reconciling a sheet means knowing a bonus
+     * was superseded, not that it is missing. PF1's own list already contains the
+     * inherent Base +10, so the values sum to the total as given.
+     */
+    async getAC(who) {
+      const actor = resolve(who);
+      const cd = game.folkenQuickMenu?.characterData;
+      if (!cd?.getACDetail) throw new Error('AC detail is not available for this game system.');
+      const detail = cd.getACDetail(actor);
+      return { ...detail, notes: cd.getNotes ? await cd.getNotes(actor, 'ac') : [] };
+    },
+
+    /**
+     * Roll notes for one PF1 context, as plain text with markup already removed.
+     * Useful contexts: 'ac', 'cmd', 'cmb', 'attack', 'critical', 'allSavingThrows',
+     * 'sr', and the keyed forms 'skill.<key>', 'savingThrow.<key>',
+     * 'abilityChecks.<key>'.
+     */
+    async getNotes(context, who) {
+      const actor = resolve(who);
+      const cd = game.folkenQuickMenu?.characterData;
+      if (!cd?.getNotes) throw new Error('Roll notes are not available for this game system.');
+      return cd.getNotes(actor, String(context ?? 'ac'));
+    },
 
     /** Full description text of one item, markup stripped, ready to read aloud. */
     describe(itemName, who) {

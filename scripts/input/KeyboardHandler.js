@@ -21,7 +21,11 @@ export class KeyboardHandler {
     debugLog('KeyboardHandler initializing...');
     
     // Global keydown listener for activation
-    document.addEventListener('keydown', this.handleGlobalKeydown.bind(this));
+    // Capture phase, not bubble. A focused ProseMirror editor or text input
+    // handles arrow keys and never lets them bubble to document, which is why
+    // the menu appeared to ignore them when it was opened from the chat prompt.
+    // Capturing means we see the key first regardless of what holds focus.
+    document.addEventListener('keydown', this.handleGlobalKeydown.bind(this), { capture: true });
     
     // Menu-specific listeners (only active when menu is open)
     this.setupMenuListeners();
@@ -54,6 +58,11 @@ export class KeyboardHandler {
 
     // Handle menu navigation if menu is open
     if (game.folkenQuickMenu?.menuManager?.isOpen) {
+      // Leave screen-reader chords alone. VoiceOver drives on Ctrl+Option, so
+      // swallowing modified keys would stop him inspecting the screen while the
+      // menu is up. Only unmodified keys belong to the menu.
+      if (event.ctrlKey || event.altKey || event.metaKey) return;
+
       // Prevent ALL other keyboard events from reaching FoundryVTT
       event.preventDefault();
       event.stopPropagation();

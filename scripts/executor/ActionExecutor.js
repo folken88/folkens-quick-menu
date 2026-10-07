@@ -53,6 +53,9 @@ export class ActionExecutor {
       case 'concentration':
         await this.executeConcentrationCheck(actionItem, actor);
         break;
+      case 'maneuver':
+        await this.executeManeuver(actionItem, actor);
+        break;
       case 'pf2e_action':
         await this.executePF2eAction(actionItem, actor);
         break;
@@ -303,6 +306,38 @@ export class ActionExecutor {
     } catch (error) {
       console.error("Concentration check error:", error);
       Hooks.off("createChatMessage", hookId);
+    }
+  }
+
+  // ─── Combat Maneuver (CMB) ─────────────────────
+
+  /**
+   * One command for every maneuver. Josh, 2026-10-05: "Trip, bull rush,
+   * grapple, disarm and the rest are all a d20 plus CMB, so one /cmb command
+   * would cover every maneuver."
+   *
+   * PF1 has no rollCMB. rollAttack({ maneuver: true }) IS its combat-maneuver
+   * roll - it builds the attack off system.attributes.cmbAbility and runs the
+   * real pipeline, so the CMB total and any maneuver roll notes (Improved Trip's
+   * +2 and the like) come through on the card without us reassembling them.
+   */
+  async executeManeuver(actionItem, actor) {
+    if (this._isPF2e()) {
+      this._tts()?.speak('PF2e maneuvers not yet implemented');
+      return;
+    }
+    if (typeof actor.rollAttack !== 'function') {
+      this._tts()?.speak('Combat maneuvers are not available for this character');
+      return;
+    }
+
+    const hookId = this._hookAttackResult();
+    try {
+      await actor.rollAttack({ maneuver: true, skipDialog: true });
+    } catch (error) {
+      console.error('Combat maneuver error:', error);
+      this._tts()?.speak('Maneuver failed');
+      Hooks.off('createChatMessage', hookId);
     }
   }
 
