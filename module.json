@@ -2,7 +2,7 @@
   "id": "folken-games-quick-menu",
   "title": "FolkenGames Quick Menu",
   "description": "Unified accessibility module for blind and visually impaired players. Provides both an iPod-style TTS quick menu and dynamic chat commands (/per, /str, /scan) that auto-discover your character's skills, spells, attacks, and items. Supports ElevenLabs and Talking Actors for high-quality TTS.",
-  "version": "0.9.1",
+  "version": "0.9.2",
   "compatibility": {
     "minimum": "12",
     "verified": "14"
@@ -13,10 +13,7 @@
       "url": "https://github.com/folken88"
     },
     {
-      "name": "Josh Morrison",
-      "flags": {
-        "role": "Co-developer, accessibility design and testing"
-      }
+      "name": "Josh Morrison"
     }
   ],
   "url": "https://github.com/folken88/folkens-quick-menu",

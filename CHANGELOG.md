@@ -2,6 +2,16 @@
 
 All notable changes to the FolkenGames Quick Menu module will be documented in this file.
 
+## [0.9.2] - 2026-10-07
+
+### Fixed
+- **Manifest conformance.** 0.9.1 described Josh role with a `flags` key inside his
+  author entry. The v13 package author schema is `name`, `email`, `url` and `discord`
+  only, and a non-schema key in a manifest is how a module ends up failing metadata
+  validation at the next restart - the same class of fault that currently stops
+  `folken-games-scenes-universal` loading. The entry is now plain `name`; the authors
+  array already means co-authors, and the detail lives in the README.
+
 ## [0.9.1] - 2026-10-07
 
 ### Changed
