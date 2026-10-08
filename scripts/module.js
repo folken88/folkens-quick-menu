@@ -243,6 +243,28 @@ function registerSettings() {
     default: ''
   });
 
+  // Focus behaviour when the menu opens.
+  //
+  // Default ON: on Windows, NVDA and JAWS read a page in a browse mode that
+  // keeps the arrow keys for themselves, and taking focus into a
+  // role="application" region is the standard way to get them passed through.
+  // Mac VoiceOver Quick Nav behaves the same way.
+  //
+  // Josh turns it OFF. His key log showed the arrows were always reaching the
+  // page, so he does not need it - and taking focus drags his VoiceOver cursor
+  // into the menu's off-screen box, which the page cannot put back afterwards
+  // because it can only restore keyboard focus, not the VoiceOver cursor. He
+  // asked for it to stay available rather than be removed, since it is what
+  // other blind players may depend on.
+  game.settings.register(MODULE_ID, 'grabFocusOnOpen', {
+    name: 'Move Focus Into The Menu When It Opens',
+    hint: 'On (default): the menu takes keyboard focus, which screen readers in browse mode (NVDA, JAWS, VoiceOver Quick Nav) need before they will pass arrow keys to it. Off: focus stays where you were, so your screen-reader cursor does not move - the menu still receives the arrow keys.',
+    scope: 'client',
+    config: true,
+    type: Boolean,
+    default: true
+  });
+
   // Activation key
   game.settings.register(MODULE_ID, 'activationKey', {
     name: 'Activation Key',

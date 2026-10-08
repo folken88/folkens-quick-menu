@@ -107,9 +107,16 @@ export class QuickMenuManager {
     
     this._applyVisibility(true);
 
-    // Own the keyboard before announcing anything, so the first arrow key he
-    // presses is already reaching us.
-    this._captureFocus();
+    // Only take focus if this player wants it taken. The capture-phase key
+    // listener means the menu receives the arrows either way, so taking focus is
+    // purely about screen readers that will not release the arrows in browse
+    // mode - and for a VoiceOver user who does not need that, taking focus moves
+    // their cursor somewhere the page cannot move it back from.
+    this._focusCaptured = false;
+    if (getSetting('grabFocusOnOpen')) {
+      this._captureFocus();
+      this._focusCaptured = true;
+    }
 
     // Suspend FoundryVTT controls
     this.suspendFoundryControls();
@@ -123,8 +130,9 @@ export class QuickMenuManager {
   /**
    * Close the quick menu
    */
-  closeMenu() {
+  closeMenu({ announce = false } = {}) {
     debugLog('Closing Quick Menu');
+    const wasOpen = this.isOpen;
     this.isOpen = false;
     this.currentMenu = null;
     this.menuStack = [];
@@ -134,7 +142,20 @@ export class QuickMenuManager {
     this.resumeFoundryControls();
     
     this._applyVisibility(false);
-    this._restoreFocus();
+
+    // Never hand focus back if we never took it - doing so would move the player
+    // somewhere they did not ask to be. Josh ended up on the Self Roll toggle
+    // that way.
+    if (this._focusCaptured) {
+      this._restoreFocus();
+      this._focusCaptured = false;
+    }
+
+    // Closing is silent when a roll closed the menu for us; Escape says so,
+    // because otherwise there is no way to hear that it worked.
+    if (announce && wasOpen) {
+      game.folkenQuickMenu?.tts?.speak('Quick Menu closed', { interrupt: true });
+    }
   }
 
   /**

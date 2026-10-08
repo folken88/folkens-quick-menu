@@ -122,9 +122,20 @@ const SKILL_KEY_OVERRIDES = { int: 'itm' };
  */
 export const LEGACY_ALIASES = {};
 
-/** Never hand back a command Foundry or our own meta-commands already own. */
+/**
+ * Final gate on every generated command.
+ *
+ * Strips anything that is not a letter or a digit, then avoids the reserved
+ * names. The strip matters because the chat interceptor only matches
+ * /^\/([a-zA-Z0-9]+)/ - Josh, 2026-10-07: "Charisma +6 Tattoo" and "The
+ * Operative +6" came out as /c+t and /o+, which the resolver accepted but which
+ * could never be typed as a command, so those two items had no way to fire.
+ *
+ * Every path ends here, including a player's own alias from /fqm rename, so no
+ * route can produce a command the interceptor will not match.
+ */
 function safe(abbrev) {
-  const a = String(abbrev || '').toLowerCase();
+  const a = String(abbrev || '').toLowerCase().replace(/[^a-z0-9]/g, '');
   return RESERVED_COMMANDS.has(a) ? a + 'x' : a;
 }
 
@@ -187,7 +198,10 @@ export function generateAbbreviation(name, actionItem = null) {
     // Must go through safe(): "Scroll of Technomancy" reduces to "st", which
     // the status command already owns, and this path used to return early and
     // skip the reserved check entirely.
-    const acronym = words.map(w => w[0].toLowerCase()).join('');
+    const acronym = words
+      .map(w => (w.match(/[a-zA-Z0-9]/) || [''])[0].toLowerCase())
+      .filter(Boolean)
+      .join('');
     return safe(acronym.slice(0, 4));
   }
 

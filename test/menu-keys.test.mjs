@@ -5,7 +5,7 @@
  * than left inside an event handler. Run: node test/menu-keys.test.mjs
  */
 import assert from "node:assert/strict";
-import { menuClaimsKey, MENU_KEYS } from "../scripts/input/MenuKeys.js";
+import { menuClaimsKey, isDuplicateKeydown, MENU_KEYS } from "../scripts/input/MenuKeys.js";
 
 let pass = 0;
 const t = (name, fn) => { fn(); pass++; console.log("  ok -", name); };
@@ -100,6 +100,47 @@ t("a missing or malformed event is safe", () => {
   assert.equal(menuClaimsKey(null), false);
   assert.equal(menuClaimsKey(undefined), false);
   assert.equal(menuClaimsKey({}), false);
+});
+
+// --- the doubled activation key (Josh's key log, 2026-10-07) ---
+
+t("the same press delivered twice is recognised as one", () => {
+  // Both events carried event.timeStamp 1416.274 to the millisecond.
+  const first = { code: "Backquote", timeStamp: 1416.274 };
+  const second = { code: "Backquote", timeStamp: 1416.274 };
+  assert.equal(isDuplicateKeydown(first, second), true);
+});
+
+t("a genuine second press is not suppressed, however fast", () => {
+  const first = { code: "Backquote", timeStamp: 1416.274 };
+  const later = { code: "Backquote", timeStamp: 1416.275 };
+  assert.equal(isDuplicateKeydown(first, later), false);
+});
+
+t("the guard needs no time window to tune", () => {
+  // Two presses two full seconds apart are still two presses, and a duplicate
+  // two seconds later would still be caught - the test is identity, not nearness.
+  assert.equal(isDuplicateKeydown({ code: "Backquote", timeStamp: 1 }, { code: "Backquote", timeStamp: 3000 }), false);
+  assert.equal(isDuplicateKeydown({ code: "Backquote", timeStamp: 3000 }, { code: "Backquote", timeStamp: 3000 }), true);
+});
+
+t("a different key at the same instant is not a duplicate", () =>
+  assert.equal(isDuplicateKeydown({ code: "Backquote", timeStamp: 10 }, { code: "Escape", timeStamp: 10 }), false));
+
+t("no previous event means nothing to suppress", () => {
+  assert.equal(isDuplicateKeydown(null, { code: "Backquote", timeStamp: 10 }), false);
+  assert.equal(isDuplicateKeydown(undefined, { code: "Backquote", timeStamp: 10 }), false);
+});
+
+t("a missing timeStamp never counts as a duplicate", () => {
+  assert.equal(isDuplicateKeydown({ code: "Backquote" }, { code: "Backquote" }), false);
+  assert.equal(isDuplicateKeydown({ code: "Backquote", timeStamp: 10 }, { code: "Backquote" }), false);
+});
+
+t("Escape and Left are both still claimed, but they now do different jobs", () => {
+  // Escape closes outright, Left steps back a level. Both must still reach us.
+  assert.equal(menuClaimsKey(key("Escape")), true);
+  assert.equal(menuClaimsKey(key("ArrowLeft")), true);
 });
 
 console.log(`\n${pass} assertions passed.`);

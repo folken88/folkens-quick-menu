@@ -2,6 +2,62 @@
 
 All notable changes to the FolkenGames Quick Menu module will be documented in this file.
 
+## [0.11.0] - 2026-10-07
+
+Josh instrumented the menu bug with a key logger in his own tab. His log disproved
+the diagnosis in 0.9.0 and 0.10.0, and identified the real cause.
+
+### Fixed
+- **The menu bug, actually.** The arrow keys were never being intercepted - they
+  reached the page every time. The menu was simply already closed. His log showed
+  that the first activation press after VoiceOver moves focus arrives in the page as
+  **two keydown events with identical `event.timeStamp`**, both `isTrusted`, neither
+  a repeat. While the activation key was a toggle, the first opened the menu and the
+  second closed it, so every arrow afterwards went to a closed menu. From the chat
+  box, his next Up Arrow brought up chat history, because focus had been handed back.
+
+  Both earlier explanations were wrong: ProseMirror was not eating the arrows, and
+  VoiceOver was not holding them in browse mode.
+
+  The fix is his, and it is better than a debounce: **make every key idempotent.**
+  - The activation key only ever **opens**. If the menu is already open it
+    re-announces the current item, which doubles as a "where am I" key.
+  - **`Escape` always closes the whole menu**, in one press. `Left` and `Backspace`
+    still step back a level. Previously all three stepped back, so a doubled Escape
+    could back out of a submenu *and* close the menu.
+
+  Pressing either key twice now lands in the same state as pressing it once, so a
+  screen reader doubling a keystroke stops mattering wherever it happens. A duplicate
+  guard backs that up, keyed on an exact `timeStamp` match rather than a guessed time
+  window, so it can only suppress a literal duplicate of the event just serviced.
+
+- **Items whose names contain a plus sign had commands that could never be typed.**
+  "Charisma +6 Tattoo" produced `/c+t` and "The Operative +6" produced `/o+`; the
+  resolver accepted them but the chat interceptor only matches letters and digits, so
+  neither item could fire. Every generated command is now stripped to letters and
+  digits, at the single point every path goes through - including a player alias set
+  with `/fqm rename`. Those two are now `/c6t` and `/o6`.
+
+### Changed
+- **Taking keyboard focus is now a per-player setting, default on.** Josh asked for
+  it to stay available rather than be removed: NVDA and JAWS read pages in a browse
+  mode that keeps the arrow keys, and Mac VoiceOver Quick Nav does the same, so the
+  focus grab into a `role="application"` region is what those users need. He turns it
+  off, because his log proves he does not need it and because taking focus drags his
+  VoiceOver cursor into the off-screen menu box - which the page cannot undo, since
+  it can only restore keyboard focus, not a VoiceOver cursor. That is also the likely
+  route by which his roll mode ended up on Self Roll.
+- Focus is only handed back on close if it was taken in the first place.
+- `Escape` now speaks a short confirmation, since otherwise there is no way to hear
+  that the menu closed. A menu closed by executing a roll stays silent.
+- 140 assertions over 6 suites.
+
+### Not yet verified
+- That the arrows reach the menu with focus left where it was. Josh has not been able
+  to test that configuration, and neither have I; before 0.9.0 there was no focus grab
+  and the menu did work for him whenever it had not gone dead, so it is expected to.
+- Windows screen readers and VoiceOver Quick Nav. Neither of us can test those.
+
 ## [0.10.0] - 2026-10-07
 
 From Josh field report of 2026-10-07.

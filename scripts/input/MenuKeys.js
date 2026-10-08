@@ -37,3 +37,26 @@ export function menuClaimsKey(event) {
   if (event.ctrlKey || event.altKey || event.metaKey) return false;
   return MENU_KEYS.has(event.code);
 }
+
+/**
+ * Is this keydown the very same event we just handled?
+ *
+ * Josh's key log, 2026-10-07: the first backtick after VoiceOver moves focus
+ * arrives in the page as TWO keydown events - identical event.timeStamp to the
+ * millisecond, both isTrusted, neither a repeat. While the activation key was a
+ * toggle, that opened the menu and immediately closed it again, and every arrow
+ * afterwards went to a closed menu. That is the whole bug.
+ *
+ * Making each key do one job is the real fix, so a double press is harmless.
+ * This guard is the belt to that braces, and it needs no guessed time window:
+ * it matches on the exact same timeStamp, so it can only ever suppress a literal
+ * duplicate of the event we just serviced. A genuine second press, however fast,
+ * carries a different timeStamp.
+ */
+export function isDuplicateKeydown(last, event) {
+  if (!last || !event) return false;
+  if (last.code !== event.code) return false;
+  return typeof last.timeStamp === 'number'
+    && typeof event.timeStamp === 'number'
+    && last.timeStamp === event.timeStamp;
+}

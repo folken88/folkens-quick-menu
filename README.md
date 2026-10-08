@@ -158,11 +158,12 @@ Quick Menu
 
 | Input | Action |
 |-------|--------|
-| `` ` `` | Open/Close menu |
+| `` ` `` | Open the menu. If it is already open, re-announce the current item ("where am I") |
 | `Up/Down` | Navigate |
 | `Page Up/Down` | Jump 10 items |
 | `Right/Enter` | Select / enter submenu |
-| `Left/Escape` | Back / close |
+| `Left` / `Backspace` | Back one level |
+| `Escape` | Close the whole menu, in one press |
 | `F` | Add to favorites |
 | `R` | Remove from favorites |
 | `P` | Prepare spell (+1) |
@@ -170,6 +171,14 @@ Quick Menu
 | `/` | Item submenu (Take 10/20) |
 | `1-9` | Number navigation |
 | `Scroll wheel` | Navigate |
+
+
+**Why each key does only one thing.** A screen reader can deliver one physical
+keypress to the page as two identical events. While the activation key toggled,
+that opened the menu and instantly closed it again, and every arrow afterwards
+went to a closed menu - which is what a blind player experiences as "the menu is
+dead". So the activation key only ever opens, and `Escape` only ever closes: press
+either twice and you end up where you would have after pressing it once.
 
 ## Global Accessibility Keys
 
@@ -206,6 +215,7 @@ Configure via module settings: *TTS Provider*, *ElevenLabs API Key*, *ElevenLabs
 | ElevenLabs Voice ID | — | Voice ID for ElevenLabs |
 | Show Visual UI | On | Show the iPod-style visual interface |
 | Activation Key | Backtick | Key to open the quick menu |
+| Move Focus Into The Menu | On | On: the menu takes keyboard focus, which screen readers in browse mode (NVDA, JAWS, VoiceOver Quick Nav) need before passing it the arrow keys. Off: focus stays put so your screen-reader cursor does not move |
 | Jump-to-Chat Key | Backslash | Key to move focus to the chat prompt |
 | Debug Mode | Off | Enable debug logging |
 

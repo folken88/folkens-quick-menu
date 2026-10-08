@@ -170,4 +170,34 @@ t("a spell with no level recorded still gets a command", () => {
   assert.equal(generateAbbreviation("Haste", { actionType: "spell" }), "hast");
 });
 
+// --- a command must be typeable: the interceptor only matches letters and digits ---
+
+t("a plus sign in an item name does not reach the command", () => {
+  // Josh, 2026-10-07: these two came out /c+t and /o+ and could never fire.
+  assert.equal(generateAbbreviation("Charisma +6 Tattoo"), "c6t");
+  assert.equal(generateAbbreviation("The Operative +6"), "o6");
+});
+
+t("the digit survives rather than the punctuation", () =>
+  assert.equal(generateAbbreviation("Belt of Giant Strength +4"), "bgs4"));
+
+t("no generated command can contain anything but letters and digits", () => {
+  const names = [
+    "Charisma +6 Tattoo", "The Operative +6", "Ring of Protection +2",
+    "Cloak of Resistance +5", "Mage's Faithful Hound", "Wand of Cure Light Wounds",
+    "Handy Haversack (Masterwork)", "Potion: Cure Light Wounds", "+1 Flaming Longsword",
+  ];
+  for (const n of names) {
+    const a = generateAbbreviation(n);
+    assert.match(a, /^[a-z0-9]*$/, `${n} -> ${a}`);
+  }
+});
+
+t("a hand-set alias is sanitised too, so /fqm rename cannot create a dead command", () =>
+  assert.equal(generateAbbreviation("anything", { forceAbbrev: "c+t" }), "ct"));
+
+t("a subskill hint is sanitised as well", () =>
+  assert.match(generateAbbreviation("Profession (Sailor-ish)",
+    { skillKey: "pro.subSkills.pro1", abbrevHint: "Sail-or" }), /^[a-z0-9]+$/));
+
 console.log(`\n${pass} assertions passed.`);

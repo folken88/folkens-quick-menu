@@ -4,7 +4,7 @@
  */
 
 import { debugLog, getSetting } from '../module.js';
-import { menuClaimsKey } from './MenuKeys.js';
+import { menuClaimsKey, isDuplicateKeydown } from './MenuKeys.js';
 
 export class KeyboardHandler {
   constructor() {
@@ -49,7 +49,14 @@ export class KeyboardHandler {
       event.preventDefault();
       event.stopPropagation();
       event.stopImmediatePropagation();
-      this.toggleMenu();
+
+      // Exact-duplicate guard. See isDuplicateKeydown: VoiceOver can deliver one
+      // physical press as two identical events, and without this the second one
+      // would re-announce the item the first just announced.
+      if (isDuplicateKeydown(this._lastActivation, event)) return;
+      this._lastActivation = { code: event.code, timeStamp: event.timeStamp };
+
+      this.activateMenu();
       return;
     }
 
@@ -200,10 +207,20 @@ export class KeyboardHandler {
         menuManager.unfavoriteCurrentItem();
         break;
         
+      // Left and Backspace step back one level.
       case 'ArrowLeft':
-      case 'Escape':
       case 'Backspace':
         menuManager.navigateBack();
+        break;
+
+      // Escape always closes the whole menu, in one press.
+      //
+      // It used to step back a level like Left, which meant a doubled Escape
+      // could back out of a submenu AND close the menu. Josh, 2026-10-07: "If
+      // Escape always closes, a double does nothing extra." He gave up using
+      // Escape to leave a submenu to get that, and uses Left for it.
+      case 'Escape':
+        menuManager.closeMenu({ announce: true });
         break;
         
       case 'Digit1':
@@ -368,17 +385,33 @@ export class KeyboardHandler {
   }
 
   /**
-   * Toggle menu open/close
+   * The activation key opens the menu - and only opens it.
+   *
+   * When the menu is already open it re-announces the current item instead of
+   * closing. Josh asked for exactly this: "Backtick only opens the menu. If the
+   * menu is already open, backtick repeats the item I am on instead of closing
+   * it. That gives me a 'where am I' key too."
+   *
+   * The point is that the key is now idempotent, so a doubled press - which
+   * VoiceOver does produce - lands in the same state as a single one.
    */
+  activateMenu() {
+    const menuManager = game.folkenQuickMenu?.menuManager;
+    if (!menuManager) return;
+
+    if (menuManager.isOpen) {
+      menuManager.announceCurrentSelection();
+      return;
+    }
+    menuManager.openMenu();
+  }
+
+  /** Kept for anything still calling it; the activation key no longer toggles. */
   toggleMenu() {
     const menuManager = game.folkenQuickMenu?.menuManager;
     if (!menuManager) return;
-    
-    if (menuManager.isOpen) {
-      menuManager.closeMenu();
-    } else {
-      menuManager.openMenu();
-    }
+    if (menuManager.isOpen) menuManager.closeMenu({ announce: true });
+    else menuManager.openMenu();
   }
 
   /**
