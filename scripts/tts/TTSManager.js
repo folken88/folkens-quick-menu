@@ -4,7 +4,8 @@
  */
 
 import { debugLog, getSetting } from '../module.js';
-import { stripMarkup } from '../chat/StateSpeech.js';
+import { stripMarkup, expandForSpeech } from '../chat/StateSpeech.js';
+import { extractRollTotals, renderAttackTotals, describeShape } from '../chat/RollTotals.js';
 
 export class TTSManager {
   constructor() {
@@ -101,7 +102,7 @@ export class TTSManager {
     // markup; one of those reached the voice in 0.8.0 and Josh heard the raw
     // link code read out. Callers strip at the source, but nothing should be
     // able to put markup into his ear by forgetting to.
-    text = stripMarkup(text);
+    text = expandForSpeech(stripMarkup(text));
     if (!text) return;
 
     // Prevent rapid TTS calls that cause interruption errors.
@@ -467,46 +468,33 @@ export class TTSManager {
   }
 
   /**
-   * Announce detailed attack results (to hit + damage)
+   * Announce an attack or maneuver result.
+   *
+   * This read only chatMessage.rolls until 0.12.0, which PF1 leaves empty on an
+   * attack card, so every weapon attack and every /cmb rolled from the menu was
+   * silent. Josh found it through /cmb because that command was new; the attack
+   * path had the same defect all along.
+   *
+   * extractRollTotals tries each shape the numbers might be in. When none
+   * matches it says the roll happened rather than inventing a number, and logs
+   * the card shape so the real path can be identified from a console instead of
+   * guessed at a third time.
    */
   announceAttackResult(chatMessage) {
-    if (!getSetting('enableTTS') || !chatMessage.rolls) return;
-    
-    debugLog('Announcing attack result:', chatMessage);
-    
-    let announcement = '';
-    const rolls = chatMessage.rolls;
-    
-    // Look for attack roll (usually first) and damage rolls
-    if (rolls.length > 0) {
-      const attackRoll = rolls[0];
-      if (attackRoll?.total !== undefined) {
-        announcement += `${attackRoll.total} to hit`;
-        
-        // Look for damage rolls (usually subsequent rolls)
-        if (rolls.length > 1) {
-          const damageRolls = rolls.slice(1);
-          const damageTotal = damageRolls.reduce((sum, roll) => sum + (roll.total || 0), 0);
-          
-          if (damageTotal > 0) {
-            announcement += `, ${damageTotal} damage`;
-          }
-        }
-      }
+    if (!getSetting('enableTTS') || !chatMessage) return;
+
+    const totals = extractRollTotals(chatMessage);
+    const line = renderAttackTotals(totals);
+
+    if (line) {
+      debugLog('attack total read from', totals.source);
+      this.speak(line, { interrupt: false, queue: true, volume: 1.0 });
+      return;
     }
-    
-    // Fall back to just the first roll total if we can't parse properly
-    if (!announcement && rolls[0]?.total !== undefined) {
-      announcement = rolls[0].total.toString();
-    }
-    
-    if (announcement) {
-      this.speak(announcement, { 
-        interrupt: false, 
-        queue: true,
-        volume: 1.0 
-      });
-    }
+
+    console.warn('folken-games-quick-menu | no roll total found on this card:',
+      describeShape(chatMessage));
+    this.speak('Rolled. Result is in chat.', { interrupt: false, queue: true, volume: 1.0 });
   }
 
   /**

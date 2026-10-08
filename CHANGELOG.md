@@ -2,6 +2,71 @@
 
 All notable changes to the FolkenGames Quick Menu module will be documented in this file.
 
+## [0.12.0] - 2026-10-08
+
+0.11.0 was confirmed working in a 37-minute, 266-keypress logged session: the
+activation fix held, Escape closes in one press, and with the focus setting off the
+menu leaves the VoiceOver cursor alone and still receives the arrows. This release
+is the remainder of that report, plus Tobias's three rulings.
+
+### Fixed
+- **Attack and maneuver rolls were silent.** `announceAttackResult` only read
+  `message.rolls`, which PF1 leaves empty on an attack card. Josh found it through
+  `/cmb` because that command was new, but **every weapon attack rolled from the menu
+  had the same defect**.
+
+  I could not establish the attack-card shape with confidence: PF1's source
+  initialises `flags.pf1.metadata.rolls.attacks`, and reading 330 real messages out of
+  the Iron Gods world found 122 carrying `message.rolls` (the ordinary d20 rolls,
+  which is why those always worked) and not one attack card to confirm against.
+
+  So rather than guess at one shape and ship a third wrong fix, `RollTotals.js` tries
+  every shape it could be - a bare roll, a `{attack, damage}` wrapper, serialized JSON
+  - and reports which one matched. When none does, the voice says "Rolled. Result is
+  in chat." and the card's shape is logged to the console. Announcing a wrong number
+  to someone who cannot see the card would be worse than announcing none.
+- **The duplicate-key guard now covers every key the module consumes**, not just the
+  activation key. Josh's log: 22 of 266 presses arrived doubled, across seven
+  different keys. A doubled Escape closed the menu with copy one and reached Foundry's
+  locked Dismiss with copy two, stranding his cursor on the page body; a doubled
+  ArrowDown moved the menu two items; a doubled Enter or Right would fire an action
+  twice. The check now runs before anything inspects whether the menu is open, which
+  is the ordering that matters - by the time the second Escape arrives the menu has
+  closed, so a later check no longer recognises the key as ours and passes it on.
+- **"Atk" was read aloud as "AK"** in buff names like *Blessing of Fervor (Extra
+  Atk)*. Those are the names as Foundry stores them, so the expansion happens in what
+  gets spoken, not in world data. Also covers Dmg, DR and SR, whole words only.
+
+### Changed
+- **Speech speed moved off `[` and `]` to `,` and `.`** Foundry v13 core binds
+  BracketLeft and BracketRight to Send to Back and Bring to Front - confirmed in its
+  own `client-keybindings.mjs` - so the module had been quietly taking two of
+  Foundry's bindings from every player who installed it. Tobias's rule: the Quick Menu
+  moves, because Foundry gives players no easy way to rebind its own. All four speech
+  keys are settings now, so a future collision is a per-player fix. Minus and Equal
+  stay: core binds zoom to the numpad and E/Q, never the main-row keys.
+- **Passive items no longer get chat commands.** Tobias: "we don't really need
+  triggers for items that don't have triggerable abilities. Waste of
+  time/space/commands." The old test ended in `|| item.system.equipped`, which handed
+  a command to every worn passive item. It now uses PF1's own `hasAction`, with
+  charges and a declared activation as fallbacks so nothing usable is lost. This also
+  retires `/c6t` and `/o6`, which answers Josh's separate point that a code with the
+  letter `o` beside a digit is easy to confuse with zero.
+
+### Not changed, deliberately
+- **Weapon Focus adding +1 to CMB.** Tobias ruled it stays: he wanted Weapon Focus to
+  cover whole weapon categories, there is no clean way to express that, so it targets
+  all attack rolls and CMB comes along. "Not a huge problem. I always error on the
+  side of the fighter-type classes when balancing since wizards can stop time."
+- The activation key default stays Backquote even though core binds it to Push to
+  Talk. It is already a per-player setting, voice chat is off in the world, and it is
+  the key Josh has learned.
+
+### Notes
+- 173 assertions over 8 suites.
+- Still unverified: the real attack-card shape. One `/cmb` and one weapon attack will
+  either announce a total or log the shape, and either outcome settles it.
+
 ## [0.11.0] - 2026-10-07
 
 Josh instrumented the menu bug with a key logger in his own tab. His log disproved

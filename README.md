@@ -173,6 +173,11 @@ Quick Menu
 | `Scroll wheel` | Navigate |
 
 
+**Keys the module claims.** The module only ever consumes keys it actually uses,
+and every one of them is a setting, because Foundry core owns many of the obvious
+choices. If a key of ours ever collides with one of Foundry's, the module moves —
+Foundry gives players no easy way to rebind its own.
+
 **Why each key does only one thing.** A screen reader can deliver one physical
 keypress to the page as two identical events. While the activation key toggled,
 that opened the menu and instantly closed it again, and every arrow afterwards
@@ -217,6 +222,8 @@ Configure via module settings: *TTS Provider*, *ElevenLabs API Key*, *ElevenLabs
 | Activation Key | Backtick | Key to open the quick menu |
 | Move Focus Into The Menu | On | On: the menu takes keyboard focus, which screen readers in browse mode (NVDA, JAWS, VoiceOver Quick Nav) need before passing it the arrow keys. Off: focus stays put so your screen-reader cursor does not move |
 | Jump-to-Chat Key | Backslash | Key to move focus to the chat prompt |
+| Speech Slower / Faster Key | Comma / Period | Reading-speed keys. Moved off `[` `]` in 0.12.0, which Foundry core binds to Send to Back / Bring to Front |
+| Voice Quieter / Louder Key | Minus / Equal | Volume keys |
 | Debug Mode | Off | Enable debug logging |
 
 *Reading speed and voice volume are adjusted live with `[` `]` and `-` `=` (see Global Accessibility Keys) and persist across reloads.*

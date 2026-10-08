@@ -275,10 +275,45 @@ function registerSettings() {
     default: 'Backquote'
   });
 
+  // Speech speed and volume keys.
+  //
+  // These were hard-wired to [ ] - = until 0.12.0. Foundry v13 core binds
+  // BracketLeft and BracketRight to sendToBack and bringToFront, which I
+  // confirmed in its own client-keybindings.mjs - so the module was silently
+  // taking two of Foundry's bindings away from every player who installed it.
+  // Tobias's rule, 2026-10-07: "if you report one then I think our quickmenu
+  // has to move to a different command since foundry has no easy way to
+  // re-write these."
+  //
+  // So speed moves to Comma and Period, which core leaves free, and all four
+  // are settings now - a future collision is a per-player fix, not a release.
+  // Minus and Equal are kept: core binds zoom to NumpadAdd/NumpadSubtract and
+  // E/Q, not to the main-row keys, so there was never a clash there.
+  game.settings.register(MODULE_ID, 'ttsSlowerKey', {
+    name: 'Speech Slower Key',
+    hint: 'KeyboardEvent.code that slows the reading voice. Default Comma. Was BracketLeft, which Foundry uses for Send to Back.',
+    scope: 'client', config: true, type: String, default: 'Comma'
+  });
+  game.settings.register(MODULE_ID, 'ttsFasterKey', {
+    name: 'Speech Faster Key',
+    hint: 'KeyboardEvent.code that speeds up the reading voice. Default Period. Was BracketRight, which Foundry uses for Bring to Front.',
+    scope: 'client', config: true, type: String, default: 'Period'
+  });
+  game.settings.register(MODULE_ID, 'ttsQuieterKey', {
+    name: 'Voice Quieter Key',
+    hint: 'KeyboardEvent.code that lowers the voice volume. Default Minus.',
+    scope: 'client', config: true, type: String, default: 'Minus'
+  });
+  game.settings.register(MODULE_ID, 'ttsLouderKey', {
+    name: 'Voice Louder Key',
+    hint: 'KeyboardEvent.code that raises the voice volume. Default Equal.',
+    scope: 'client', config: true, type: String, default: 'Equal'
+  });
+
   // Jump-to-chat key (accessibility): focuses the chat prompt, which v14 leaves unnamed
   game.settings.register(MODULE_ID, 'chatFocusKey', {
     name: 'Jump-to-Chat Key',
-    hint: 'KeyboardEvent.code that moves focus to the chat prompt (fixes v14 announcing the chat box as "new line"). Default: Backslash. TTS controls are fixed to [ ] (speed) and - = (volume), matching the poker game.',
+    hint: 'KeyboardEvent.code that moves focus to the chat prompt (fixes v14 announcing the chat box as "new line"). Default: Backslash. Speech speed and volume keys are configurable above.',
     scope: 'client',
     config: true,
     type: String,

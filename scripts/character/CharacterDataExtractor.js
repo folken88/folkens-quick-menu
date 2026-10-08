@@ -6,6 +6,7 @@
 import { debugLog } from '../module.js';
 import { stripMarkup } from '../chat/StateSpeech.js';
 import { distinctSpellbooks } from './Spellbooks.js';
+import { isTriggerable } from './ItemUse.js';
 
 export class CharacterDataExtractor {
   constructor() {
@@ -421,11 +422,11 @@ export class CharacterDataExtractor {
           }
           break;
         case 'equipment':
-          // Rings, belts, books, magic/tech items that can be activated
-          if (item.type === 'equipment' && 
-              (item.system.uses?.max > 0 || 
-               item.system.activation?.type ||
-               item.system.equipped)) {
+          // Only equipment that actually does something when triggered. The old
+          // test ended in `|| item.system.equipped`, which handed a command to
+          // every worn passive item - Josh's Charisma +6 Tattoo got /c6t, and all
+          // it could do was post its own card to chat.
+          if (item.type === 'equipment' && isTriggerable(item)) {
             filteredItems.push(itemData);
           }
           break;

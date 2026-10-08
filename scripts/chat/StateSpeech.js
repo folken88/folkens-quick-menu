@@ -91,6 +91,29 @@ export function renderNotes(notes = []) {
 }
 
 /**
+ * Expand the shorthand PF1 uses in item and buff names, for the voice only.
+ *
+ * Josh, 2026-10-07: the voice read "Atk" as "AK" in "Blessing of Fervor (Extra
+ * Atk)". Those are the buff names as Foundry stores them, so the fix belongs in
+ * what gets spoken rather than in his world data. Whole words only, so a name
+ * containing the letters is left alone.
+ */
+const SPOKEN_EXPANSIONS = [
+  [/\bAtk\b/gi, 'Attack'],
+  [/\bDmg\b/gi, 'Damage'],
+  [/\bDC\b/g, 'D C'],
+  [/\bSR\b/g, 'spell resistance'],
+  [/\bDR\b/g, 'damage reduction'],
+];
+
+export function expandForSpeech(text) {
+  let s = String(text ?? '');
+  if (!s) return '';
+  for (const [pattern, replacement] of SPOKEN_EXPANSIONS) s = s.replace(pattern, replacement);
+  return s;
+}
+
+/**
  * Strip HTML and Foundry enrichment down to speakable words.
  *
  * PF1 enriches roll notes before handing them over, so a note referencing an

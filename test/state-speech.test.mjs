@@ -6,7 +6,7 @@
  */
 import assert from "node:assert/strict";
 import { renderAC, renderCMD, renderACBreakdown, renderNotes, renderActiveBuffs, renderInactiveBuffs,
-         signed, noteText, stripMarkup, sentence }
+         signed, noteText, stripMarkup, sentence, expandForSpeech }
   from "../scripts/chat/StateSpeech.js";
 
 let pass = 0;
@@ -151,6 +151,30 @@ t("the two reads can never be confused for one another", () => {
   assert.notEqual(on, off);
   assert.ok(on.includes("active") && !on.includes("not active"));
   assert.ok(off.includes("not active"));
+});
+
+// --- shorthand the voice used to mangle (Josh, 2026-10-07) ---
+
+t("Atk is spoken as Attack, not AK", () => {
+  assert.equal(expandForSpeech("Blessing of Fervor (Extra Atk)"), "Blessing of Fervor (Extra Attack)");
+  assert.equal(expandForSpeech("Blessing of Fervor (Atk, AC, Ref)"), "Blessing of Fervor (Attack, AC, Ref)");
+});
+
+t("other PF1 shorthand is expanded too", () => {
+  assert.equal(expandForSpeech("Dmg 2d6"), "Damage 2d6");
+  assert.equal(expandForSpeech("DR 10/adamantine"), "damage reduction 10/adamantine");
+  assert.equal(expandForSpeech("SR 23"), "spell resistance 23");
+});
+
+t("whole words only - a name containing the letters is untouched", () => {
+  assert.equal(expandForSpeech("Battleaxe"), "Battleaxe");
+  assert.equal(expandForSpeech("Attacker"), "Attacker");
+  assert.equal(expandForSpeech("Dmgx"), "Dmgx");
+});
+
+t("expansion is safe on nothing", () => {
+  assert.equal(expandForSpeech(""), "");
+  assert.equal(expandForSpeech(null), "");
 });
 
 console.log(`\n${pass} assertions passed.`);

@@ -42,6 +42,27 @@ export class KeyboardHandler {
    */
   handleGlobalKeydown(event) {
     if (!getSetting('enabled')) return;
+
+    // A screen reader can deliver one physical press as two identical events.
+    // Josh's log, 2026-10-07: 22 of 266 presses arrived doubled, across seven
+    // different keys - not only the activation key that 0.11.0 guarded.
+    //
+    // Two did real damage. A doubled Escape closed the menu with copy one and
+    // then reached Foundry's Dismiss with copy two, stranding his VoiceOver
+    // cursor on the page body. A doubled ArrowDown moved the menu two items. A
+    // doubled Enter or Right would fire an action twice - casting a spell twice.
+    //
+    // The guard now covers every key we consume, and it runs here, before
+    // anything looks at whether the menu is open. That ordering matters: by the
+    // time the second Escape arrives the menu has already closed, so a check
+    // further down would not recognise the key as ours and would pass it to
+    // Foundry. Which is precisely what happened.
+    if (isDuplicateKeydown(this._lastConsumed, event)) {
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      return;
+    }
     
     // Check for activation key
     const activationKey = getSetting('activationKey');
@@ -53,9 +74,7 @@ export class KeyboardHandler {
       // Exact-duplicate guard. See isDuplicateKeydown: VoiceOver can deliver one
       // physical press as two identical events, and without this the second one
       // would re-announce the item the first just announced.
-      if (isDuplicateKeydown(this._lastActivation, event)) return;
-      this._lastActivation = { code: event.code, timeStamp: event.timeStamp };
-
+      this._rememberConsumed(event);
       this.activateMenu();
       return;
     }
@@ -85,8 +104,18 @@ export class KeyboardHandler {
       event.stopPropagation();
       event.stopImmediatePropagation();
 
+      this._rememberConsumed(event);
       this.handleMenuKeydown(event);
     }
+  }
+
+  /**
+   * Note the event we just acted on, so an identical duplicate can be dropped.
+   * Only keys we consume are recorded - a key we passed through is Foundry's
+   * business, not ours.
+   */
+  _rememberConsumed(event) {
+    this._lastConsumed = { code: event.code, timeStamp: event.timeStamp };
   }
 
   /**
@@ -119,17 +148,31 @@ export class KeyboardHandler {
     if (event.code === chatKey) {
       event.preventDefault();
       event.stopPropagation();
+      this._rememberConsumed(event);
       this.focusChatInput();
       return true;
     }
 
     const tts = game.folkenQuickMenu?.tts;
     if (!tts) return false;
-    switch (event.code) {
-      case 'BracketLeft':  event.preventDefault(); tts.nudgeRate(-0.1);   return true; // [ slower
-      case 'BracketRight': event.preventDefault(); tts.nudgeRate(+0.1);   return true; // ] faster
-      case 'Minus':        event.preventDefault(); tts.nudgeVolume(-0.1); return true; // - quieter
-      case 'Equal':        event.preventDefault(); tts.nudgeVolume(+0.1); return true; // = louder
+
+    // Configurable, because Foundry owns some of the obvious choices. The old
+    // BracketLeft/BracketRight defaults were quietly stealing core's Send to
+    // Back and Bring to Front from every player.
+    const actions = [
+      [getSetting('ttsSlowerKey')  || 'Comma',  () => tts.nudgeRate(-0.1)],
+      [getSetting('ttsFasterKey')  || 'Period', () => tts.nudgeRate(+0.1)],
+      [getSetting('ttsQuieterKey') || 'Minus',  () => tts.nudgeVolume(-0.1)],
+      [getSetting('ttsLouderKey')  || 'Equal',  () => tts.nudgeVolume(+0.1)],
+    ];
+    for (const [code, run] of actions) {
+      if (event.code === code) {
+        event.preventDefault();
+        event.stopPropagation();
+        this._rememberConsumed(event);
+        run();
+        return true;
+      }
     }
     return false;
   }
