@@ -72,7 +72,14 @@ export function extractRollTotals(message) {
   // array of rolls. 10 of those 77 held more than one entry - a full attack has
   // one per iterative, up to five - and reading only the first is how Josh heard
   // "30 to hit, 11 damage" for a Punch that had also rolled 20 for 10.
-  const meta = message.flags?.pf1?.metadata;
+  // PF1 v11 deprecated flags.pf1.metadata in favour of ChatMessagePF.system, and
+  // says support goes away in v12 - which f4 already runs. Verified on f1
+  // 2026-10-08 that message.system.rolls.attacks is the very same object across
+  // all 77 cards, so the new path is preferred and the old one kept as a
+  // fallback for anything older. Touching the deprecated path also logs a
+  // warning per access, which would have meant one on every attack announced.
+  const meta = message.system ?? message.flags?.pf1?.metadata;
+  const metaPath = message.system ? 'system' : 'flags.pf1.metadata';
   const raw = meta?.rolls?.attacks;
   if (Array.isArray(raw) && raw.length) {
     const attacks = [];
@@ -89,15 +96,15 @@ export function extractRollTotals(message) {
         attack: attacks[0].attack,
         damage: attacks[0].damage,
         attacks,
-        source: 'flags.pf1.metadata.rolls.attacks',
+        source: `${metaPath}.rolls.attacks`,
       };
     }
   }
 
   // 3. Anything else PF1 may hang a total on.
   for (const [path, value] of [
-    ['flags.pf1.metadata.rolls.attack', meta?.rolls?.attack],
-    ['flags.pf1.metadata.roll', meta?.roll],
+    [`${metaPath}.rolls.attack`, meta?.rolls?.attack],
+    [`${metaPath}.roll`, meta?.roll],
     ['message.roll', message.roll],
   ]) {
     const total = totalOf(value);
@@ -117,10 +124,10 @@ export function extractRollTotals(message) {
  */
 export function describeShape(message) {
   if (!message || typeof message !== 'object') return 'not an object';
-  const meta = message.flags?.pf1?.metadata;
+  const meta = message.system ?? message.flags?.pf1?.metadata;
   const parts = [
     `rolls=${Array.isArray(message.rolls) ? message.rolls.length : typeof message.rolls}`,
-    `flags.pf1=${message.flags?.pf1 ? Object.keys(message.flags.pf1).join('|') : 'none'}`,
+    `system=${message.system ? Object.keys(message.system).join('|') : 'none'}`,
     `metadata=${meta ? Object.keys(meta).join('|') : 'none'}`,
     `metadata.rolls=${meta?.rolls ? Object.keys(meta.rolls).join('|') : 'none'}`,
   ];

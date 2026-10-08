@@ -227,4 +227,30 @@ t("an unknown mode behaves as auto", () => {
   assert.equal(shouldBeTerse("nonsense", false), false);
 });
 
+// --- PF1 v11 moved this; v12 removes the old path, and f4 already runs v12 ---
+
+t("the modern system path is read", () => {
+  const card = { rolls: [], system: { rolls: { attacks: [{ attack: { total: 30 }, damage: [{ total: 11 }] }] } } };
+  const r = extractRollTotals(card);
+  assert.equal(r.attack, 30);
+  assert.equal(r.damage, 11);
+  assert.equal(r.source, "system.rolls.attacks");
+});
+
+t("the deprecated flags path still works for older cards", () => {
+  const card = { rolls: [], flags: { pf1: { metadata: { rolls: { attacks: [{ attack: { total: 22 } }] } } } } };
+  const r = extractRollTotals(card);
+  assert.equal(r.attack, 22);
+  assert.equal(r.source, "flags.pf1.metadata.rolls.attacks");
+});
+
+t("when both exist the modern one wins, so the deprecated getter is not touched", () => {
+  const card = {
+    rolls: [],
+    system: { rolls: { attacks: [{ attack: { total: 30 } }] } },
+    get flags() { throw new Error("deprecated path must not be read"); },
+  };
+  assert.equal(extractRollTotals(card).attack, 30);
+});
+
 console.log(`\n${pass} assertions passed.`);

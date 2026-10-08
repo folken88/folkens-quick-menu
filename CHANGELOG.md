@@ -2,6 +2,21 @@
 
 All notable changes to the FolkenGames Quick Menu module will be documented in this file.
 
+## [0.13.1] - 2026-10-08
+
+### Fixed
+- **Reads attack cards through `ChatMessagePF.system` instead of the deprecated
+  `flags.pf1.metadata`.** Found while testing 0.13.0 in the live client: touching the
+  old path logs "deprecated in favor of ChatMessagePF.system - support will be removed
+  in Version PF1 v12" on every access, so announcing an attack would have printed a
+  warning each time. More to the point, **f4 already runs the PF1 v12-dev build**,
+  where that path is due to disappear - attacks would simply have gone quiet again.
+
+  Verified on f1 across all 77 attack cards that `message.system.rolls.attacks` is the
+  identical object. The old path is kept as a fallback, and whichever one was used is
+  named in the diagnostic.
+- 193 assertions over 8 suites.
+
 ## [0.13.0] - 2026-10-08
 
 0.12.0 confirmed working: every attack and maneuver announced its total, and the
