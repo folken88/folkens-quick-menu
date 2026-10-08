@@ -222,6 +222,7 @@ Configure via module settings: *TTS Provider*, *ElevenLabs API Key*, *ElevenLabs
 | Activation Key | Backtick | Key to open the quick menu |
 | Move Focus Into The Menu | On | On: the menu takes keyboard focus, which screen readers in browse mode (NVDA, JAWS, VoiceOver Quick Nav) need before passing it the arrow keys. Off: focus stays put so your screen-reader cursor does not move |
 | Jump-to-Chat Key | Backslash | Key to move focus to the chat prompt |
+| Spoken Detail | Auto | Auto is short while a combat is running and fuller outside it; or force Short / Full |
 | Speech Slower / Faster Key | Comma / Period | Reading-speed keys. Moved off `[` `]` in 0.12.0, which Foundry core binds to Send to Back / Bring to Front |
 | Voice Quieter / Louder Key | Minus / Equal | Volume keys |
 | Debug Mode | Off | Enable debug logging |

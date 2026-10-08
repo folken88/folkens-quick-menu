@@ -5,7 +5,7 @@
 
 import { debugLog, getSetting } from '../module.js';
 import { stripMarkup, expandForSpeech } from '../chat/StateSpeech.js';
-import { extractRollTotals, renderAttackTotals, describeShape } from '../chat/RollTotals.js';
+import { extractRollTotals, renderAttackTotals, describeShape, shouldBeTerse } from '../chat/RollTotals.js';
 
 export class TTSManager {
   constructor() {
@@ -484,7 +484,15 @@ export class TTSManager {
     if (!getSetting('enableTTS') || !chatMessage) return;
 
     const totals = extractRollTotals(chatMessage);
-    const line = renderAttackTotals(totals);
+
+    // Short while a combat is running, fuller outside it. A full attack can be
+    // five numbers in a row; mid-fight they should arrive bare, and out of
+    // combat there is room to label them.
+    let mode = 'auto';
+    try { mode = getSetting('verbosity') || 'auto'; } catch (_) {}
+    const terse = shouldBeTerse(mode, !!game.combat);
+
+    const line = renderAttackTotals(totals, { terse });
 
     if (line) {
       debugLog('attack total read from', totals.source);

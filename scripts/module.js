@@ -275,6 +275,21 @@ function registerSettings() {
     default: 'Backquote'
   });
 
+  // How much detail the voice gives.
+  //
+  // Auto keys it to combat: short while a combat is running, fuller outside it.
+  // Tobias, 2026-10-08. Tying it to combat rather than a hotkey means no new key
+  // to collide with, and nothing to remember to press at the busiest moment.
+  game.settings.register(MODULE_ID, 'verbosity', {
+    name: 'Spoken Detail',
+    hint: 'Auto: short while a combat is running, fuller out of combat. Short: always brief. Full: always the longer form, which labels each attack of a full attack.',
+    scope: 'client',
+    config: true,
+    type: String,
+    default: 'auto',
+    choices: { auto: 'Auto (short in combat)', short: 'Always short', full: 'Always full' }
+  });
+
   // Speech speed and volume keys.
   //
   // These were hard-wired to [ ] - = until 0.12.0. Foundry v13 core binds

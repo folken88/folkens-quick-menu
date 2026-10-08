@@ -2,6 +2,57 @@
 
 All notable changes to the FolkenGames Quick Menu module will be documented in this file.
 
+## [0.13.0] - 2026-10-08
+
+0.12.0 confirmed working: every attack and maneuver announced its total, and the
+console line that would have reported an unreadable card never appeared. This
+release is a bug Josh found by reading the code, a bug found by finally inspecting
+real attack cards, and the first step of an idea from Tobias.
+
+### Fixed
+- **An announcement hook could read out another player's roll.** Josh, from the code:
+  `executeInitiativeRoll` armed a one-shot `createChatMessage` hook and then called
+  `rollInitiative`; with no combat running PF1 makes no message and throws no error,
+  so the hook was never removed. It stayed armed and would announce the total of
+  whatever chat message arrived next.
+
+  Checking it, the leak was in **all fourteen** call sites, and there was a second
+  hole: `Hooks.once` fires on the next message from *anyone*, so even a successful
+  roll could announce another player's result if theirs landed first. Confirmed as a
+  live risk - the attack cards in Iron Gods are authored by Josh's user id, not the
+  GM's, so a leaked hook on one client would have read out the other's numbers.
+
+  Two guards now: only the current user's own messages are ever considered, and the
+  hook removes itself after a short wait so it cannot stay armed. The ownership check
+  is a tested pure function rather than a method buried in the executor.
+- **Initiative with no combat running now says "No combat running"** instead of
+  nothing. Silence is indistinguishable from a broken command by ear.
+- **A full attack only announced its first attack.** Found by inspecting 77 real
+  attack cards: 10 of them carry more than one attack, and the card Josh reported as
+  "Punch 30 with 11 damage" had also rolled **20 for 10**. He had no way to know.
+  Every attack on the card is now read.
+
+### Added
+- **Spoken detail follows combat.** Tobias, 2026-10-08. Auto - the default - is short
+  while a combat is running and fuller outside it, and it can be forced either way.
+  Keying it to combat rather than to a hotkey means no new key to collide with and
+  nothing to remember to press at the busiest moment.
+
+  In combat a full attack reads "30 to hit, 11 damage. 20 to hit, 10 damage."; out of
+  combat, "2 attacks. First, 30 to hit, 11 damage. Second, 20 to hit, 10 damage." A
+  single attack never gets the counting preamble either way.
+
+### Verified
+- **The attack-card shape, at last.** 0.12.0 shipped a reader that tried every shape
+  because no attack card existed to check against - the earlier database snapshot was
+  taken hours before Josh's test session. There are now 77 in Iron Gods, and the real
+  shape is `flags.pf1.metadata.rolls.attacks[]`, each entry `{ attack, damage }` with
+  `attack.total` a number and `damage` an array of rolls, while `message.rolls` is an
+  empty array. That is the branch the reader was already taking, for the right reason.
+- `message.author.id` is the author field on this Foundry version, which is what the
+  new ownership check reads first.
+- 190 assertions over 8 suites.
+
 ## [0.12.0] - 2026-10-08
 
 0.11.0 was confirmed working in a 37-minute, 266-keypress logged session: the

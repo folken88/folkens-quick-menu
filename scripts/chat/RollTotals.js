@@ -54,29 +54,44 @@ function totalsFrom(list) {
  *   log rather than by guesswork.
  */
 export function extractRollTotals(message) {
-  const miss = { attack: null, damage: null, source: null };
+  const miss = { attack: null, damage: null, attacks: [], source: null };
   if (!message || typeof message !== 'object') return miss;
 
   // 1. Ordinary d20 cards: skills, saves, ability checks, initiative.
   const plain = totalsFrom(message.rolls);
   if (plain.length) {
-    return {
-      attack: plain[0],
-      damage: plain.length > 1 ? plain.slice(1).reduce((a, b) => a + b, 0) : null,
-      source: 'message.rolls',
-    };
+    const attack = plain[0];
+    const damage = plain.length > 1 ? plain.slice(1).reduce((a, b) => a + b, 0) : null;
+    return { attack, damage, attacks: [{ attack, damage }], source: 'message.rolls' };
   }
 
   // 2. PF1 attack and maneuver cards.
+  //
+  // Verified against 77 real cards in Iron Gods on 2026-10-08: message.rolls is
+  // an empty array, and each entry here is { attack, damage } where damage is an
+  // array of rolls. 10 of those 77 held more than one entry - a full attack has
+  // one per iterative, up to five - and reading only the first is how Josh heard
+  // "30 to hit, 11 damage" for a Punch that had also rolled 20 for 10.
   const meta = message.flags?.pf1?.metadata;
-  const attacks = meta?.rolls?.attacks;
-  if (Array.isArray(attacks) && attacks.length) {
-    const first = attacks[0];
-    const attack = totalOf(first);
-    const damage = Array.isArray(first?.damage)
-      ? totalsFrom(first.damage).reduce((a, b) => a + b, 0) || null
-      : null;
-    if (attack !== null) return { attack, damage, source: 'flags.pf1.metadata.rolls.attacks' };
+  const raw = meta?.rolls?.attacks;
+  if (Array.isArray(raw) && raw.length) {
+    const attacks = [];
+    for (const entry of raw) {
+      const attack = totalOf(entry);
+      if (attack === null) continue;
+      const damage = Array.isArray(entry?.damage)
+        ? (totalsFrom(entry.damage).reduce((a, b) => a + b, 0) || null)
+        : null;
+      attacks.push({ attack, damage });
+    }
+    if (attacks.length) {
+      return {
+        attack: attacks[0].attack,
+        damage: attacks[0].damage,
+        attacks,
+        source: 'flags.pf1.metadata.rolls.attacks',
+      };
+    }
   }
 
   // 3. Anything else PF1 may hang a total on.
@@ -86,7 +101,9 @@ export function extractRollTotals(message) {
     ['message.roll', message.roll],
   ]) {
     const total = totalOf(value);
-    if (total !== null) return { attack: total, damage: null, source: path };
+    if (total !== null) {
+      return { attack: total, damage: null, attacks: [{ attack: total, damage: null }], source: path };
+    }
   }
 
   return miss;
@@ -110,10 +127,70 @@ export function describeShape(message) {
   return parts.join(' ');
 }
 
-/** "22 to hit, 7 damage." / "22 to hit." - only what was actually found. */
-export function renderAttackTotals({ attack, damage } = {}) {
-  if (attack === null || attack === undefined) return '';
-  let line = `${attack} to hit`;
-  if (damage !== null && damage !== undefined && damage > 0) line += `, ${damage} damage`;
-  return line + '.';
+/**
+ * What gets said about a roll.
+ *
+ * `terse` is for mid-combat, where Josh is tracking the table by ear and wants
+ * the numbers and nothing else. Out of combat there is room to say how many
+ * attacks there were and to label them, which matters on a full attack where
+ * four numbers arrive one after another.
+ */
+export function renderAttackTotals(totals = {}, { terse = true } = {}) {
+  const attacks = Array.isArray(totals.attacks) && totals.attacks.length
+    ? totals.attacks
+    : (totals.attack === null || totals.attack === undefined
+        ? []
+        : [{ attack: totals.attack, damage: totals.damage ?? null }]);
+
+  if (!attacks.length) return '';
+
+  const one = ({ attack, damage }) =>
+    (damage !== null && damage !== undefined && damage > 0)
+      ? `${attack} to hit, ${damage} damage`
+      : `${attack} to hit`;
+
+  if (attacks.length === 1) return one(attacks[0]) + '.';
+  if (terse) return attacks.map(one).join('. ') + '.';
+
+  const ordinals = ['First', 'Second', 'Third', 'Fourth', 'Fifth', 'Sixth'];
+  const lines = attacks.map((a, i) => `${ordinals[i] ?? 'Attack ' + (i + 1)}, ${one(a)}`);
+  return `${attacks.length} attacks. ${lines.join('. ')}.`;
+}
+
+/**
+ * Short in combat, fuller outside it.
+ *
+ * Tobias, 2026-10-08. Keying the amount of detail to combat rather than to a
+ * hotkey means there is no new key to collide with, and nothing for Josh to
+ * remember to press at the moment he is busiest.
+ *
+ * @param {'auto'|'short'|'full'} mode  the player's setting
+ * @param {boolean} inCombat
+ */
+export function shouldBeTerse(mode, inCombat) {
+  if (mode === 'short') return true;
+  if (mode === 'full') return false;
+  return !!inCombat;
+}
+
+/**
+ * Does this chat message belong to the given user?
+ *
+ * Safety-critical, so it lives here as a pure function rather than inside the
+ * executor. An announcement hook that is still armed must never read out
+ * another player's roll as if it were yours - and the old code, which used
+ * Hooks.once with no check at all, would announce whatever chat message
+ * arrived next from anybody.
+ *
+ * Foundry has moved this field around (v12+ prefers `author`), so every form
+ * it has taken is accepted. An unattributable message is treated as ours: that
+ * is how PF1 posts some cards, and refusing those would make the common case
+ * silent to stop a rare one being wrong.
+ */
+export function isOwnMessage(message, userId) {
+  if (!message || typeof message !== 'object') return false;
+  const author = message.author?.id ?? message.author ?? message.user?.id ?? message.user;
+  if (author === null || author === undefined || author === '') return true;
+  if (typeof author !== 'string') return false;
+  return author === userId;
 }

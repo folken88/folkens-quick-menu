@@ -5,6 +5,7 @@
  */
 
 import { debugLog } from '../module.js';
+import { isOwnMessage } from '../chat/RollTotals.js';
 
 export class ActionExecutor {
 
@@ -89,20 +90,56 @@ export class ActionExecutor {
     return game.folkenQuickMenu?.systemDetector?.isPF2e();
   }
 
+  /**
+   * Announce the result of the roll we are about to make, once, and give up if
+   * it never arrives.
+   *
+   * Josh found the bug by reading the code, 2026-10-07: executeInitiativeRoll
+   * registered a one-time createChatMessage hook and then called rollInitiative.
+   * With no combat running, PF1 makes no message and throws no error - so the
+   * hook was never removed. It stayed armed, waiting, and would have read out
+   * the total of whatever chat message came next, possibly another player's.
+   *
+   * Every executor had the same leak; initiative was simply the one that could
+   * silently produce no message. Two guards now:
+   *
+   *  - only our own messages are considered, so an armed hook can never read
+   *    out someone else's number even if it is still waiting;
+   *  - the hook removes itself after a short wait, so it cannot stay armed.
+   *
+   * @returns {{off: function}} call off() to cancel early
+   */
+  _announceOnce(handler, { timeout = 5000 } = {}) {
+    let fired = false;
+    let timer = null;
+    const off = () => {
+      if (fired) return;
+      fired = true;
+      if (timer) clearTimeout(timer);
+      hookId.off();
+    };
+
+    const hookId = Hooks.on('createChatMessage', (message) => {
+      if (fired) return;
+      // Not ours: leave the hook armed for the message we are waiting for.
+      if (!isOwnMessage(message, game.user?.id)) return;
+      off();
+      try { handler(message); } catch (error) { console.error('Announce failed:', error); }
+    });
+
+    timer = setTimeout(off, timeout);
+    return { off };
+  }
+
   _hookRollResult() {
-    return Hooks.once("createChatMessage", (message) => {
-      if (message.rolls?.[0]?.total && this._tts()) {
-        this._tts().announceRollResult(message.rolls[0].total);
-      }
+    return this._announceOnce((message) => {
+      const total = message.rolls?.[0]?.total;
+      if (total !== undefined && total !== null) this._tts()?.announceRollResult(total);
     });
   }
 
   _hookAttackResult() {
-    return Hooks.once("createChatMessage", (message) => {
-      if (message.rolls && this._tts()) {
-        this._tts().announceAttackResult(message);
-      }
-    });
+    return this._announceOnce((message) => this._tts()?.announceAttackResult(message));
   }
 
   _createPF2eFakeEvent() {
@@ -137,7 +174,7 @@ export class ActionExecutor {
       await actor.rollSkill(skillKey, rollOptions);
     } catch (error) {
       console.error("Skill check error:", error);
-      Hooks.off("createChatMessage", hookId);
+      hookId.off();
     }
   }
 
@@ -160,7 +197,7 @@ export class ActionExecutor {
       await item.use(useOptions);
     } catch (error) {
       console.error("Attack roll error:", error);
-      Hooks.off("createChatMessage", hookId);
+      hookId.off();
     }
   }
 
@@ -192,7 +229,7 @@ export class ActionExecutor {
     } catch (error) {
       console.error('Error casting spell:', error);
       this._tts()?.speak('Cast failed');
-      Hooks.off("createChatMessage", hookId);
+      hookId.off();
     }
   }
 
@@ -225,7 +262,7 @@ export class ActionExecutor {
       await actor.rollSavingThrow(saveType, { skipDialog: true });
     } catch (error) {
       console.error("Saving throw error:", error);
-      Hooks.off("createChatMessage", hookId);
+      hookId.off();
     }
   }
 
@@ -243,19 +280,26 @@ export class ActionExecutor {
       await actor.rollAbilityTest(abilityKey, { skipDialog: true });
     } catch (error) {
       console.error("Ability check error:", error);
-      Hooks.off("createChatMessage", hookId);
+      hookId.off();
     }
   }
 
   // ─── Initiative ───────────────────────────────────────────
 
   async executeInitiativeRoll(actionItem, actor) {
+    // With no combat running, PF1 rolls nothing and says nothing. Silence is
+    // indistinguishable from a broken command when you cannot see the screen.
+    if (!game.combat) {
+      this._tts()?.speak('No combat running.');
+      return;
+    }
+
     const hookId = this._hookRollResult();
     try {
       await actor.rollInitiative({ skipDialog: true });
     } catch (error) {
       console.error("Initiative roll error:", error);
-      Hooks.off("createChatMessage", hookId);
+      hookId.off();
     }
   }
 
@@ -267,7 +311,7 @@ export class ActionExecutor {
       await actor.rollSkill('hea', { skipDialog: true });
     } catch (error) {
       console.error("Stabilize check error:", error);
-      Hooks.off("createChatMessage", hookId);
+      hookId.off();
     }
   }
 
@@ -286,7 +330,7 @@ export class ActionExecutor {
       });
     } catch (error) {
       console.error("Caster level check error:", error);
-      Hooks.off("createChatMessage", hookId);
+      hookId.off();
     }
   }
 
@@ -305,7 +349,7 @@ export class ActionExecutor {
       });
     } catch (error) {
       console.error("Concentration check error:", error);
-      Hooks.off("createChatMessage", hookId);
+      hookId.off();
     }
   }
 
@@ -337,7 +381,7 @@ export class ActionExecutor {
     } catch (error) {
       console.error('Combat maneuver error:', error);
       this._tts()?.speak('Maneuver failed');
-      Hooks.off('createChatMessage', hookId);
+      hookId.off();
     }
   }
 
@@ -356,7 +400,7 @@ export class ActionExecutor {
     } catch (error) {
       console.error("PF2e attack error:", error);
       this._tts()?.speak('Attack failed');
-      Hooks.off("createChatMessage", hookId);
+      hookId.off();
     }
   }
 
@@ -375,7 +419,7 @@ export class ActionExecutor {
     } catch (error) {
       console.error("PF2e spell cast error:", error);
       this._tts()?.speak('Spell cast failed');
-      Hooks.off("createChatMessage", hookId);
+      hookId.off();
     }
   }
 
@@ -411,7 +455,7 @@ export class ActionExecutor {
     } catch (error) {
       console.error("PF2e action error:", error);
       this._tts()?.speak('Action failed');
-      Hooks.off("createChatMessage", hookId);
+      hookId.off();
     }
   }
 

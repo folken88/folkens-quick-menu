@@ -11,7 +11,7 @@
  * Run: node test/roll-totals.test.mjs
  */
 import assert from "node:assert/strict";
-import { extractRollTotals, renderAttackTotals, describeShape } from "../scripts/chat/RollTotals.js";
+import { extractRollTotals, renderAttackTotals, describeShape, isOwnMessage, shouldBeTerse } from "../scripts/chat/RollTotals.js";
 
 let pass = 0;
 const t = (name, fn) => { fn(); pass++; console.log("  ok -", name); };
@@ -119,6 +119,112 @@ t("the shape description names where it looked", () => {
 t("the diagnostic survives a malformed card", () => {
   assert.equal(describeShape(null), "not an object");
   assert.ok(describeShape({}).includes("none"));
+});
+
+// --- never read out someone else's roll (Josh, 2026-10-07) ---
+
+const ME = "user-me";
+
+t("our own message, by the v12+ author field", () =>
+  assert.equal(isOwnMessage({ author: { id: ME } }, ME), true));
+
+t("another player's message is refused", () => {
+  assert.equal(isOwnMessage({ author: { id: "user-josh" } }, ME), false);
+  assert.equal(isOwnMessage({ user: { id: "user-josh" } }, ME), false);
+  assert.equal(isOwnMessage({ user: "user-josh" }, ME), false);
+});
+
+t("the older user field is still understood", () => {
+  assert.equal(isOwnMessage({ user: { id: ME } }, ME), true);
+  assert.equal(isOwnMessage({ user: ME }, ME), true);
+});
+
+t("an author given as a bare id string works too", () =>
+  assert.equal(isOwnMessage({ author: ME }, ME), true));
+
+t("an unattributable card counts as ours", () => {
+  // PF1 posts some cards without an author. Refusing these would silence the
+  // common case to prevent a rare wrong one.
+  assert.equal(isOwnMessage({}, ME), true);
+  assert.equal(isOwnMessage({ author: null }, ME), true);
+  assert.equal(isOwnMessage({ author: "" }, ME), true);
+});
+
+t("a malformed message is not ours", () => {
+  for (const input of [null, undefined, "x", 7]) assert.equal(isOwnMessage(input, ME), false);
+});
+
+t("an author of an unexpected type is refused rather than assumed", () =>
+  assert.equal(isOwnMessage({ author: { nope: true } }, ME), false));
+
+// --- a full attack has more than one roll on the card ---
+// Shape verified against 77 real cards in Iron Gods, 2026-10-08. 10 of them
+// carried more than one attack; the rest one. Josh heard only the first.
+
+const fullAttack = {
+  rolls: [],
+  flags: { pf1: { metadata: { rolls: { attacks: [
+    { attack: { total: 30 }, damage: [{ total: 11 }] },
+    { attack: { total: 20 }, damage: [{ total: 10 }] },
+  ] } } } },
+};
+
+t("every attack on the card is read, not just the first", () => {
+  const r = extractRollTotals(fullAttack);
+  assert.equal(r.attacks.length, 2);
+  assert.deepEqual(r.attacks, [{ attack: 30, damage: 11 }, { attack: 20, damage: 10 }]);
+});
+
+t("the first attack stays available for callers that want one number", () => {
+  const r = extractRollTotals(fullAttack);
+  assert.equal(r.attack, 30);
+  assert.equal(r.damage, 11);
+});
+
+t("in combat, a full attack is just the numbers", () =>
+  assert.equal(renderAttackTotals(extractRollTotals(fullAttack), { terse: true }),
+    "30 to hit, 11 damage. 20 to hit, 10 damage."));
+
+t("out of combat they are counted and labelled", () =>
+  assert.equal(renderAttackTotals(extractRollTotals(fullAttack), { terse: false }),
+    "2 attacks. First, 30 to hit, 11 damage. Second, 20 to hit, 10 damage."));
+
+t("a single attack never gets the counting preamble", () => {
+  const one = extractRollTotals({ rolls: [], flags: { pf1: { metadata: { rolls: { attacks: [{ attack: { total: 26 } }] } } } } });
+  assert.equal(renderAttackTotals(one, { terse: false }), "26 to hit.");
+  assert.equal(renderAttackTotals(one, { terse: true }), "26 to hit.");
+});
+
+t("a five-attack routine is still labelled in order", () => {
+  const five = { rolls: [], flags: { pf1: { metadata: { rolls: { attacks:
+    [5, 4, 3, 2, 1].map(n => ({ attack: { total: n * 6 } })) } } } } };
+  const out = renderAttackTotals(extractRollTotals(five), { terse: false });
+  assert.ok(out.startsWith("5 attacks. First, 30 to hit"), out);
+  assert.ok(out.includes("Fifth, 6 to hit"), out);
+});
+
+t("an unreadable entry is skipped rather than breaking the rest", () => {
+  const mixed = { rolls: [], flags: { pf1: { metadata: { rolls: { attacks: [
+    { attack: { total: 30 } }, { nothing: true }, { attack: { total: 15 } },
+  ] } } } } };
+  assert.deepEqual(extractRollTotals(mixed).attacks.map(a => a.attack), [30, 15]);
+});
+
+// --- how long the answer should be ---
+
+t("auto is short in combat and fuller outside it", () => {
+  assert.equal(shouldBeTerse("auto", true), true);
+  assert.equal(shouldBeTerse("auto", false), false);
+});
+
+t("the player can override either way", () => {
+  assert.equal(shouldBeTerse("short", false), true);
+  assert.equal(shouldBeTerse("full", true), false);
+});
+
+t("an unknown mode behaves as auto", () => {
+  assert.equal(shouldBeTerse(undefined, true), true);
+  assert.equal(shouldBeTerse("nonsense", false), false);
 });
 
 console.log(`\n${pass} assertions passed.`);
