@@ -275,6 +275,23 @@ function registerSettings() {
     default: 'Backquote'
   });
 
+  // Which synthesised voice reads the menu.
+  //
+  // Josh, 2026-10-08: the module was speaking as "Google UK English Female" and
+  // he could not make out "Climb" in the Skills list - it came through as "ply".
+  // The old rule picked the first English voice with "female" in its name, which
+  // is how a remote, lower-quality voice won. Choices are filled in once the
+  // browser has loaded its voice list.
+  game.settings.register(MODULE_ID, 'ttsVoice', {
+    name: 'Menu Voice',
+    hint: 'Which voice reads the menu and command results. Automatic prefers a voice installed on your computer, which is usually clearer than an online one. Kept separate from your screen reader voice on purpose, so you can tell them apart.',
+    scope: 'client',
+    config: true,
+    type: String,
+    default: '',
+    choices: { '': 'Automatic (a local English voice)' }
+  });
+
   // How much detail the voice gives.
   //
   // Auto keys it to combat: short while a combat is running, fuller outside it.

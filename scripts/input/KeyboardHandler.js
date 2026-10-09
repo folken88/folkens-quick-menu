@@ -11,7 +11,7 @@ export class KeyboardHandler {
     this.keyListeners = new Map();
     this.isActive = false;
     this.pressedKeys = new Set();
-    this.numberSequence = [];
+    this.numberBuffer = 0;
     this.numberTimeout = null;
   }
 
@@ -313,7 +313,9 @@ export class KeyboardHandler {
         
       case 'Digit0':
       case 'Numpad0':
-        this.handleNumberInput(10, menuManager);
+        // The digit zero. It used to mean "item 10", which only worked because
+        // a separate heuristic split 1 then 0 apart.
+        this.handleNumberInput(0, menuManager);
         break;
     }
   }
@@ -361,70 +363,47 @@ export class KeyboardHandler {
   }
 
   /**
-   * Handle number input for rapid navigation
+   * Digits select an item. They never use it.
+   *
+   * Josh, 2026-10-08: typing 2 then 4 in Skills rolled Appraise, and 3 then 5
+   * rolled Artistry. The old code read a digit sequence as a PATH - second item,
+   * then fourth item inside that - and executed whatever it landed on. In a list
+   * of more than nine entries most two-digit numbers therefore fired one of the
+   * first nine. "A number should only move me to that item, never roll or use
+   * it."
+   *
+   * Digits now accumulate into one position for a short moment, so 38 reaches
+   * item 38, and the result only moves the selection. Right or Enter is the only
+   * way to use something.
    */
-  handleNumberInput(number, menuManager) {
-    // Clear any existing timeout
-    if (this.numberTimeout) {
-      clearTimeout(this.numberTimeout);
+  handleNumberInput(digit, menuManager) {
+    if (this.numberTimeout) clearTimeout(this.numberTimeout);
+
+    const listLength = menuManager?.currentMenu?.length ?? 0;
+    const candidate = this.numberBuffer * 10 + digit;
+
+    // Adding this digit would run off the end of the list, so commit what we
+    // had and start again with it.
+    if (this.numberBuffer > 0 && candidate > listLength) {
+      this._commitNumber(menuManager);
+      this.numberBuffer = digit;
+    } else {
+      this.numberBuffer = candidate;
     }
-    
-    // Add number to sequence
-    this.numberSequence.push(number);
-    
-    // Set timeout to execute after 500ms of no input
-    this.numberTimeout = setTimeout(() => {
-      this.executeNumberSequence(menuManager);
-    }, 500);
-    
-    // Also check if we should execute immediately
-    // (if user pauses or hits a number that would be invalid for next level)
-    this.checkImmediateExecution(menuManager);
+
+    this.numberTimeout = setTimeout(() => this._commitNumber(menuManager), 500);
   }
 
-  /**
-   * Check if we should execute the number sequence immediately
-   */
-  checkImmediateExecution(menuManager) {
-    if (!menuManager.currentMenu) return;
-    
-    const currentLength = this.numberSequence.length;
-    const menuLength = menuManager.currentMenu.length;
-    
-    // If the current sequence would already exceed menu length, execute now
-    const sequenceValue = parseInt(this.numberSequence.join(''));
-    if (sequenceValue > menuLength && currentLength > 1) {
-      // Remove the last number and execute with the previous sequence
-      const lastNumber = this.numberSequence.pop();
-      this.executeNumberSequence(menuManager);
-      
-      // Start new sequence with the last number
-      this.numberSequence = [lastNumber];
-      this.numberTimeout = setTimeout(() => {
-        this.executeNumberSequence(menuManager);
-      }, 500);
-    }
-  }
-
-  /**
-   * Execute the accumulated number sequence
-   */
-  executeNumberSequence(menuManager) {
-    if (this.numberSequence.length === 0) return;
-    
-    // Convert sequence to number and execute
-    const targetNumber = parseInt(this.numberSequence.join(''));
-    debugLog('Executing number sequence:', this.numberSequence, 'as', targetNumber);
-    
-    // Execute rapid navigation
-    menuManager.navigateToNumberSequence(this.numberSequence.slice());
-    
-    // Clear sequence and timeout
-    this.numberSequence = [];
+  /** Move to the position typed, if there is one. Never executes. */
+  _commitNumber(menuManager) {
     if (this.numberTimeout) {
       clearTimeout(this.numberTimeout);
       this.numberTimeout = null;
     }
+    const target = this.numberBuffer;
+    this.numberBuffer = 0;
+    if (!target) return;               // a bare 0 is not a position
+    menuManager?.navigateToNumber(target);
   }
 
   /**

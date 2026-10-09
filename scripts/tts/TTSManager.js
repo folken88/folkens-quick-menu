@@ -5,6 +5,7 @@
 
 import { debugLog, getSetting } from '../module.js';
 import { stripMarkup, expandForSpeech } from '../chat/StateSpeech.js';
+import { pickVoice, voiceChoices } from './VoiceChoice.js';
 import { extractRollTotals, renderAttackTotals, describeShape, shouldBeTerse } from '../chat/RollTotals.js';
 
 export class TTSManager {
@@ -76,17 +77,19 @@ export class TTSManager {
   loadVoices() {
     const voices = this.speechSynthesis.getVoices();
     debugLog('Available voices:', voices.length);
-    
-    // Try to find a good default voice (English, preferably female for accessibility)
-    this.defaultVoice = voices.find(voice => 
-      voice.lang.startsWith('en') && voice.name.toLowerCase().includes('female')
-    ) || voices.find(voice => 
-      voice.lang.startsWith('en')
-    ) || voices[0];
-    
-    if (this.defaultVoice) {
-      debugLog('Selected default voice:', this.defaultVoice.name);
-    }
+
+    let preferred = '';
+    try { preferred = getSetting('ttsVoice') || ''; } catch (_) {}
+
+    this.defaultVoice = pickVoice(voices, preferred);
+    if (this.defaultVoice) debugLog('Selected voice:', this.defaultVoice.name);
+
+    // Fill the settings dropdown now that the browser has told us what exists.
+    // Registration happens at init, long before the voice list is ready.
+    try {
+      const setting = game.settings.settings.get('folken-games-quick-menu.ttsVoice');
+      if (setting) setting.choices = voiceChoices(voices);
+    } catch (_) { /* non-fatal */ }
   }
 
   /**

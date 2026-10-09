@@ -6,6 +6,7 @@
 
 import { debugLog } from '../module.js';
 import { isOwnMessage } from '../chat/RollTotals.js';
+import { armAnnouncement } from './Announcer.js';
 
 export class ActionExecutor {
 
@@ -109,26 +110,27 @@ export class ActionExecutor {
    *
    * @returns {{off: function}} call off() to cancel early
    */
-  _announceOnce(handler, { timeout = 5000 } = {}) {
-    let fired = false;
-    let timer = null;
-    const off = () => {
-      if (fired) return;
-      fired = true;
-      if (timer) clearTimeout(timer);
-      hookId.off();
-    };
-
-    const hookId = Hooks.on('createChatMessage', (message) => {
-      if (fired) return;
-      // Not ours: leave the hook armed for the message we are waiting for.
-      if (!isOwnMessage(message, game.user?.id)) return;
-      off();
-      try { handler(message); } catch (error) { console.error('Announce failed:', error); }
+  /**
+   * Arm a one-shot announcement for the roll we are about to make.
+   *
+   * Only one is ever pending. A previous one is cancelled first, so a roll that
+   * produced no card cannot still be waiting when the next command runs and
+   * steal its result. That is what makes the long window below safe.
+   *
+   * The window is 20 seconds because attack cards are slow: Josh measured key to
+   * card at 3.4 to 6.2 seconds on Punch, because Dice So Nice animates the dice
+   * first and PF1 only creates the card once they finish. The 5 seconds this
+   * shipped with in 0.13.0 would have cut off some attack readouts.
+   */
+  _announceOnce(handler, { timeout = 20000 } = {}) {
+    this._pending?.off();
+    this._pending = armAnnouncement({
+      hooks: Hooks,
+      isOwn: (message) => isOwnMessage(message, game.user?.id),
+      handler,
+      timeout,
     });
-
-    timer = setTimeout(off, timeout);
-    return { off };
+    return this._pending;
   }
 
   _hookRollResult() {

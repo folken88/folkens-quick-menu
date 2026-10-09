@@ -169,7 +169,7 @@ Quick Menu
 | `P` | Prepare spell (+1) |
 | `U` | Unprepare spell (-1) |
 | `/` | Item submenu (Take 10/20) |
-| `1-9` | Number navigation |
+| `0-9` | Move to that position in the list. Digits combine, so 38 reaches item 38. Never uses an item |
 | `Scroll wheel` | Navigate |
 
 
@@ -223,6 +223,7 @@ Configure via module settings: *TTS Provider*, *ElevenLabs API Key*, *ElevenLabs
 | Move Focus Into The Menu | On | On: the menu takes keyboard focus, which screen readers in browse mode (NVDA, JAWS, VoiceOver Quick Nav) need before passing it the arrow keys. Off: focus stays put so your screen-reader cursor does not move |
 | Jump-to-Chat Key | Backslash | Key to move focus to the chat prompt |
 | Spoken Detail | Auto | Auto is short while a combat is running and fuller outside it; or force Short / Full |
+| Menu Voice | Automatic | Which voice reads the menu. Automatic prefers a voice installed on your computer, which is clearer than an online one |
 | Speech Slower / Faster Key | Comma / Period | Reading-speed keys. Moved off `[` `]` in 0.12.0, which Foundry core binds to Send to Back / Bring to Front |
 | Voice Quieter / Louder Key | Minus / Equal | Volume keys |
 | Debug Mode | Off | Enable debug logging |

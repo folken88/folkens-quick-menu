@@ -407,64 +407,11 @@ export class QuickMenuManager {
   }
 
   /**
-   * Navigate using a number sequence for rapid navigation
+   * Removed in 0.13.2. It read a digit sequence as a path - second item, then
+   * fourth item inside that - and executed whatever it landed on, so typing 24
+   * in Skills rolled Appraise. Digits now only move the selection; see
+   * KeyboardHandler.handleNumberInput and navigateToNumber above.
    */
-  async navigateToNumberSequence(sequence) {
-    if (!this.isOpen || !this.currentMenu || sequence.length === 0) return;
-    
-    debugLog('Executing number sequence navigation:', sequence);
-    
-    for (let i = 0; i < sequence.length; i++) {
-      const number = sequence[i];
-      
-      // Look for item with matching displayNumber first
-      let targetIndex = -1;
-      for (let j = 0; j < this.currentMenu.length; j++) {
-        const item = this.currentMenu[j];
-        if (item.displayNumber !== undefined && item.displayNumber === number) {
-          targetIndex = j;
-          break;
-        }
-      }
-      
-      // Fallback to traditional index-based navigation if no displayNumber match
-      if (targetIndex === -1) {
-        targetIndex = number - 1; // Convert to 0-based index
-      }
-      
-      if (targetIndex >= 0 && targetIndex < this.currentMenu.length) {
-        this.selectedIndex = targetIndex;
-        
-        // If this is the last number in sequence, just announce and render
-        if (i === sequence.length - 1) {
-          this.announceCurrentSelection();
-          this.render();
-          return;
-        }
-        
-        // Otherwise, navigate into the submenu
-        const selectedItem = this.currentMenu[this.selectedIndex];
-        if (selectedItem && selectedItem.type === 'submenu') {
-          await this.enterSubmenu(selectedItem);
-          // Small delay to allow menu to update
-          await new Promise(resolve => setTimeout(resolve, 50));
-        } else if (selectedItem && selectedItem.type === 'action') {
-          // If we hit an action before the sequence is complete, execute it
-          this.executeAction(selectedItem);
-          return;
-        } else {
-          // Invalid path, stop here
-          this.announceCurrentSelection();
-          this.render();
-          return;
-        }
-      } else {
-        // Invalid number for current menu, stop here
-        game.folkenQuickMenu.tts.speak('Invalid selection');
-        return;
-      }
-    }
-  }
 
   /**
    * Prepare/unprepare current spell

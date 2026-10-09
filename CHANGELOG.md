@@ -2,6 +2,56 @@
 
 All notable changes to the FolkenGames Quick Menu module will be documented in this file.
 
+## [0.13.2] - 2026-10-08
+
+### Fixed
+- **Every spoken roll result was broken in 0.13.1.** Attacks, skills and checks all
+  posted to chat and said nothing. My fault, and a bad one: the blanket
+  find-and-replace that converted the fourteen call sites from
+  `Hooks.off('createChatMessage', hookId)` to `hookId.off()` also rewrote that same
+  line **inside the helper it was part of**, where `hookId` is the number `Hooks.on`
+  returns. So the hook threw before announcing, and because `Hooks.off` was never
+  reached, every roll left its listener registered - worse than the leak 0.13.0 set
+  out to fix.
+
+  I verified that change by counting call sites rather than running anything. Josh
+  found it from the console in one pass: `hookId.off is not a function`.
+
+  The lifecycle now lives in `scripts/executor/Announcer.js`, which takes its hook
+  and timer plumbing as arguments so it can be exercised with fakes. Eleven
+  assertions, including one that fails if anything calls `.off()` on the id again.
+- **The wait for a chat card was too short.** Attack cards take 3.4 to 6.2 seconds to
+  appear, because Dice So Nice animates the dice first and PF1 only creates the card
+  once they finish - measured by Josh. The 5-second window would have cut off some
+  attack readouts even once the crash was fixed. It is 20 seconds now, which is safe
+  because only one announcement is ever pending: arming a new one cancels the last,
+  so a roll that produced no card cannot still be waiting when the next command runs.
+- **Typing a number used an item instead of moving to it.** Typing 2 then 4 in Skills
+  rolled Appraise; 3 then 5 rolled Artistry. The old code read a digit sequence as a
+  path - second item, then fourth inside that - and executed whatever it landed on,
+  so in any list longer than nine entries most two-digit numbers fired one of the
+  first nine. Digits now accumulate into a single position and only move the
+  selection: 38 reaches item 38, and Right or Enter remains the only way to use
+  anything. `Digit0` is the digit zero rather than a stand-in for ten, which only
+  worked by accident before.
+
+### Added
+- **A Menu Voice setting**, and a better default. The module was speaking as "Google
+  UK English Female" because the old rule took the first English voice with "female"
+  in its name. Josh could not make out "Climb" in the Skills list - it reached him as
+  "ply" - and only learned what it was by asking. Automatic now prefers a voice
+  installed on the computer over an online one, which picks Samantha on his Mac,
+  the voice he had switched to by hand. Any installed voice can be chosen instead.
+  Deliberately not tied to the system default: he wants the module to sound different
+  from VoiceOver so he can tell which is speaking.
+
+### Notes
+- 218 assertions over 10 suites.
+- Still open, and for Tobias to rule on: replacing the menu's numbers with
+  first-letter type-ahead navigation, which is how VoiceOver users move through long
+  lists on a Mac. It would need the menu's single-letter shortcuts (F, P, U, R and
+  Slash) to move elsewhere first.
+
 ## [0.13.1] - 2026-10-08
 
 ### Fixed
