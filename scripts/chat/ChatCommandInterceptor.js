@@ -9,6 +9,7 @@
 import { debugLog } from '../module.js';
 import { CollisionResolver } from './CollisionResolver.js';
 import { spellOut } from './AbbreviationGenerator.js';
+import { parseYesNo } from '../spells/Upcast.js';
 import { renderAC, renderCMD, renderActiveBuffs, renderInactiveBuffs } from './StateSpeech.js';
 
 const MODULE_ID = 'folken-games-quick-menu';
@@ -54,6 +55,18 @@ export class ChatCommandInterceptor {
       if (!game.settings.get('folken-games-quick-menu', 'enableChatCommands')) return true;
     } catch (e) {
       // Setting not registered yet — allow commands by default
+    }
+
+    // An up-cast offer is waiting for a yes or no. Josh types "Y", not "/y", so
+    // this has to be checked before the slash-command guard below. Only a clear
+    // yes or no is consumed; anything else falls through and is said in chat as
+    // normal, because swallowing his actual words would be worse than missing
+    // an answer.
+    const executor = game.folkenQuickMenu?.actionExecutor;
+    if (executor?.hasPendingUpcast) {
+      const answer = parseYesNo(trimmed);
+      if (answer === true) { executor.confirmUpcast(); return false; }
+      if (answer === false) { executor.cancelUpcast({ announce: true }); return false; }
     }
 
     // Skip anything that isn't a slash command
@@ -497,6 +510,7 @@ export class ChatCommandInterceptor {
       '<strong>/st /hp /ac /cmd /cond</strong> — Read your status, hit points, AC, CMD, conditions',
       '<strong>/bf</strong> — Buffs that are ON. <strong>/bfo</strong> — Buffs on your sheet that are OFF',
       '<strong>/cmb</strong> — Roll a combat maneuver (trip, grapple, bull rush, disarm …)',
+      '<strong>Y</strong> / <strong>N</strong> — Answer an up-cast offer when a spontaneous caster runs out of slots at a level',
       '<strong>/fqm rename [old] [new]</strong> — Rename a command abbreviation',
       '<strong>/fqm reset</strong> — Clear all custom aliases',
       '<strong>/fqm help</strong> — Show this help',

@@ -2,6 +2,37 @@
 
 All notable changes to the FolkenGames Quick Menu module will be documented in this file.
 
+## [0.14.0] - 2026-10-08
+
+### Added
+- **Up-casting for spontaneous casters.** Requested by Tobias: when Olbryn is out of
+  6th-level slots and `/6dis` is typed, the voice asks "Out of 6th. Cast Disintegrate
+  with a 7th?" - **Y** casts it from the 7th-level slot, **N** cancels.
+
+  - Only offered for a spontaneous book, and only when that level is genuinely empty.
+    A prepared caster still hears "None prepared".
+  - Takes the **lowest** free level above the spell's own, so a 9th-level slot is not
+    spent while a 7th is sitting there.
+  - **Y** is accepted bare, not just as `/y`, because that is what gets typed. Only a
+    clear yes or no is consumed; anything else goes to chat as normal rather than
+    being guessed at.
+  - The offer expires after 30 seconds and is replaced by the next command, so a
+    stray Y cannot spend a slot against an offer that has been forgotten.
+
+  How the slot is actually moved: PF1 always charges the slot at the spell's own
+  level and gives no way to redirect it, so one slot is lent at that level and one
+  taken from the higher level **in a single update** - the sheet is never half
+  changed. PF1 then spends the lent slot as usual. Afterwards the lent level is read
+  back, and if PF1 did not deduct it (auto-deduct can be switched off) it is
+  corrected, rather than leaving behind a slot that was never earned on a sheet its
+  owner cannot see. If the cast throws, both levels are restored.
+
+  Pathfinder 1e has no general up-casting rule for spontaneous casters, so this is a
+  house rule at this table. The spell is cast exactly as written; the larger slot
+  buys the cast and nothing else.
+
+- 243 assertions over 11 suites.
+
 ## [0.13.3] - 2026-10-08
 
 ### Fixed

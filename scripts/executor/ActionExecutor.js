@@ -7,6 +7,8 @@
 import { debugLog } from '../module.js';
 import { isOwnMessage } from '../chat/RollTotals.js';
 import { armAnnouncement } from './Announcer.js';
+import { canOfferUpcast, findUpcastLevel, planUpcast, slotsAt,
+         upcastPrompt, upcastConfirmation, noSlotsMessage } from '../spells/Upcast.js';
 
 export class ActionExecutor {
 
@@ -214,24 +216,136 @@ export class ActionExecutor {
       return;
     }
 
-    // PF1: check preparation
-    const preparedCount = spell.system.preparation?.value || 0;
-    if (preparedCount <= 0 && spell.system.level > 0) {
-      this._tts()?.speak('None prepared');
+    const book = spell.spellbook;
+    const level = spell.system?.level ?? 0;
+
+    // A spontaneous caster who has run out at this level can borrow a higher
+    // slot, if he says so. Ask before spending anything.
+    if (book?.spontaneous && level > 0 && slotsAt(book, level) <= 0) {
+      if (canOfferUpcast(book, level)) {
+        this._offerUpcast(spell, actor, level, findUpcastLevel(book, level));
+      } else {
+        this._tts()?.speak(noSlotsMessage(level), { interrupt: true });
+      }
       return;
+    }
+
+    // Prepared casters: nothing prepared means nothing to cast.
+    if (!book?.spontaneous) {
+      const prepared = spell.system.preparation?.value || 0;
+      if (prepared <= 0 && level > 0) {
+        this._tts()?.speak('None prepared');
+        return;
+      }
     }
 
     const hookId = this._hookRollResult();
     try {
       await spell.use({ skipDialog: true });
-      // Blind confirmation. Only failures used to speak, so a spell with no
-      // sound effect gave no sign it had gone through and the player had to go
-      // read chat to find out.
       this._tts()?.speak(`${spell.name}, cast`, { interrupt: false, queue: true });
     } catch (error) {
       console.error('Error casting spell:', error);
       this._tts()?.speak('Cast failed');
       hookId.off();
+    }
+  }
+
+  // ─── Up-casting ──────────────────────────
+
+  /**
+   * Ask, and remember what we asked, so a Y or N in chat can answer it.
+   *
+   * The offer expires. A yes that arrives five minutes later, after he has moved
+   * on, must not quietly spend a slot - same reasoning as the announcement hook.
+   */
+  _offerUpcast(spell, actor, level, upcastLevel) {
+    this.cancelUpcast();
+
+    this.pendingUpcast = {
+      spellId: spell.id,
+      actorId: actor.id,
+      level,
+      upcastLevel,
+      spellName: spell.name,
+    };
+    this.pendingUpcast.timer = setTimeout(() => this.cancelUpcast(), 30000);
+
+    const message = upcastPrompt(spell.name, level, upcastLevel);
+    this._tts()?.speak(message, { interrupt: true, urgent: true });
+    try {
+      ChatMessage.create({
+        whisper: [game.user.id],
+        content: `<div class="fqm-chat-msg">${message} <strong>Y</strong> or <strong>N</strong>.</div>`,
+        speaker: { alias: 'Quick Menu' },
+      });
+    } catch (_) { /* the voice is what matters */ }
+  }
+
+  get hasPendingUpcast() {
+    return !!this.pendingUpcast;
+  }
+
+  cancelUpcast({ announce = false } = {}) {
+    if (!this.pendingUpcast) return;
+    if (this.pendingUpcast.timer) clearTimeout(this.pendingUpcast.timer);
+    this.pendingUpcast = null;
+    if (announce) this._tts()?.speak('Cancelled.', { interrupt: true });
+  }
+
+  /**
+   * Spend a higher slot and cast.
+   *
+   * PF1 always charges the slot at the spell's own level and offers no way to
+   * point it at a different one, so the slot is lent at that level and taken
+   * from the higher one in a single update. PF1 then spends the lent slot as
+   * usual. Afterwards the lent level is read back: if PF1 did not deduct it -
+   * auto-deduct can be switched off - it is put right here rather than leaving
+   * a slot he never earned on a sheet he cannot see.
+   */
+  async confirmUpcast() {
+    const pending = this.pendingUpcast;
+    if (!pending) return;
+    this.cancelUpcast();
+
+    const actor = game.actors.get(pending.actorId);
+    const spell = actor?.items.get(pending.spellId);
+    if (!spell) { this._tts()?.speak('That spell is gone.'); return; }
+
+    const bookKey = spell.system?.spellbook || 'primary';
+    const book = spell.spellbook;
+
+    // Re-check: slots may have moved since we asked.
+    if (slotsAt(book, pending.upcastLevel) <= 0) {
+      this._tts()?.speak(noSlotsMessage(pending.level), { interrupt: true });
+      return;
+    }
+
+    const plan = planUpcast(bookKey, pending.level, pending.upcastLevel, book);
+    const hookId = this._hookRollResult();
+    try {
+      await actor.update(plan.updates);
+      await spell.use({ skipDialog: true });
+
+      // Did PF1 take the lent slot back?
+      const [path, expected] = Object.entries(plan.expectedAfterCast)[0];
+      const actual = foundry.utils.getProperty(actor, path);
+      if (typeof actual === 'number' && actual !== expected) {
+        await actor.update({ [path]: expected });
+      }
+
+      this._tts()?.speak(upcastConfirmation(spell.name, pending.upcastLevel),
+        { interrupt: false, queue: true });
+    } catch (error) {
+      console.error('Up-cast failed:', error);
+      hookId.off();
+      // Put the slots back exactly as they were.
+      try {
+        await actor.update({
+          [`system.attributes.spells.spellbooks.${bookKey}.spells.spell${pending.level}.value`]: slotsAt(book, pending.level),
+          [`system.attributes.spells.spellbooks.${bookKey}.spells.spell${pending.upcastLevel}.value`]: slotsAt(book, pending.upcastLevel),
+        });
+      } catch (_) { /* nothing more we can do */ }
+      this._tts()?.speak('Up-cast failed. Slots unchanged.', { interrupt: true });
     }
   }
 

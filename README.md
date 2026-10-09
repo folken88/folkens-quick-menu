@@ -62,6 +62,23 @@ Instant reads of your current condition — no navigation needed:
 
 Each of these answers one question and stops. That is deliberate: a blind player hears one thing at a time, with the rest of the table talking over it, so a command that reads out a paragraph is worse than useless mid-combat. The full AC breakdown (every contributing bonus, including the ones PF1 overrode, plus roll notes) is on the **agent API** instead, where an assistant can reconcile a sheet properly.
 
+### Up-casting (spontaneous casters)
+
+When a spontaneous caster runs out of slots at a spell's level, casting it offers
+a higher slot instead:
+
+> `/6dis` -> "Out of 6th. Cast Disintegrate with a 7th?"
+> Type **Y** to cast it from a 7th-level slot, or **N** to cancel.
+
+- Only for spontaneous books. A prepared caster still hears "None prepared".
+- It takes the **lowest** free level above the spell's own, so the big slots go last.
+- The offer expires after 30 seconds, and a new command replaces it, so a stray Y
+  can never spend a slot you had forgotten about.
+- The spell is cast exactly as written. The larger slot buys the cast, nothing more.
+
+Pathfinder 1e has no general up-casting rule for spontaneous casters, so this is a
+house rule.
+
 ### Abbreviation System
 
 Commands are generated from the thing's own name, so you can work out the command
