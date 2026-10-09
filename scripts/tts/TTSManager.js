@@ -12,8 +12,7 @@ export class TTSManager {
   constructor() {
     this.speechSynthesis = window.speechSynthesis;
     this.defaultVoice = null;
-    this.speaking = false;
-    this.queue = [];
+    this.lastAliveTs = Date.now();
 
     // Live, persisted reading rate & voice volume for the browser voice — parity with the
     // poker/dungeon blind mode: [ / ] adjust speed, - / = adjust volume, announced and
@@ -25,6 +24,7 @@ export class TTSManager {
 
     // Initialize when voices are loaded
     this.initializeVoices();
+    if (this.speechSynthesis) this._startEngineWatch();
   }
 
   /* ---------- Live rate / volume (persisted, poker-parity) ---------- */
@@ -249,49 +249,63 @@ export class TTSManager {
     utterance.pitch = options.pitch || 1.0;
     utterance.volume = options.volume ?? this.liveVolume; // live, player-adjustable ( - / = keys )
 
-    utterance.onstart = () => {
-      this.speaking = true;
-      debugLog('TTS started speaking');
-    };
-
-    utterance.onend = () => {
-      this.speaking = false;
-      debugLog('TTS finished speaking');
-      this.processQueue();
-    };
-
+    // Every utterance goes straight to the browser's own queue, which advances
+    // itself. Until 0.15.0 this kept its own queue behind a `speaking` flag that
+    // only an utterance's onend could clear - and Chrome drops onend under load,
+    // after a cancel(), and after its 15-second auto-pause. Once one was lost the
+    // flag stuck, every queued line (roll results among them) waited forever, and
+    // only interrupting lines still spoke. The Poker Dungeon hit exactly this and
+    // fixed it the same way; this is a port of that fix.
+    const alive = () => { this.lastAliveTs = Date.now(); };
+    utterance.onstart = alive;
+    utterance.onboundary = alive;
     utterance.onerror = (event) => {
-      console.error('TTS error:', event.error);
-      this.speaking = false;
-      this.processQueue();
+      alive();
+      if (event?.error !== 'interrupted' && event?.error !== 'canceled') console.error('TTS error:', event.error);
     };
 
-    if (this.speaking && options.queue !== false) {
-      this.queue.push(utterance);
-    } else {
-      this.speechSynthesis.speak(utterance);
-    }
+    try { this.speechSynthesis.speak(utterance); } catch (_) {}
   }
 
   /**
-   * Stop current speech
+   * Stop current speech, and everything queued behind it.
+   * @returns {boolean} whether anything was actually speaking or waiting
    */
   stop() {
-    if (this.speechSynthesis.speaking) {
-      this.speechSynthesis.cancel();
-    }
-    this.speaking = false;
-    this.queue = [];
+    const busy = !!(this.speechSynthesis.speaking || this.speechSynthesis.pending);
+    try { this.speechSynthesis.cancel(); } catch (_) {}
+    this.lastAliveTs = Date.now();
+    return busy;
+  }
+
+  /** Is anything speaking or queued right now? */
+  get isSpeaking() {
+    return !!(this.speechSynthesis?.speaking || this.speechSynthesis?.pending);
   }
 
   /**
-   * Process speech queue
+   * The two engine workarounds the Poker Dungeon needed, both independent of
+   * any state of ours so neither can desync:
+   *  - Chrome silently pauses speech after about 15 s of output; resume() every
+   *    8 s un-pauses it and does nothing otherwise.
+   *  - A cancel() landing mid-utterance can wedge Chrome's engine for good: it
+   *    claims to be speaking with a dead queue. If it says it is busy and no
+   *    word has started for 8 s, cancel() clears it.
    */
-  processQueue() {
-    if (this.queue.length > 0 && !this.speaking) {
-      const nextUtterance = this.queue.shift();
-      this.speechSynthesis.speak(nextUtterance);
-    }
+  _startEngineWatch() {
+    if (this._engineWatch) return;
+    this.lastAliveTs = Date.now();
+    this._engineWatch = [
+      setInterval(() => { try { this.speechSynthesis.resume(); } catch (_) {} }, 8000),
+      setInterval(() => {
+        const eng = this.speechSynthesis;
+        if (!(eng.speaking || eng.pending)) return;
+        if (Date.now() - (this.lastAliveTs || 0) < 8000) return;
+        console.warn('folken-games-quick-menu | speech engine wedged, resetting');
+        try { eng.cancel(); } catch (_) {}
+        this.lastAliveTs = Date.now();
+      }, 3000),
+    ];
   }
 
   /**
@@ -462,12 +476,10 @@ export class TTSManager {
     
     debugLog('Announcing roll result:', total);
     
-    // Use a clear, direct announcement of the result
-    this.speak(total.toString(), { 
-      interrupt: false, 
-      queue: true,
-      volume: 1.0 
-    });
+    // Queued behind the name, and at the player's own volume. Until 0.15.0 the
+    // results forced full volume, so turning the voice down with the minus key
+    // made everything quieter except the one thing he most needed to hear.
+    this.speak(total.toString(), { interrupt: false, queue: true });
   }
 
   /**
@@ -483,7 +495,7 @@ export class TTSManager {
    * the card shape so the real path can be identified from a console instead of
    * guessed at a third time.
    */
-  announceAttackResult(chatMessage) {
+  announceAttackResult(chatMessage, { quietIfNone = false } = {}) {
     if (!getSetting('enableTTS') || !chatMessage) return;
 
     const totals = extractRollTotals(chatMessage);
@@ -499,13 +511,17 @@ export class TTSManager {
 
     if (line) {
       debugLog('attack total read from', totals.source);
-      this.speak(line, { interrupt: false, queue: true, volume: 1.0 });
+      this.speak(line, { interrupt: false, queue: true });
       return;
     }
 
+    // A spell or item with nothing to roll - Shield, Mage Armor - has no number,
+    // and that is not an error. Its name was spoken when it was accepted.
+    if (quietIfNone) return;
+
     console.warn('folken-games-quick-menu | no roll total found on this card:',
       describeShape(chatMessage));
-    this.speak('Rolled. Result is in chat.', { interrupt: false, queue: true, volume: 1.0 });
+    this.speak('Rolled. Result is in chat.', { interrupt: false, queue: true });
   }
 
   /**

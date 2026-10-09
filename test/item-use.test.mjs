@@ -28,7 +28,21 @@ t("an item with an action keeps its command", () =>
   assert.equal(isTriggerable({ hasAction: true, system: {} }), true));
 
 t("a charged item keeps its command even with no action", () =>
-  assert.equal(isTriggerable({ hasAction: false, system: { uses: { max: 50, value: 12 } } }), true));
+  assert.equal(isTriggerable({ hasAction: false, system: { uses: { per: "charges", max: 50, value: 12 } } }), true));
+
+t("PF1's default uses.max of 1, with no period, is NOT a charge", () => {
+  // Josh, 2026-10-09: this is how the workbook, Ring of Wizardry, Spell Prism
+  // and the Wayfinder all got commands that only posted their card.
+  assert.equal(isTriggerable({ hasAction: false, system: { uses: { max: 1, value: 1 } } }), false);
+});
+
+t("PF1's own isCharged getter is preferred when present", () => {
+  assert.equal(isTriggerable({ hasAction: false, isCharged: false, system: { uses: { max: 1 } } }), false);
+  assert.equal(isTriggerable({ hasAction: false, isCharged: true, system: {} }), true);
+});
+
+t("a 3-per-day rod keeps its command", () =>
+  assert.equal(isTriggerable({ hasAction: false, system: { uses: { per: "day", max: 3, value: 3 } } }), true));
 
 t("an item with a declared activation keeps its command", () =>
   assert.equal(isTriggerable({ hasAction: false, system: { activation: { type: "standard" } } }), true));
@@ -45,7 +59,7 @@ t("without PF1's getter, the actions array is read directly", () => {
 
 t("a hasAction of false does not stop the charge fallback", () => {
   // PF1 may report no action while the item is still usable by charges.
-  assert.equal(isTriggerable({ hasAction: false, system: { uses: { max: 3 } } }), true);
+  assert.equal(isTriggerable({ hasAction: false, system: { uses: { per: "day", max: 3 } } }), true);
 });
 
 // --- robustness ---

@@ -9,7 +9,8 @@
 import { debugLog } from '../module.js';
 import { CollisionResolver } from './CollisionResolver.js';
 import { spellOut } from './AbbreviationGenerator.js';
-import { parseYesNo } from '../spells/Upcast.js';
+import { parseYesNo, parseTypedUpcast, parseSlotReportCommand, slotReportLine } from '../spells/Upcast.js';
+import { playEarcon } from '../tts/Earcons.js';
 import { renderAC, renderCMD, renderActiveBuffs, renderInactiveBuffs } from './StateSpeech.js';
 
 const MODULE_ID = 'folken-games-quick-menu';
@@ -67,6 +68,10 @@ export class ChatCommandInterceptor {
       const answer = parseYesNo(trimmed);
       if (answer === true) { executor.confirmUpcast(); return false; }
       if (answer === false) { executor.cancelUpcast({ announce: true }); return false; }
+    } else if (executor?.recentlyExpiredUpcast && parseYesNo(trimmed) !== null) {
+      // He answered, but too late. Say so rather than post a bare "Y" to the table.
+      executor.answerExpiredUpcast();
+      return false;
     }
 
     // Skip anything that isn't a slash command
@@ -118,6 +123,10 @@ export class ChatCommandInterceptor {
     if (command === 'bf' || command === 'buff' || command === 'buffs') { this._handleBuffs(); return false; }
     if (command === 'bfo') { this._handleInactiveBuffs(); return false; }
 
+    // /sr0 to /sr9: spell slots left at a level (Josh, 2026-10-09).
+    const slotLevel = parseSlotReportCommand(command);
+    if (slotLevel !== null) { this._handleSlotReport(slotLevel); return false; }
+
     // ─── Collision resolution (numeric response) ────────────
 
     if (this.collisionResolver.hasPending && /^\d+$/.test(command)) {
@@ -135,10 +144,10 @@ export class ChatCommandInterceptor {
           debugLog('ChatCommandInterceptor: lazy build complete for', actor.name);
         });
         this._whisper('Building command list... type your command again in a moment, or type <strong>/scan</strong>.');
-        game.folkenQuickMenu?.tts?.speak('Building commands. Try again in a moment.');
+        this._fail('Building commands. Try again in a moment.');
       } else {
         this._whisper('No character assigned or token selected.');
-        game.folkenQuickMenu?.tts?.speak('No character assigned or token selected.');
+        this._fail('No character assigned.');
       }
       return false; // Swallow the command to prevent Foundry's "invalid command" error
     }
@@ -149,7 +158,7 @@ export class ChatCommandInterceptor {
       const actor = game.folkenQuickMenu?.menuManager?.getCurrentActor();
       if (!actor) {
         this._whisper('No character assigned or token selected.');
-        game.folkenQuickMenu?.tts?.speak('No character assigned or token selected.');
+        this._fail('No character assigned.');
         return false;
       }
       this.executor.execute(result.actionItem, actor);
@@ -161,8 +170,88 @@ export class ChatCommandInterceptor {
       return false;
     }
 
-    // Not recognized by us — pass through to Foundry/other modules
+    // /6cl7: a spell's own command with a slot level on the end.
+    const typed = parseTypedUpcast(command);
+    if (typed) {
+      const base = this.resolver.resolve(typed.base);
+      if (base.found && base.actionItem?.actionType === 'spell') {
+        const actor = game.folkenQuickMenu?.menuManager?.getCurrentActor();
+        if (!actor) { this._fail('No character assigned.'); return false; }
+        const spell = actor.items.get(base.actionItem.itemId);
+        this.executor.castFromSlot(spell, actor, typed.slot);
+        return false;
+      }
+    }
+
+    // Not ours. Until 0.15.0 this passed through in silence, and Foundry's only
+    // answer was a red notification he cannot see - a typo like /prc sounded
+    // exactly like a roll that had not come back yet.
+    if (!this._someoneElseHandles(command)) {
+      this._fail(`No command, slash, ${spellOut(command)}.`);
+    }
+    // Still passed on, so any module that does know the command can run it.
     return true;
+  }
+
+  /**
+   * Would something else answer this? A macro of that name (Advanced Macros runs
+   * /MacroName) or a command another module has registered. Those must not
+   * be met with an error sound for a command that is about to work.
+   */
+  _someoneElseHandles(command) {
+    try {
+      if (game.macros?.find?.(m => m.name?.toLowerCase() === command)) return true;
+    } catch (_) {}
+    try {
+      const registered = game.chatCommands?.commands;
+      if (registered?.has?.(`/${command}`) || registered?.has?.(command)) return true;
+    } catch (_) {}
+    return false;
+  }
+
+  /** The error earcon, then the reason - heard even if speech is busy. */
+  _fail(reason) {
+    const tts = game.folkenQuickMenu?.tts;
+    try { playEarcon('error', { volume: tts?.liveVolume ?? 1 }); } catch (_) {}
+    if (reason) tts?.speak(reason, { interrupt: true, urgent: true });
+  }
+
+  // ─── /sr0 to /sr9 ───────────────────────────────────────────
+
+  /**
+   * Spell slots left at one level. For a spontaneous book that is the slot
+   * count; for a prepared one, how many of the spells prepared at that level
+   * are still uncast. A character with more than one book hears each, named.
+   */
+  _handleSlotReport(level) {
+    const actor = game.folkenQuickMenu?.menuManager?.getCurrentActor();
+    if (!actor) { this._fail('No character assigned.'); return; }
+
+    const books = actor.system?.attributes?.spells?.spellbooks ?? {};
+    const inUse = Object.entries(books).filter(([, b]) => b?.inUse);
+    if (!inUse.length) { this._fail('No spells.'); return; }
+
+    const lines = inUse.map(([key, book]) => {
+      let left = 0, total = 0;
+      if (book.spontaneous) {
+        const slot = book.spells?.[`spell${level}`] ?? {};
+        left = Number(slot.value) || 0;
+        total = Number(slot.max) || 0;
+      } else {
+        for (const spell of actor.items) {
+          if (spell.type !== 'spell' || spell.system?.spellbook !== key) continue;
+          if ((spell.system?.level ?? -1) !== level) continue;
+          left += Number(spell.system?.preparation?.value) || 0;
+          total += Number(spell.system?.preparation?.max) || 0;
+        }
+      }
+      const line = slotReportLine({ level, spontaneous: !!book.spontaneous, left, total });
+      return inUse.length > 1 ? `${book.label || key}: ${line}` : line;
+    });
+
+    const msg = lines.join(' ');
+    this._whisper(`<strong>${actor.name}:</strong> ${msg}`);
+    game.folkenQuickMenu?.tts?.speak(msg, { interrupt: true });
   }
 
   // ─── /scan ──────────────────────────────────────────────────
@@ -467,12 +556,14 @@ export class ChatCommandInterceptor {
   async _fqmRename(oldAbbrev, newAbbrev) {
     if (!oldAbbrev || !newAbbrev) {
       this._whisper('Usage: <strong>/fqm rename [old] [new]</strong>');
+      this._fail('Say slash f q m rename, the old command, then the new one.');
       return;
     }
 
     const actor = game.folkenQuickMenu?.menuManager?.getCurrentActor();
     if (!actor) {
       this._whisper('No character selected.');
+      this._fail('No character assigned.');
       return;
     }
 
@@ -480,10 +571,17 @@ export class ChatCommandInterceptor {
     const result = this.resolver.resolve(oldAbbrev.toLowerCase());
     if (!result.found) {
       this._whisper(`No command found for <strong>/${oldAbbrev}</strong>.`);
+      this._fail(`No command, slash, ${spellOut(oldAbbrev)}.`);
       return;
     }
 
-    await this.resolver.saveAlias(actor, result.actionItem.id, newAbbrev);
+    try {
+      await this.resolver.saveAlias(actor, result.actionItem.id, newAbbrev);
+    } catch (error) {
+      console.error('Rename failed:', error);
+      this._fail('Rename failed.');
+      return;
+    }
     this._whisper(`Renamed <strong>/${oldAbbrev}</strong> → <strong>/${newAbbrev}</strong> for ${result.actionItem.label}.`);
     game.folkenQuickMenu?.tts?.speak(`Renamed ${oldAbbrev} to ${newAbbrev}.`);
   }
@@ -492,10 +590,17 @@ export class ChatCommandInterceptor {
     const actor = game.folkenQuickMenu?.menuManager?.getCurrentActor();
     if (!actor) {
       this._whisper('No character selected.');
+      this._fail('No character assigned.');
       return;
     }
 
-    await this.resolver.clearAliases(actor);
+    try {
+      await this.resolver.clearAliases(actor);
+    } catch (error) {
+      console.error('Alias reset failed:', error);
+      this._fail('Reset failed.');
+      return;
+    }
     this._whisper(`All custom aliases cleared for <strong>${actor.name}</strong>. Type <strong>/scan</strong> to rebuild.`);
     game.folkenQuickMenu?.tts?.speak('All aliases cleared.');
   }
@@ -511,6 +616,8 @@ export class ChatCommandInterceptor {
       '<strong>/bf</strong> — Buffs that are ON. <strong>/bfo</strong> — Buffs on your sheet that are OFF',
       '<strong>/cmb</strong> — Roll a combat maneuver (trip, grapple, bull rush, disarm …)',
       '<strong>Y</strong> / <strong>N</strong> — Answer an up-cast offer when a spontaneous caster runs out of slots at a level',
+      '<strong>/6cl7</strong> — Cast a spell from a higher slot: the spell\'s command, then the slot level',
+      '<strong>/sr1</strong> to <strong>/sr9</strong> — Spell slots left at that level',
       '<strong>/fqm rename [old] [new]</strong> — Rename a command abbreviation',
       '<strong>/fqm reset</strong> — Clear all custom aliases',
       '<strong>/fqm help</strong> — Show this help',
@@ -519,7 +626,7 @@ export class ChatCommandInterceptor {
       'Spells, attacks, items, and feats require <strong>/scan</strong> first.',
     ];
     this._whisper(lines.join('<br>'));
-    game.folkenQuickMenu?.tts?.speak('Commands: /scan to scan character. /list to browse by category. /find to search. /st for status, /hp for hit points, /ac for armour class, /cmd for combat maneuver defense, /cmb to roll a maneuver, /cond for conditions, /bf for the buffs that are on, /bfo for the buffs that are off. /fqm rename to rename a command. /fqm help for help.');
+    game.folkenQuickMenu?.tts?.speak('Commands: /scan to scan character. /list to browse by category. /find to search. /st for status, /hp for hit points, /ac for armour class, /cmd for combat maneuver defense, /cmb to roll a maneuver, /cond for conditions, /bf for the buffs that are on, /bfo for the buffs that are off. /sr then a level for spell slots left. /fqm rename to rename a command. /fqm help for help.');
   }
 
   // ─── Utility ───────────────────────────────────────────────

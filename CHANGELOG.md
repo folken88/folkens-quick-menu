@@ -2,6 +2,71 @@
 
 All notable changes to the FolkenGames Quick Menu module will be documented in this file.
 
+## [0.15.0] - 2026-10-09
+
+From Josh's 0.14.0 test report and the silent-failure audit
+(`docs/superpowers/specs/2026-10-09-silent-failures-design.md`).
+
+### Added
+- **Sounds.** The Poker Dungeon's earcons, copied exactly so they mean the same
+  thing in both: two low 220 Hz pulses for an error, a falling tone when the menu
+  closes on a choice, a short high blip when speech is stopped. They follow the
+  voice volume. A sound cannot be dropped or queued behind other speech the way a
+  spoken line can, so every failure starts with one.
+- **Stop the voice.** `Control` on its own (the screen-reader convention, and it
+  works from inside the chat box), or `S` while the voice is talking and you are
+  not typing (as in the Poker Dungeon). `S` is also Foundry's pan-down - and moves
+  a selected token - so it is only taken while speech is playing or within 1.5 s
+  of it ending.
+- **`/sr1` to `/sr9`**: spell slots left at that level. "3 of 5 7th-level spells
+  left." Prepared casters hear how many prepared spells at that level are uncast.
+- **Typed up-cast, `/6cl7`**: a spell's command plus a slot level casts it from
+  that slot with no question asked.
+- **Uses left after an item.** "2 of 3 left." for a rod, "37 of 50 left." for a
+  wand, "2 left." for potions, "That was the last one." when it is gone.
+- **Skip Template Placement** setting (on by default). Josh: `/saf` and `/wcs`
+  waited silently for a template to be placed on the map.
+
+### Fixed
+- **Out-of-stock items said "sent to chat".** PF1's `use()` returns a refusal
+  code rather than throwing. Every use is now checked, and refusals are spoken:
+  "None left.", "No charges.", "No ammo.", "Disabled.", "Cancelled."
+- **Two attacks from one Punch.** The menu stayed open, silent, until the action
+  finished - about 2.5 s - so Josh pressed Enter again. The menu now closes the
+  moment a choice is accepted, the name is spoken at once, and a second Enter
+  while one is running does nothing. Chat commands get the name at once too.
+- **Spell damage was never read.** Spells used the plain roll reader, which never
+  looks where PF1 keeps attack and damage rolls. They now use the attack reader,
+  and a damage-only card (Fireball) reads "31 damage". Spells with nothing rolled
+  stay quiet after their name.
+- **The voice could go silent for good.** The speech queue waited on an end event
+  Chrome does not always send; once one was lost, everything queued behind it
+  (roll results included) never played. Ported the Poker Dungeon's fix: the
+  browser's own queue, a periodic `resume()`, and a watchdog for a wedged engine.
+- **Roll results ignored the volume key.** They forced full volume.
+- **Speed and volume keys were dead with the menu open** if it had been opened
+  from the chat box, because focus was still in a text field.
+- **A pending up-cast survived other commands.** `/6dis`, then `/per`, then Y
+  would still cast Disintegrate. Any command now withdraws the offer.
+- **A failed up-cast could leave the slots wrong.** 0.14.0 restored the slot
+  counts by reading them after it had already changed them, and treated a PF1
+  refusal as a successful cast. The counts are now captured first, and a refusal
+  puts both levels back.
+- **Unknown commands were silent.** A typo like `/prc` now gets the error sound
+  and "No command, slash, p, r, c." It is still passed on, and a macro or another
+  module's command of that name is left to run without the error.
+- **`/fqm rename` and `/fqm reset` failed in silence**, with only a whisper.
+- **Codes read as units.** "2 m i" was read as "2 meters"; codes are now spoken
+  with commas between the letters.
+- **Passive items with PF1's default `uses.max` of 1** (the workbook, Ring of
+  Wizardry, Spell Prism, the Wayfinder) got commands that only posted their card.
+  Uses PF1's own `isCharged` now, and loot in containers needs a real use too.
+- **Up-casting is the rules as written**, not a house rule; the 0.14.0 notes were
+  wrong and are corrected.
+
+- 302 assertions over 13 suites, including the real executor run against a
+  stubbed Foundry.
+
 ## [0.14.0] - 2026-10-08
 
 ### Added
@@ -16,8 +81,8 @@ All notable changes to the FolkenGames Quick Menu module will be documented in t
   - **Y** is accepted bare, not just as `/y`, because that is what gets typed. Only a
     clear yes or no is consumed; anything else goes to chat as normal rather than
     being guessed at.
-  - The offer expires after 30 seconds and is replaced by the next command, so a
-    stray Y cannot spend a slot against an offer that has been forgotten.
+  - The offer expires after 30 seconds. *(This entry originally also said the next
+    command replaced the offer; it did not until 0.15.0.)*
 
   How the slot is actually moved: PF1 always charges the slot at the spell's own
   level and gives no way to redirect it, so one slot is lent at that level and one
@@ -27,9 +92,10 @@ All notable changes to the FolkenGames Quick Menu module will be documented in t
   corrected, rather than leaving behind a slot that was never earned on a sheet its
   owner cannot see. If the cast throws, both levels are restored.
 
-  Pathfinder 1e has no general up-casting rule for spontaneous casters, so this is a
-  house rule at this table. The spell is cast exactly as written; the larger slot
-  buys the cast and nothing else.
+  *(Correction, 0.15.0: this entry called up-casting a house rule. It is the rules
+  as written - the Core Rulebook: "A spellcaster always has the option to fill a
+  higher-level spell slot with a lower-level spell.")* The spell is cast exactly as
+  written; the larger slot buys the cast and nothing else.
 
 - 243 assertions over 11 suites.
 

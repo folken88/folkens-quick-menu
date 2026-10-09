@@ -6,6 +6,18 @@
 import { debugLog, getSetting } from '../module.js';
 import { CharacterDataExtractor } from '../character/CharacterDataExtractor.js';
 import { CharacterDataExtractorPF2e } from '../character/CharacterDataExtractorPF2e.js';
+import { playEarcon } from '../tts/Earcons.js';
+
+/** An earcon at the player's own voice volume. Never throws. */
+function earcon(kind) {
+  try { playEarcon(kind, { volume: game.folkenQuickMenu?.tts?.liveVolume ?? 1 }); } catch (_) {}
+}
+
+/** The error earcon, then the reason. */
+function fail(reason) {
+  earcon('error');
+  game.folkenQuickMenu?.tts?.speak(reason, { interrupt: true, urgent: true });
+}
 
 export class QuickMenuManager {
   constructor() {
@@ -96,6 +108,7 @@ export class QuickMenuManager {
     if (!actor) {
       ui.notifications.warn('No character selected or assigned');
       this.closeMenu();
+      fail('No character assigned.');
       return;
     }
     
@@ -781,17 +794,30 @@ export class QuickMenuManager {
   async executeAction(actionItem) {
     debugLog('Executing action:', actionItem);
 
+    // Josh, 2026-10-09: the menu used to stay open until the action finished -
+    // about 2.5 s for Punch - and in that time there was no sound at all. He
+    // pressed Enter again and got a second attack. Now the menu closes the
+    // moment the choice is accepted, with the falling "close" tone, and a
+    // second Enter while it is still running does nothing.
+    if (this._executing) return;
+    this._executing = true;
+
     try {
       const actor = this.getCurrentActor();
       if (!actor) {
         ui.notifications.warn('No character selected or assigned');
+        fail('No character assigned.');
         return;
       }
-      await game.folkenQuickMenu.actionExecutor.execute(actionItem, actor);
       this.closeMenu();
+      earcon('close');
+      await game.folkenQuickMenu.actionExecutor.execute(actionItem, actor);
     } catch (error) {
       console.error('Error executing action:', error);
       ui.notifications.error(`Failed to execute ${actionItem.label}`);
+      fail(`${actionItem.label || 'That'} failed.`);
+    } finally {
+      this._executing = false;
     }
   }
 

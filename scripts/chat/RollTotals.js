@@ -85,10 +85,13 @@ export function extractRollTotals(message) {
     const attacks = [];
     for (const entry of raw) {
       const attack = totalOf(entry);
-      if (attack === null) continue;
       const damage = Array.isArray(entry?.damage)
         ? (totalsFrom(entry.damage).reduce((a, b) => a + b, 0) || null)
         : null;
+      // A Fireball or a Lightning Bolt rolls damage and no attack. Until 0.15.0
+      // an entry without an attack was skipped whole, so its damage was never
+      // read out either.
+      if (attack === null && damage === null) continue;
       attacks.push({ attack, damage });
     }
     if (attacks.length) {
@@ -151,10 +154,12 @@ export function renderAttackTotals(totals = {}, { terse = true } = {}) {
 
   if (!attacks.length) return '';
 
-  const one = ({ attack, damage }) =>
-    (damage !== null && damage !== undefined && damage > 0)
-      ? `${attack} to hit, ${damage} damage`
-      : `${attack} to hit`;
+  const hasDamage = (d) => d !== null && d !== undefined && d > 0;
+  const one = ({ attack, damage }) => {
+    if (attack === null || attack === undefined) return hasDamage(damage) ? `${damage} damage` : '';
+    return hasDamage(damage) ? `${attack} to hit, ${damage} damage` : `${attack} to hit`;
+  };
+  if (!attacks.some(a => one(a))) return '';
 
   if (attacks.length === 1) return one(attacks[0]) + '.';
   if (terse) return attacks.map(one).join('. ') + '.';

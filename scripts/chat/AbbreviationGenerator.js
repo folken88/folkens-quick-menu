@@ -13,7 +13,9 @@ const RESERVED_COMMANDS = new Set([
   'w', 'whisper', 'reply', 'gm', 'players', 'm', 'macro',
   'scan', 'fqm', 'list', 'find',
   'st', 'stat', 'status', 'hp', 'cond', 'conds', 'conditions', 'bf', 'buff', 'buffs',
-  'ac', 'cmd', 'bfo'
+  'ac', 'cmd', 'bfo',
+  // /sr0 to /sr9 read spell slots (0.15.0)
+  'sr0', 'sr1', 'sr2', 'sr3', 'sr4', 'sr5', 'sr6', 'sr7', 'sr8', 'sr9'
 ]);
 
 /**
@@ -327,7 +329,10 @@ export function spellAbbreviationHead(name, level, extra = 1) {
  * @returns {string}
  */
 export function spellOut(abbrev) {
-  return String(abbrev || '').split('').join(' ');
+  // Commas, not spaces. Josh, 2026-10-09: with spaces the voice read units -
+  // "2 m i" came out as "2 meters" and "3 h" as "3 hours". A comma makes it
+  // read each character on its own.
+  return String(abbrev || '').split('').join(', ');
 }
 
 /**

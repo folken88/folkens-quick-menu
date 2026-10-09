@@ -30,8 +30,20 @@ export function isTriggerable(item) {
     return true;
   }
 
-  // Charges or a declared activation make it usable even without an action.
-  if ((item.system?.uses?.max ?? 0) > 0) return true;
+  // Charges make it usable even without an action - but only REAL charges.
+  //
+  // 0.12.0 tested uses.max > 0, and Josh found the flaw (2026-10-09): PF1 gives
+  // every item uses.max 1 by default, so the Arcane family workbook, Ring of
+  // Wizardry, Spell Prism, the Wayfinder and the rest all slipped through and
+  // got commands that could only post their own card. PF1's own test is
+  // ItemPF.isCharged: single-use, or uses with a real period (per day, per week,
+  // charges). A bare max of 1 with no period is just the default.
+  if (typeof item.isCharged === 'boolean') {
+    if (item.isCharged) return true;
+  } else if (item.system?.uses?.per) {
+    return true;
+  }
+
   if (item.system?.activation?.type) return true;
 
   return false;

@@ -4,7 +4,8 @@
  */
 
 import { debugLog, getSetting } from '../module.js';
-import { menuClaimsKey, isDuplicateKeydown } from './MenuKeys.js';
+import { menuClaimsKey, isDuplicateKeydown, loneControl, isStopSpeechKey } from './MenuKeys.js';
+import { playEarcon } from '../tts/Earcons.js';
 
 export class KeyboardHandler {
   constructor() {
@@ -27,6 +28,16 @@ export class KeyboardHandler {
     // the menu appeared to ignore them when it was opened from the chat prompt.
     // Capturing means we see the key first regardless of what holds focus.
     document.addEventListener('keydown', this.handleGlobalKeydown.bind(this), { capture: true });
+
+    // Control on its own stops the voice. Watched on keyup as well as keydown,
+    // and never consumed: the key still reaches the screen reader, which uses
+    // the same press to silence itself.
+    const watchControl = (event) => {
+      this._ctrl = loneControl(this._ctrl, event);
+      if (this._ctrl.stop) this.stopSpeech();
+    };
+    document.addEventListener('keydown', watchControl, { capture: true });
+    document.addEventListener('keyup', watchControl, { capture: true });
     
     // Menu-specific listeners (only active when menu is open)
     this.setupMenuListeners();
@@ -79,6 +90,21 @@ export class KeyboardHandler {
       return;
     }
 
+    // S stops the voice while it is talking, as in the Poker Dungeon.
+    const tts = game.folkenQuickMenu?.tts;
+    if (tts && isStopSpeechKey(event, {
+      typing: this.isTypingTarget(),
+      speaking: tts.isSpeaking,
+      msSinceSpeech: Date.now() - (tts.lastAliveTs || 0),
+    })) {
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      this._rememberConsumed(event);
+      this.stopSpeech();
+      return;
+    }
+
     // Accessibility controls (TTS speed/volume, jump-to-chat) — work whether or not
     // the menu is open, but never while the player is typing in a field.
     if (this.handleAccessibilityKeys(event)) return;
@@ -118,6 +144,16 @@ export class KeyboardHandler {
     this._lastConsumed = { code: event.code, timeStamp: event.timeStamp };
   }
 
+  /** Cut the voice off, and confirm with the short "ack" blip if it was talking. */
+  stopSpeech() {
+    const tts = game.folkenQuickMenu?.tts;
+    if (!tts) return;
+    const wasTalking = tts.stop();
+    if (wasTalking) {
+      try { playEarcon('ack', { volume: tts.liveVolume ?? 1 }); } catch (_) {}
+    }
+  }
+
   /**
    * True when focus is in a text field / rich-text editor, so global single-key
    * accessibility shortcuts must not fire (the player is typing).
@@ -141,7 +177,12 @@ export class KeyboardHandler {
   handleAccessibilityKeys(event) {
     if (!getSetting('enabled')) return false;
     if (event.ctrlKey || event.altKey || event.metaKey) return false; // don't hijack modified combos
-    if (this.isTypingTarget()) return false;
+
+    // While typing, these keys are letters and punctuation and must type. The
+    // exception is an open menu: it was opened from the chat box, so focus is
+    // still there, and Josh found the speed keys dead exactly when he wanted
+    // them (2026-10-09). With the menu open nothing is being typed.
+    if (this.isTypingTarget() && !game.folkenQuickMenu?.menuManager?.isOpen) return false;
 
     // Jump to the chat prompt (v14 leaves it unnamed / "new line" to screen readers)
     const chatKey = getSetting('chatFocusKey') || 'Backslash';

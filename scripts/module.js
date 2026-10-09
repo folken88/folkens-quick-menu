@@ -265,6 +265,17 @@ function registerSettings() {
     default: true
   });
 
+  // Area spells, scrolls and wands otherwise stop and wait for a template to be
+  // placed on the map, which cannot be done by ear (Josh, 2026-10-09).
+  game.settings.register(MODULE_ID, 'skipTemplates', {
+    name: 'Skip Template Placement',
+    hint: 'On (default): area spells, scrolls and wands cast at once without asking you to place a template on the map; the GM places it if it matters. Off: PF1 asks for the template as usual.',
+    scope: 'client',
+    config: true,
+    type: Boolean,
+    default: true
+  });
+
   // Activation key
   game.settings.register(MODULE_ID, 'activationKey', {
     name: 'Activation Key',

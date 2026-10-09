@@ -432,7 +432,11 @@ export class CharacterDataExtractor {
           break;
         case 'containers':
           // Containers and their contents
-          if (item.type === 'container' || item.type === 'loot') {
+          // Containers stay, as places to look inside. Loot only if it actually
+          // does something: Josh found every loot item was being given a command
+          // with no check at all (2026-10-09), so a torch or a gem became one
+          // more thing to arrow past.
+          if (item.type === 'container' || (item.type === 'loot' && isTriggerable(item))) {
             // For containers, create submenu with contents
             if (item.system.contents && item.system.contents.length > 0) {
               itemData.type = 'container_category';

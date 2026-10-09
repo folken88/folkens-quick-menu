@@ -7,8 +7,19 @@
 import { debugLog } from '../module.js';
 import { isOwnMessage } from '../chat/RollTotals.js';
 import { armAnnouncement } from './Announcer.js';
-import { canOfferUpcast, findUpcastLevel, planUpcast, slotsAt,
+import { canOfferUpcast, findUpcastLevel, planUpcast, slotsAt, ordinal,
          upcastPrompt, upcastConfirmation, noSlotsMessage } from '../spells/Upcast.js';
+import { playEarcon } from '../tts/Earcons.js';
+import { useOutcome, usesLeftLine } from './UseOutcome.js';
+
+/**
+ * Actions slow enough that silence between the keypress and the result reads as
+ * "nothing happened". Josh, 2026-10-09: Punch takes about 2.5 s, spells 1.2 to
+ * 2.1 s; he heard nothing, pressed again, and got two attacks. These get their
+ * name spoken the instant they are accepted. Skills, saves and checks answer in
+ * a twentieth of a second, so they do not need it.
+ */
+const ACKNOWLEDGED = new Set(['attack', 'strike', 'maneuver', 'spell', 'item', 'item_activate', 'item_consume']);
 
 export class ActionExecutor {
 
@@ -20,9 +31,18 @@ export class ActionExecutor {
   async execute(actionItem, actor) {
     debugLog('ActionExecutor: executing', actionItem.actionType, actionItem.label);
 
+    // Any new command withdraws a pending up-cast offer. 0.14.0's documentation
+    // said this happened and it did not: /6dis, then /per, then Y within 30
+    // seconds would still spend a 7th and cast Disintegrate.
+    this.cancelUpcast();
+
     if (!actor) {
-      ui.notifications.warn('No character selected or assigned');
+      this._fail('No character assigned.');
       return;
+    }
+
+    if (ACKNOWLEDGED.has(actionItem.actionType) && actionItem.label) {
+      this._tts()?.speak(actionItem.label, { interrupt: true, urgent: true });
     }
 
     switch (actionItem.actionType) {
@@ -80,6 +100,7 @@ export class ActionExecutor {
         break;
       default:
         console.warn('ActionExecutor: unknown action type:', actionItem.actionType);
+        this._earcon('error');
     }
   }
 
@@ -91,6 +112,42 @@ export class ActionExecutor {
 
   _isPF2e() {
     return game.folkenQuickMenu?.systemDetector?.isPF2e();
+  }
+
+  _volume() {
+    return this._tts()?.liveVolume ?? 1;
+  }
+
+  /** The Poker Dungeon's earcon, at the player's own volume. Never throws. */
+  _earcon(kind) {
+    try { playEarcon(kind, { volume: this._volume() }); } catch (_) { /* never break a command */ }
+  }
+
+  /**
+   * A failure, heard at once: the error earcon, then the reason if there is one.
+   * The sound comes first because it is separate from the speech engine and
+   * cannot be dropped, cleared or lost the way a spoken line can.
+   */
+  _fail(reason) {
+    this._earcon('error');
+    if (reason) this._tts()?.speak(reason, { interrupt: true, urgent: true });
+  }
+
+  /** A command whose item has gone since the last /scan. */
+  _missing() {
+    this._fail('Not found. Type slash scan.');
+  }
+
+  /**
+   * Options for every PF1 use(). Area spells, scrolls and wands otherwise stop
+   * and wait for a template to be placed on the map - Josh, 2026-10-09: "/saf
+   * and /wcs wait silently for a template to be placed on the map, which I
+   * can't do by ear." Skipping placement still resolves the effect.
+   */
+  _useOptions(extra = {}) {
+    let skip = true;
+    try { skip = game.settings.get('folken-games-quick-menu', 'skipTemplates') !== false; } catch (_) {}
+    return { skipDialog: true, ...(skip ? { measureTemplate: false } : {}), ...extra };
   }
 
   /**
@@ -146,6 +203,18 @@ export class ActionExecutor {
     return this._announceOnce((message) => this._tts()?.announceAttackResult(message));
   }
 
+  /**
+   * Spells and items. Their cards carry rolls the same way attacks do, so they
+   * use the same reader - the plain one only looks at message.rolls, which is
+   * why spell damage was never read out. Quiet when the card has no roll at
+   * all: Shield or Mage Armor have nothing to report beyond the name already
+   * spoken when the cast was accepted.
+   */
+  _hookSpellResult() {
+    return this._announceOnce((message) =>
+      this._tts()?.announceAttackResult(message, { quietIfNone: true }));
+  }
+
   _createPF2eFakeEvent() {
     return {
       preventDefault: () => {},
@@ -178,6 +247,7 @@ export class ActionExecutor {
       await actor.rollSkill(skillKey, rollOptions);
     } catch (error) {
       console.error("Skill check error:", error);
+      this._fail(`${actionItem.label || 'Roll'} failed.`);
       hookId.off();
     }
   }
@@ -191,17 +261,16 @@ export class ActionExecutor {
     }
 
     const item = actor.items.get(actionItem.itemId);
-    if (!item) return;
-
-    const useOptions = { skipDialog: true };
-    if (actionItem.fullAttack) useOptions.fullAttack = true;
+    if (!item) { this._missing(); return; }
 
     const hookId = this._hookAttackResult();
     try {
-      await item.use(useOptions);
+      const outcome = useOutcome(await item.use(this._useOptions(actionItem.fullAttack ? { fullAttack: true } : {})));
+      if (!outcome.ok) { hookId.off(); this._fail(outcome.reason); }
     } catch (error) {
       console.error("Attack roll error:", error);
       hookId.off();
+      this._fail(`${item.name} failed.`);
     }
   }
 
@@ -209,7 +278,7 @@ export class ActionExecutor {
 
   async executeSpellCast(actionItem, actor) {
     const spell = actor.items.get(actionItem.itemId);
-    if (!spell) return;
+    if (!spell) { this._missing(); return; }
 
     if (this._isPF2e()) {
       await this._executePF2eSpellCast(spell, actionItem, actor);
@@ -219,34 +288,47 @@ export class ActionExecutor {
     const book = spell.spellbook;
     const level = spell.system?.level ?? 0;
 
-    // A spontaneous caster who has run out at this level can borrow a higher
-    // slot, if he says so. Ask before spending anything.
+    // A spontaneous caster out of slots at this level can fill a higher one -
+    // the rules as written. Ask before spending anything.
     if (book?.spontaneous && level > 0 && slotsAt(book, level) <= 0) {
       if (canOfferUpcast(book, level)) {
         this._offerUpcast(spell, actor, level, findUpcastLevel(book, level));
       } else {
-        this._tts()?.speak(noSlotsMessage(level), { interrupt: true });
+        this._fail(noSlotsMessage(level));
       }
       return;
     }
 
-    // Prepared casters: nothing prepared means nothing to cast.
-    if (!book?.spontaneous) {
-      const prepared = spell.system.preparation?.value || 0;
-      if (prepared <= 0 && level > 0) {
-        this._tts()?.speak('None prepared');
-        return;
-      }
+    // Prepared books, spell-like books and at-will spells: ask PF1 how many
+    // casts remain, rather than second-guessing its preparation data.
+    if (!book?.spontaneous && level > 0) {
+      const uses = typeof spell.getSpellUses === 'function'
+        ? spell.getSpellUses()
+        : (spell.system?.preparation?.value || 0);
+      if (!(uses > 0)) { this._fail('None left.'); return; }
     }
 
-    const hookId = this._hookRollResult();
+    await this._cast(spell);
+  }
+
+  /**
+   * Cast through PF1 and report the truth. Returns whether it went through.
+   *
+   * There used to be a "Disintegrate, cast" line after this, spoken whatever
+   * PF1 actually did - including when it refused. The name is now spoken the
+   * moment the command is accepted, and only a failure is spoken after.
+   */
+  async _cast(spell) {
+    const hookId = this._hookSpellResult();
     try {
-      await spell.use({ skipDialog: true });
-      this._tts()?.speak(`${spell.name}, cast`, { interrupt: false, queue: true });
+      const outcome = useOutcome(await spell.use(this._useOptions()));
+      if (!outcome.ok) { hookId.off(); this._fail(outcome.reason); return false; }
+      return true;
     } catch (error) {
       console.error('Error casting spell:', error);
-      this._tts()?.speak('Cast failed');
       hookId.off();
+      this._fail(`${spell.name} failed.`);
+      return false;
     }
   }
 
@@ -254,21 +336,13 @@ export class ActionExecutor {
 
   /**
    * Ask, and remember what we asked, so a Y or N in chat can answer it.
-   *
-   * The offer expires. A yes that arrives five minutes later, after he has moved
-   * on, must not quietly spend a slot - same reasoning as the announcement hook.
+   * The offer expires, and any other command withdraws it.
    */
   _offerUpcast(spell, actor, level, upcastLevel) {
     this.cancelUpcast();
 
-    this.pendingUpcast = {
-      spellId: spell.id,
-      actorId: actor.id,
-      level,
-      upcastLevel,
-      spellName: spell.name,
-    };
-    this.pendingUpcast.timer = setTimeout(() => this.cancelUpcast(), 30000);
+    this.pendingUpcast = { spellId: spell.id, actorId: actor.id, level, upcastLevel, spellName: spell.name };
+    this.pendingUpcast.timer = setTimeout(() => this._expireUpcast(), 30000);
 
     const message = upcastPrompt(spell.name, level, upcastLevel);
     this._tts()?.speak(message, { interrupt: true, urgent: true });
@@ -285,6 +359,19 @@ export class ActionExecutor {
     return !!this.pendingUpcast;
   }
 
+  /**
+   * Recently expired? A Y or N that arrives just after the offer lapsed should
+   * be told so, not posted to chat as an ordinary message.
+   */
+  get recentlyExpiredUpcast() {
+    return !!this._expiredAt && (Date.now() - this._expiredAt) < 15000;
+  }
+
+  _expireUpcast() {
+    this.cancelUpcast();
+    this._expiredAt = Date.now();
+  }
+
   cancelUpcast({ announce = false } = {}) {
     if (!this.pendingUpcast) return;
     if (this.pendingUpcast.timer) clearTimeout(this.pendingUpcast.timer);
@@ -292,76 +379,131 @@ export class ActionExecutor {
     if (announce) this._tts()?.speak('Cancelled.', { interrupt: true });
   }
 
-  /**
-   * Spend a higher slot and cast.
-   *
-   * PF1 always charges the slot at the spell's own level and offers no way to
-   * point it at a different one, so the slot is lent at that level and taken
-   * from the higher one in a single update. PF1 then spends the lent slot as
-   * usual. Afterwards the lent level is read back: if PF1 did not deduct it -
-   * auto-deduct can be switched off - it is put right here rather than leaving
-   * a slot he never earned on a sheet he cannot see.
-   */
+  /** A Y or N that arrived after the offer expired. */
+  answerExpiredUpcast() {
+    this._expiredAt = null;
+    this._fail('Offer expired.');
+  }
+
   async confirmUpcast() {
     const pending = this.pendingUpcast;
     if (!pending) return;
     this.cancelUpcast();
+    this._expiredAt = null;
 
     const actor = game.actors.get(pending.actorId);
     const spell = actor?.items.get(pending.spellId);
-    if (!spell) { this._tts()?.speak('That spell is gone.'); return; }
+    if (!spell) { this._missing(); return; }
+    await this._castWithSlot(spell, actor, pending.level, pending.upcastLevel);
+  }
 
+  /**
+   * The typed up-cast: /6cl7 casts Chain Lightning from a 7th-level slot, with
+   * no prompt, whether or not 6th-level slots remain. Josh, 2026-10-09.
+   */
+  async castFromSlot(spell, actor, slotLevel) {
+    this.cancelUpcast();
+    if (!spell) { this._missing(); return; }
+    const book = spell.spellbook;
+    const level = spell.system?.level ?? 0;
+
+    if (!book?.spontaneous) { this._fail('Only spontaneous casters choose a slot.'); return; }
+    if (!(slotLevel > level)) { this._fail(`A ${ordinal(slotLevel)} slot is not higher than ${ordinal(level)}.`); return; }
+    if (slotsAt(book, slotLevel) <= 0) { this._fail(`No ${ordinal(slotLevel)} slots left.`); return; }
+
+    if (spell.name) this._tts()?.speak(spell.name, { interrupt: true, urgent: true });
+    await this._castWithSlot(spell, actor, level, slotLevel);
+  }
+
+  /**
+   * Spend a higher slot and cast.
+   *
+   * PF1 always charges the slot at the spell's own level and offers no way to
+   * redirect it, so one slot is lent at that level and one taken from the
+   * higher level in a single update; PF1 then spends the lent slot as usual.
+   *
+   * The counts are captured BEFORE the update. 0.14.0 read them afterwards from
+   * the live spellbook object, which the update had already changed, so its
+   * failure path "restored" the changed numbers - a failed up-cast would have
+   * left a free slot at the spell's level and one fewer above it.
+   */
+  async _castWithSlot(spell, actor, level, slotLevel) {
     const bookKey = spell.system?.spellbook || 'primary';
     const book = spell.spellbook;
+    if (slotsAt(book, slotLevel) <= 0) { this._fail(noSlotsMessage(level)); return; }
 
-    // Re-check: slots may have moved since we asked.
-    if (slotsAt(book, pending.upcastLevel) <= 0) {
-      this._tts()?.speak(noSlotsMessage(pending.level), { interrupt: true });
+    const base = `system.attributes.spells.spellbooks.${bookKey}.spells`;
+    const before = { own: slotsAt(book, level), higher: slotsAt(book, slotLevel) };
+    const plan = planUpcast(bookKey, level, slotLevel, book);
+
+    try {
+      await actor.update(plan.updates);
+    } catch (error) {
+      console.error('Up-cast slot update failed:', error);
+      this._fail('Up-cast failed. Slots unchanged.');
       return;
     }
 
-    const plan = planUpcast(bookKey, pending.level, pending.upcastLevel, book);
-    const hookId = this._hookRollResult();
-    try {
-      await actor.update(plan.updates);
-      await spell.use({ skipDialog: true });
-
-      // Did PF1 take the lent slot back?
-      const [path, expected] = Object.entries(plan.expectedAfterCast)[0];
-      const actual = foundry.utils.getProperty(actor, path);
-      if (typeof actual === 'number' && actual !== expected) {
-        await actor.update({ [path]: expected });
-      }
-
-      this._tts()?.speak(upcastConfirmation(spell.name, pending.upcastLevel),
-        { interrupt: false, queue: true });
-    } catch (error) {
-      console.error('Up-cast failed:', error);
-      hookId.off();
-      // Put the slots back exactly as they were.
+    const cast = await this._cast(spell);
+    if (!cast) {
       try {
         await actor.update({
-          [`system.attributes.spells.spellbooks.${bookKey}.spells.spell${pending.level}.value`]: slotsAt(book, pending.level),
-          [`system.attributes.spells.spellbooks.${bookKey}.spells.spell${pending.upcastLevel}.value`]: slotsAt(book, pending.upcastLevel),
+          [`${base}.spell${level}.value`]: before.own,
+          [`${base}.spell${slotLevel}.value`]: before.higher,
         });
-      } catch (_) { /* nothing more we can do */ }
-      this._tts()?.speak('Up-cast failed. Slots unchanged.', { interrupt: true });
+      } catch (_) { /* _cast has already reported the failure */ }
+      return;
     }
+
+    // Did PF1 take the lent slot back? Auto-deduct can be switched off.
+    const [path, expected] = Object.entries(plan.expectedAfterCast)[0];
+    const actual = foundry.utils.getProperty(actor, path);
+    if (typeof actual === 'number' && actual !== expected) {
+      try { await actor.update({ [path]: expected }); } catch (_) {}
+    }
+
+    this._tts()?.speak(upcastConfirmation(spell.name, slotLevel), { interrupt: false, queue: true });
   }
 
   // ─── Item ─────────────────────────────────────────────────
 
   async executeItemUse(actionItem, actor) {
     const item = actor.items.get(actionItem.itemId);
-    if (!item) return;
+    if (!item) { this._missing(); return; }
 
     if (this._isPF2e()) {
       await this._executePF2eItemUse(item, actionItem, actor);
-    } else {
-      await item.use({ skipDialog: true });
+      return;
     }
-    // Blind confirmation: using an item posts its card/description to chat silently otherwise.
-    this._tts()?.speak(`${item.name} sent to chat`, { interrupt: false, queue: true });
+    await this._useItem(item, actor);
+  }
+
+  /**
+   * Use an item through PF1 and report the truth.
+   *
+   * Josh, 2026-10-09: scrolls with quantity 0 showed "You don't have any more of
+   * that item" on screen and said "sent to chat". PF1 returns a refusal code
+   * rather than throwing, so it is checked. On success he hears how many uses
+   * are left - "2 of 3 left" - instead of "sent to chat".
+   */
+  async _useItem(item, actor) {
+    const hookId = this._hookSpellResult();
+    try {
+      const outcome = useOutcome(await item.use(this._useOptions()));
+      if (!outcome.ok) { hookId.off(); this._fail(outcome.reason); return; }
+
+      const fresh = actor.items.get(item.id);
+      if (!fresh) {
+        this._tts()?.speak('That was the last one.', { interrupt: false, queue: true });
+        return;
+      }
+      const left = usesLeftLine(fresh);
+      if (left) this._tts()?.speak(left, { interrupt: false, queue: true });
+    } catch (error) {
+      console.error('Item use error:', error);
+      hookId.off();
+      this._fail(`${item.name} failed.`);
+    }
   }
 
   // ─── Save ─────────────────────────────────────────────────
@@ -378,6 +520,7 @@ export class ActionExecutor {
       await actor.rollSavingThrow(saveType, { skipDialog: true });
     } catch (error) {
       console.error("Saving throw error:", error);
+      this._fail(`${actionItem.label || 'Save'} failed.`);
       hookId.off();
     }
   }
@@ -396,6 +539,7 @@ export class ActionExecutor {
       await actor.rollAbilityTest(abilityKey, { skipDialog: true });
     } catch (error) {
       console.error("Ability check error:", error);
+      this._fail(`${actionItem.label || 'Check'} failed.`);
       hookId.off();
     }
   }
@@ -415,6 +559,7 @@ export class ActionExecutor {
       await actor.rollInitiative({ skipDialog: true });
     } catch (error) {
       console.error("Initiative roll error:", error);
+      this._fail(`${'Initiative'} failed.`);
       hookId.off();
     }
   }
@@ -427,6 +572,7 @@ export class ActionExecutor {
       await actor.rollSkill('hea', { skipDialog: true });
     } catch (error) {
       console.error("Stabilize check error:", error);
+      this._fail(`${'Stabilize'} failed.`);
       hookId.off();
     }
   }
@@ -446,6 +592,7 @@ export class ActionExecutor {
       });
     } catch (error) {
       console.error("Caster level check error:", error);
+      this._fail(`${'Caster level check'} failed.`);
       hookId.off();
     }
   }
@@ -465,6 +612,7 @@ export class ActionExecutor {
       });
     } catch (error) {
       console.error("Concentration check error:", error);
+      this._fail(`${'Concentration'} failed.`);
       hookId.off();
     }
   }
@@ -487,17 +635,18 @@ export class ActionExecutor {
       return;
     }
     if (typeof actor.rollAttack !== 'function') {
-      this._tts()?.speak('Combat maneuvers are not available for this character');
+      this._fail('No combat maneuvers for this character.');
       return;
     }
 
     const hookId = this._hookAttackResult();
     try {
-      await actor.rollAttack({ maneuver: true, skipDialog: true });
+      const outcome = useOutcome(await actor.rollAttack({ maneuver: true, ...this._useOptions() }));
+      if (!outcome.ok) { hookId.off(); this._fail(outcome.reason); }
     } catch (error) {
       console.error('Combat maneuver error:', error);
-      this._tts()?.speak('Maneuver failed');
       hookId.off();
+      this._fail('Maneuver failed.');
     }
   }
 
@@ -579,7 +728,7 @@ export class ActionExecutor {
 
   async executeItemEquip(actionItem, actor) {
     const item = actor.items.get(actionItem.itemId);
-    if (!item) { this._tts()?.speak('Item not found'); return; }
+    if (!item) { this._missing(); return; }
     try {
       await item.update({ 'system.equipped.value': true });
       this._tts()?.speak(`${item.name} equipped`);
@@ -591,7 +740,7 @@ export class ActionExecutor {
 
   async executeItemUnequip(actionItem, actor) {
     const item = actor.items.get(actionItem.itemId);
-    if (!item) { this._tts()?.speak('Item not found'); return; }
+    if (!item) { this._missing(); return; }
     try {
       await item.update({ 'system.equipped.value': false });
       this._tts()?.speak(`${item.name} unequipped`);
@@ -606,33 +755,21 @@ export class ActionExecutor {
   async executeItemActivate(actionItem, actor) {
     if (this._isPF2e()) {
       await this._executePF2eItemUse(null, actionItem, actor);
-    } else {
-      const item = actor.items.get(actionItem.itemId);
-      if (!item) return;
-      try {
-        await item.use({ skipDialog: true });
-        this._tts()?.speak(`${item.name} activated`, { interrupt: false, queue: true });
-      } catch (error) {
-        console.error("Item activation error:", error);
-        this._tts()?.speak('Activation failed');
-      }
+      return;
     }
+    const item = actor.items.get(actionItem.itemId);
+    if (!item) { this._missing(); return; }
+    await this._useItem(item, actor);
   }
 
   async executeItemConsume(actionItem, actor) {
     if (this._isPF2e()) {
       await this._executePF2eItemUse(null, actionItem, actor);
-    } else {
-      const item = actor.items.get(actionItem.itemId);
-      if (!item) return;
-      try {
-        await item.use({ skipDialog: true });
-        this._tts()?.speak(`${item.name} consumed`, { interrupt: false, queue: true });
-      } catch (error) {
-        console.error("Item consumption error:", error);
-        this._tts()?.speak('Consumption failed');
-      }
+      return;
     }
+    const item = actor.items.get(actionItem.itemId);
+    if (!item) { this._missing(); return; }
+    await this._useItem(item, actor);
   }
 
   // ─── Item Inspect ─────────────────────────────────────────
@@ -643,7 +780,7 @@ export class ActionExecutor {
       item.sheet.render(true);
       this._tts()?.speak(`Inspecting ${item.name}`);
     } else {
-      this._tts()?.speak('Item not found');
+      this._missing();
     }
   }
 }

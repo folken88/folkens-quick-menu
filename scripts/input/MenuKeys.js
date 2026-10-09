@@ -60,3 +60,42 @@ export function isDuplicateKeydown(last, event) {
     && typeof event.timeStamp === 'number'
     && last.timeStamp === event.timeStamp;
 }
+
+/**
+ * Stopping speech, the way screen readers do it.
+ *
+ * Josh, 2026-10-09, asked for a key that cuts the voice off. Two ways in:
+ *
+ *  - Control pressed and released on its own. That is the convention JAWS,
+ *    NVDA and VoiceOver all share, and it works from inside the chat box,
+ *    where every other single key is a letter he is typing. It acts on the
+ *    release, and only if no other key went down in between, so Ctrl+C, Ctrl+V
+ *    and every other chord are left alone.
+ *
+ *  - S, as in the Poker Dungeon - but only when he is not typing, and only
+ *    while the voice is talking or has just stopped. S is also Foundry's
+ *    "pan down", and with a token selected it MOVES the token. The grace
+ *    window is there so an S pressed just as a sentence ends stops nothing,
+ *    rather than walking his character a square without telling him.
+ */
+export const STOP_GRACE_MS = 1500;
+
+/** Track a lone Control press. Returns the new state and whether to stop now. */
+export function loneControl(state, event) {
+  const isCtrl = event?.key === 'Control' || event?.code === 'ControlLeft' || event?.code === 'ControlRight';
+  if (event?.type === 'keydown') {
+    if (isCtrl && !event.repeat && !event.altKey && !event.metaKey && !event.shiftKey) return { armed: true, stop: false };
+    if (isCtrl && event.repeat) return { armed: !!state?.armed, stop: false };
+    return { armed: false, stop: false };
+  }
+  if (event?.type === 'keyup' && isCtrl) return { armed: false, stop: !!state?.armed };
+  return { armed: !!state?.armed, stop: false };
+}
+
+/** Should this keydown be taken as "stop talking"? */
+export function isStopSpeechKey(event, { typing = false, speaking = false, msSinceSpeech = Infinity } = {}) {
+  if (!event || event.code !== 'KeyS') return false;
+  if (event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return false;
+  if (typing) return false;
+  return speaking || msSinceSpeech < STOP_GRACE_MS;
+}

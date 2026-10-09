@@ -70,14 +70,24 @@ a higher slot instead:
 > `/6dis` -> "Out of 6th. Cast Disintegrate with a 7th?"
 > Type **Y** to cast it from a 7th-level slot, or **N** to cancel.
 
-- Only for spontaneous books. A prepared caster still hears "None prepared".
+- Only for spontaneous books. A prepared caster hears "None left."
 - It takes the **lowest** free level above the spell's own, so the big slots go last.
-- The offer expires after 30 seconds, and a new command replaces it, so a stray Y
-  can never spend a slot you had forgotten about.
+- The offer expires after 30 seconds, and any other command withdraws it, so a
+  stray Y can never spend a slot you had forgotten about. A Y or N that arrives
+  just after it expired is told "Offer expired." instead of going to chat.
 - The spell is cast exactly as written. The larger slot buys the cast, nothing more.
 
-Pathfinder 1e has no general up-casting rule for spontaneous casters, so this is a
-house rule.
+**Choosing the slot yourself.** Add the slot level to the spell's command:
+`/6cl7` casts Chain Lightning (`/6cl`) from a 7th-level slot, with no question,
+whether or not 6th-level slots remain.
+
+**Slots left.** `/sr1` to `/sr9` read the slots left at that level:
+"3 of 5 7th-level spells left." For a prepared caster it counts the spells
+prepared at that level that are still uncast.
+
+This is the rules as written: the Core Rulebook's section on spell slots says "A
+spellcaster always has the option to fill a higher-level spell slot with a
+lower-level spell." (0.14.0 wrongly called it a house rule; Josh found the line.)
 
 ### Abbreviation System
 
@@ -204,15 +214,30 @@ either twice and you end up where you would have after pressing it once.
 
 ## Global Accessibility Keys
 
-These work anywhere in Foundry (whether or not the menu is open), and are suppressed while you're typing in a text field so they never interfere with chat. They mirror the poker/dungeon game's blind mode.
+These work anywhere in Foundry (whether or not the menu is open). They are suppressed while you're typing in a text field so they never interfere with chat - except while the menu is open, when nothing is being typed even if focus is still in the chat box. They mirror the poker/dungeon game's blind mode.
 
 | Key | Action |
 |-----|--------|
-| `[` / `]` | Reading speed slower / faster (announced, persisted) |
-| `-` / `=` | Voice volume down / up (announced, persisted) |
+| `,` / `.` | Reading speed slower / faster (announced, persisted); configurable |
+| `-` / `=` | Voice volume down / up (announced, persisted); configurable |
+| `Control`, alone | Stop the voice. Works everywhere, including the chat box - the screen-reader convention. Ctrl+anything else is left alone |
+| `S` | Stop the voice, while it is talking and you are not typing (as in the Poker Dungeon). Otherwise S is Foundry's as usual |
 | `\` (Backslash) | Jump focus to the chat prompt (fixes v14 announcing it as "new line"); configurable |
 
-Item actions also speak a confirmation when triggered from the menu ("Blood Caimon Hide sent to chat", "… equipped", "… consumed"), so you always know something happened.
+### What you hear
+
+- **Accepted.** Attacks, maneuvers, spells and items say their name the moment
+  the command is accepted, because PF1 can take two seconds or more to answer.
+  From the menu, the menu also closes at once with a falling tone.
+- **Result.** The roll: "30 to hit, 11 damage", or "31 damage" for a Fireball.
+  Items with uses say what is left: "2 of 3 left."
+- **Failed.** Two low pulses - the Poker Dungeon's error sound - then why, if
+  there is a why: "None left.", "No charges.", "Not found. Type slash scan.",
+  "No command, slash, p, r, c."
+- **Stopped.** One short high blip when the stop key cuts the voice off.
+
+Area spells, scrolls and wands no longer wait for a template to be placed on the
+map (setting: *Skip Template Placement*).
 
 ## TTS Providers
 
@@ -243,9 +268,10 @@ Configure via module settings: *TTS Provider*, *ElevenLabs API Key*, *ElevenLabs
 | Menu Voice | Automatic | Which voice reads the menu. Automatic prefers a voice installed on your computer, which is clearer than an online one |
 | Speech Slower / Faster Key | Comma / Period | Reading-speed keys. Moved off `[` `]` in 0.12.0, which Foundry core binds to Send to Back / Bring to Front |
 | Voice Quieter / Louder Key | Minus / Equal | Volume keys |
+| Skip Template Placement | On | Area spells, scrolls and wands cast without waiting for a template on the map |
 | Debug Mode | Off | Enable debug logging |
 
-*Reading speed and voice volume are adjusted live with `[` `]` and `-` `=` (see Global Accessibility Keys) and persist across reloads.*
+*Reading speed and voice volume are adjusted live with `,` `.` and `-` `=` (see Global Accessibility Keys) and persist across reloads. Roll results and sounds follow the volume too.*
 
 ## Architecture
 
