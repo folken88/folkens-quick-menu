@@ -149,4 +149,26 @@ t("a throwing handler still leaves nothing registered", () => {
   assert.equal(hooks.live, 0);
 });
 
+// --- the default plumbing, not just the fakes ---
+
+t("it works with the default timers, which nothing else exercises", async () => {
+  // The browser default was a bare setTimeout reference, which throws
+  // "Illegal invocation" when called as timers.set(). Node does not reproduce
+  // that, so this at least keeps the default path running in the suite.
+  const hooks = fakeHooks();
+  let heard = false;
+  const a = armAnnouncement({ hooks, handler: () => { heard = true; }, timeout: 50 });
+  hooks.emit("createChatMessage", {});
+  assert.equal(heard, true);
+  assert.equal(a.isPending(), false);
+});
+
+t("the default timers really do fire and unregister", async () => {
+  const hooks = fakeHooks();
+  armAnnouncement({ hooks, handler: () => {}, timeout: 10 });
+  assert.equal(hooks.live, 1);
+  await new Promise(r => setTimeout(r, 40));
+  assert.equal(hooks.live, 0, "default timeout never unregistered the listener");
+});
+
 console.log(`\n${pass} assertions passed.`);

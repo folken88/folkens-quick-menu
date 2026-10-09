@@ -2,6 +2,18 @@
 
 All notable changes to the FolkenGames Quick Menu module will be documented in this file.
 
+## [0.13.3] - 2026-10-08
+
+### Fixed
+- **The announcement helper threw in the browser.** Its default timer plumbing held
+  bare `setTimeout` and `clearTimeout` references; called as `timers.set(...)` they
+  lose their window receiver and throw "Illegal invocation". Node does not reproduce
+  that, so the eleven unit tests passed while the real default path was broken - the
+  tests all supply fakes, and nothing exercised the default. Caught by running the
+  module in the live client before announcing it fixed, which is the only reason
+  0.13.2 did not ship with roll results still silent. Now wrapped, and the suite
+  exercises the default path.
+
 ## [0.13.2] - 2026-10-08
 
 ### Fixed

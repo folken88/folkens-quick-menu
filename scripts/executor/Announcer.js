@@ -30,7 +30,11 @@
  */
 export function armAnnouncement({
   hooks,
-  timers = { set: setTimeout, clear: clearTimeout },
+  // Wrapped, not passed by reference. A bare `setTimeout` called as
+  // `timers.set(...)` loses its window receiver and throws "Illegal invocation"
+  // in a browser - which node does not reproduce, so the unit tests passed while
+  // the real default path was broken. Caught by running it in the live client.
+  timers = { set: (fn, ms) => setTimeout(fn, ms), clear: (id) => clearTimeout(id) },
   isOwn = () => true,
   handler,
   timeout = 20000,
