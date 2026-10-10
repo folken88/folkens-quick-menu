@@ -2,6 +2,32 @@
 
 All notable changes to the FolkenGames Quick Menu module will be documented in this file.
 
+## [0.15.1] - 2026-10-10
+
+Found by running 0.15.0 live on f1 against Chef Ramsay, with a copy of Olbryn's spells.
+
+### Fixed
+- **An item with none left still did not say "None left."** PF1 11.11 hands a
+  refusal back wrapped, as `{ err, code: 3 }`, not as the bare number 0.15.0
+  looked for, so the refusal was taken for a success. Both forms are read now.
+- **A stack of single-use items said "0 of 1 left."** B-Dang, 143 in the stack.
+  PF1 gives single-use items a default "1 per single" as well as a quantity, and
+  the per-use count was read first. Quantity is read first now: "143 left."
+
+### Verified live on f1 (Chef Ramsay, self-roll)
+- Typo `/zzq`: the error sound, then "No command, slash, z, z, q."
+- `/sr0`, `/sr1`, `/sr7`: "Cantrips are at will.", "4 of 4 1st-level spells
+  left.", "No 7th-level spells."
+- `/1mm` "Magic Missile", "22 damage."; `/1sg` "Shocking Grasp", "31 to hit,
+  5 damage."; `/1shie` "Shield" and nothing else.
+- Up-cast: `/3lb` offered a 4th; `/per` withdrew it; `/3lb` then **Y** spent the
+  4th and left the 3rd at 0; `/3lb5` cast from the 5th; `/3lb5` again said "No
+  5th slots left."; `/3lb2` said "A 2nd slot is not higher than 3rd." - each
+  failure with the error sound.
+- A deleted item: the error sound, "Not found. Type slash scan."
+
+- 305 assertions over 13 suites.
+
 ## [0.15.0] - 2026-10-09
 
 From Josh's 0.14.0 test report and the silent-failure audit

@@ -33,8 +33,16 @@ export const PF1_USE_REFUSALS = Object.freeze({
  */
 export function useOutcome(result) {
   if (result === false) return { ok: false, reason: 'Cancelled.' };
-  if (typeof result === 'number' && PF1_USE_REFUSALS[result]) {
-    return { ok: false, reason: PF1_USE_REFUSALS[result] };
+
+  // PF1 11.11 hands the refusal back wrapped: { err, code: 3 }. Found live on
+  // f1, 2026-10-10 - B-Dang at quantity 0 posted no card and returned exactly
+  // that, and 0.15.0, which only knew the bare number, called it a success.
+  // Both forms are accepted.
+  const code = typeof result === 'number' ? result
+    : (result && typeof result === 'object' && typeof result.code === 'number' && 'err' in result) ? result.code
+    : null;
+  if (code !== null && PF1_USE_REFUSALS[code]) {
+    return { ok: false, reason: PF1_USE_REFUSALS[code] };
   }
   return { ok: true, reason: null };
 }
@@ -52,16 +60,19 @@ export function usesLeftLine(item) {
   const sys = item?.system ?? {};
   const uses = sys.uses ?? {};
 
+  // Single-use physical things - potions, scrolls - are counted by quantity.
+  // Checked first: PF1 gives them uses { per: 'single', max: 1 } as well, and
+  // read as a per-day item that came out "0 of 1 left." for a stack of 143
+  // (found live on f1, 2026-10-10).
+  const singleUse = item?.isSingleUse ?? (uses.per === 'single');
+  if (singleUse) {
+    return Number.isFinite(sys.quantity) ? `${sys.quantity} left.` : '';
+  }
+
   // Uses per day, week, or charges - a real limited resource.
   if (uses.per && Number.isFinite(uses.max) && uses.max > 0) {
     const left = Number.isFinite(uses.value) ? uses.value : 0;
     return `${left} of ${uses.max} left.`;
-  }
-
-  // Single-use physical things - potions, scrolls - are counted by quantity.
-  const singleUse = item?.isSingleUse ?? (uses.per === 'single');
-  if (singleUse && Number.isFinite(sys.quantity)) {
-    return `${sys.quantity} left.`;
   }
 
   return '';

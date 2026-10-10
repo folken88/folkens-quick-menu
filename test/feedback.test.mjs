@@ -66,6 +66,17 @@ t("every PF1 refusal code has words", () => {
   for (let code = 1; code <= 7; code++) assert.ok(PF1_USE_REFUSALS[code], `code ${code}`);
 });
 
+t("PF1 11.11's wrapped refusal { err, code } is a refusal (live shape, f1)", () => {
+  assert.deepEqual(useOutcome({ err: new Error("x"), code: 3 }), { ok: false, reason: "None left." });
+  assert.equal(useOutcome({ err: {}, code: 4 }).reason, "No charges.");
+});
+
+t("an object with a code but no err is not mistaken for a refusal", () =>
+  assert.equal(useOutcome({ code: 3, id: "msg" }).ok, true));
+
+t("a stack of single-use items counts quantity, not PF1's default 1 per single (live, f1)", () =>
+  assert.equal(usesLeftLine({ isSingleUse: true, system: { quantity: 143, uses: { per: "single", max: 1, value: null } } }), "143 left."));
+
 t("a hook cancelling the use is a refusal", () =>
   assert.equal(useOutcome(false).ok, false));
 
