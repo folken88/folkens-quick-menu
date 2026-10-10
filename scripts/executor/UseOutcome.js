@@ -34,13 +34,19 @@ export const PF1_USE_REFUSALS = Object.freeze({
 export function useOutcome(result) {
   if (result === false) return { ok: false, reason: 'Cancelled.' };
 
-  // PF1 11.11 hands the refusal back wrapped: { err, code: 3 }. Found live on
-  // f1, 2026-10-10 - B-Dang at quantity 0 posted no card and returned exactly
-  // that, and 0.15.0, which only knew the bare number, called it a success.
-  // Both forms are accepted.
-  const code = typeof result === 'number' ? result
-    : (result && typeof result === 'object' && typeof result.code === 'number' && 'err' in result) ? result.code
-    : null;
+  // PF1 hands the refusal back wrapped, and the wrapper differs by build:
+  //   f1-f3, f5 (PF1 11.11 for Foundry v13): { err, code: 3 }
+  //   f4 (PF1 11.11 for Foundry v14):        { error: 3, get code() }
+  // Found live on f1, 2026-10-10 - B-Dang at quantity 0 posted no card and
+  // returned the first shape, which 0.15.0 called a success - and the second
+  // read from f4's pf1.mjs before deploying there. A bare number is accepted
+  // too. A code with neither err nor error beside it is not trusted.
+  let code = null;
+  if (typeof result === 'number') code = result;
+  else if (result && typeof result === 'object' && ('err' in result || 'error' in result)) {
+    if (typeof result.code === 'number') code = result.code;
+    else if (typeof result.error === 'number') code = result.error;
+  }
   if (code !== null && PF1_USE_REFUSALS[code]) {
     return { ok: false, reason: PF1_USE_REFUSALS[code] };
   }

@@ -2,6 +2,26 @@
 
 All notable changes to the FolkenGames Quick Menu module will be documented in this file.
 
+## [0.15.2] - 2026-10-10
+
+### Fixed
+- **Refusals on f4 would have been silent again.** f4 runs PF1 11.11 built for
+  Foundry v14, which wraps a refusal as `{ error: 3, get code() }` rather than the
+  `{ err, code: 3 }` of the v13 build that 0.15.1 learned. Read from f4's
+  `pf1.mjs` before deploying there. All three shapes are accepted now.
+
+### Checked for f4 (Foundry v14.364, PF1 11.11 v14 build, folken-v12-shims)
+- Every PF1 call the module makes exists in that build: `rollSkill`,
+  `rollSavingThrow`, `rollAbilityTest`, `rollInitiative`, `rollAttack` (maneuvers),
+  `use`, `getSpellUses`, `isCharged`, `hasAction`, `isSingleUse`, `spellbook`,
+  `getSourceDetails`, `getContextNotesParsed`, the refusal codes 1-7 (same
+  numbers), and `rolls.attacks` on attack cards.
+- Foundry v14 still has `ChatLog.parse` and the `chatMessage`, `renderChatInput`
+  and `changeSidebarTab` hooks.
+- The module uses no PF1 classes, so the v12 shims do not touch it.
+
+- 306 assertions over 13 suites.
+
 ## [0.15.1] - 2026-10-10
 
 Found by running 0.15.0 live on f1 against Chef Ramsay, with a copy of Olbryn's spells.

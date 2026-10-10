@@ -71,6 +71,13 @@ t("PF1 11.11's wrapped refusal { err, code } is a refusal (live shape, f1)", () 
   assert.equal(useOutcome({ err: {}, code: 4 }).reason, "No charges.");
 });
 
+t("f4's PF1 v14 refusal { error, get code() } is a refusal (read from f4's pf1.mjs)", () => {
+  const refusal = { error: 3, get code() { return this.error; } };
+  assert.deepEqual(useOutcome(refusal), { ok: false, reason: "None left." });
+  assert.equal(useOutcome({ error: 6, get code() { return this.error; } }).reason, "No ammo.");
+  assert.equal(useOutcome({ error: 4 }).reason, "No charges.");
+});
+
 t("an object with a code but no err is not mistaken for a refusal", () =>
   assert.equal(useOutcome({ code: 3, id: "msg" }).ok, true));
 
