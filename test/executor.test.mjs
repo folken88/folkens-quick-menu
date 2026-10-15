@@ -258,4 +258,18 @@ await t("a cure potion is recognised as healing; a sword is not", async () => {
   assert.equal(ex._isHealing(null), false);
 });
 
+await t("a pool read keeps its name when the pool's own feature abbreviates the same (Bolty's Grit)", async () => {
+  const { AbbreviationResolver } = await import("../scripts/chat/AbbreviationResolver.js");
+  const res = new AbbreviationResolver();
+  res._getAllActionItems = () => [
+    { id: "item_grit", label: "Grit", type: "action", actionType: "item", itemId: "g" },
+    { id: "pool_g", label: "Grit, left", type: "action", actionType: "pool_read", forceAbbrev: "grit", itemId: "g" },
+    { id: "item_dead", label: "Deadeye", type: "action", actionType: "item", itemId: "d" },
+  ];
+  await res.buildForActor({ id: "b", name: "Bolty", getFlag: () => ({}) });
+  assert.equal(res.resolve("grit").actionItem.actionType, "pool_read");
+  assert.equal(res.resolve("gritu").actionItem.id, "item_grit");
+  assert.equal(res.collisionCount, 0);
+});
+
 console.log(`\n${pass} assertions passed.`);

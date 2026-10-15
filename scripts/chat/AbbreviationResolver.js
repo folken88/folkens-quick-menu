@@ -89,6 +89,25 @@ export class AbbreviationResolver {
             this.reverseMap.set(item.id, suffixed);
             suffix++;
           }
+        } else if (items.filter(i => i.forceAbbrev && i.forceAbbrev.toLowerCase() === abbrev).length === 1) {
+          // An explicit code (clc2, conc2, a pool read) wins its collision. Found
+          // live on f1, 2026-10-15: Bolty's Grit feature abbreviates to /grit,
+          // and the new grit read - which Josh specified as /grit - was pushed
+          // out to /gle, a code nobody could guess. The read keeps the pool's
+          // name; the feature's own use command moves to the same code plus u,
+          // for use: /gritu. Using a pool's own item mostly just spends a point,
+          // which is exactly the trap Josh hit with /kp.
+          const winner = items.find(i => i.forceAbbrev && i.forceAbbrev.toLowerCase() === abbrev);
+          this.abbreviationMap.set(abbrev, winner);
+          this.reverseMap.set(winner.id, abbrev);
+          let n = 1;
+          for (const item of items.filter(i => i !== winner)) {
+            let code = n === 1 ? `${abbrev}u` : `${abbrev}u${n}`;
+            while (tempMap.has(code) || this.abbreviationMap.has(code)) { n++; code = `${abbrev}u${n}`; }
+            this.abbreviationMap.set(code, item);
+            this.reverseMap.set(item.id, code);
+            n++;
+          }
         } else {
           // Pull them apart by extending the last word until every one is
           // distinct, instead of handing out a pick-a-number prompt. The old

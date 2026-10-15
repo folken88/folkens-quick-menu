@@ -2,6 +2,24 @@
 
 All notable changes to the FolkenGames Quick Menu module will be documented in this file.
 
+## [0.16.1] - 2026-10-15
+
+### Fixed
+- **A one-word pool's read command was pushed to a code nobody could guess.**
+  Bolty's Grit feature abbreviates to `/grit`, so the new grit read - which Josh
+  specified as `/grit` - collided and came out as `/gle`. An explicit code now
+  wins its collision: `/grit` reads grit, and the Grit feature's own use command
+  moves to `/gritu` (u for use). Using a pool's own feature mostly just spends a
+  point, the trap Josh hit with `/kp`.
+
+### Checked live on f1, every player character in Shackles (14)
+Each was built with and without the new pool commands and every other command's
+code compared. The only change anywhere is Bolty's Grit use, `/grit` to `/gritu`.
+No collisions. Pool reads: Holden and Rosie `/panache`, Kwami and Ser `/ki`,
+Vaughan `/arcane`, Bolty `/grit`.
+
+- 338 assertions over 13 suites.
+
 ## [0.16.0] - 2026-10-15
 
 From Josh's 0.15.0 test report (2026-10-09) and his notes setting up Ser for
