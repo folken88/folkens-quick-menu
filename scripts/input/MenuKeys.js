@@ -80,16 +80,48 @@ export function isDuplicateKeydown(last, event) {
  */
 export const STOP_GRACE_MS = 1500;
 
-/** Track a lone Control press. Returns the new state and whether to stop now. */
-export function loneControl(state, event) {
-  const isCtrl = event?.key === 'Control' || event?.code === 'ControlLeft' || event?.code === 'ControlRight';
+/** Modifier keys that can serve as a stop key when pressed on their own. */
+export const LONE_MODIFIERS = Object.freeze({
+  Control: 'ctrlKey', Alt: 'altKey', Shift: 'shiftKey', Meta: 'metaKey',
+});
+
+/**
+ * Track a modifier pressed and released on its own. Returns the new state and
+ * whether to stop now.
+ *
+ * Josh, 2026-10-09: Control works, but it is also VoiceOver's stop key, so one
+ * press silences both voices - and he often needs one to keep talking. So the
+ * key is the player's choice (the Stop Speech Key setting): any modifier
+ * alone, or any other key.
+ */
+export function loneModifier(state, event, modifier = 'Control') {
+  const flag = LONE_MODIFIERS[modifier];
+  if (!flag) return { armed: false, stop: false };
+  const isIt = event?.key === modifier || event?.code === `${modifier}Left` || event?.code === `${modifier}Right`;
+  const others = Object.values(LONE_MODIFIERS).filter(f => f !== flag);
   if (event?.type === 'keydown') {
-    if (isCtrl && !event.repeat && !event.altKey && !event.metaKey && !event.shiftKey) return { armed: true, stop: false };
-    if (isCtrl && event.repeat) return { armed: !!state?.armed, stop: false };
+    if (isIt && !event.repeat && !others.some(f => event[f])) return { armed: true, stop: false };
+    if (isIt && event.repeat) return { armed: !!state?.armed, stop: false };
     return { armed: false, stop: false };
   }
-  if (event?.type === 'keyup' && isCtrl) return { armed: false, stop: !!state?.armed };
+  if (event?.type === 'keyup' && isIt) return { armed: false, stop: !!state?.armed };
   return { armed: !!state?.armed, stop: false };
+}
+
+/** The original Control-only tracker, kept for callers and tests. */
+export function loneControl(state, event) {
+  return loneModifier(state, event, 'Control');
+}
+
+/**
+ * Is this keydown the player's chosen non-modifier stop key (F8, Pause...)?
+ * Unmodified only. It works while typing too: a player who picks a key for
+ * this has chosen it because it does not type anything.
+ */
+export function isChosenStopKey(event, chosen) {
+  if (!event || !chosen || LONE_MODIFIERS[chosen]) return false;
+  if (event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return false;
+  return event.code === chosen;
 }
 
 /** Should this keydown be taken as "stop talking"? */

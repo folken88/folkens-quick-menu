@@ -11,7 +11,11 @@ import { useOutcome, usesLeftLine, PF1_USE_REFUSALS } from "../scripts/executor/
 import { parseTypedUpcast, slotReportLine, parseSlotReportCommand } from "../scripts/spells/Upcast.js";
 import { spellOut, generateAbbreviation } from "../scripts/chat/AbbreviationGenerator.js";
 import { extractRollTotals, renderAttackTotals } from "../scripts/chat/RollTotals.js";
-import { loneControl, isStopSpeechKey, STOP_GRACE_MS } from "../scripts/input/MenuKeys.js";
+import { loneControl, isStopSpeechKey, STOP_GRACE_MS, loneModifier, isChosenStopKey } from "../scripts/input/MenuKeys.js";
+import { hasRollingAction, isUsefulFeature } from "../scripts/character/ItemUse.js";
+import { LAST_ONE } from "../scripts/executor/UseOutcome.js";
+import { bookSlotLine } from "../scripts/spells/Upcast.js";
+import { renderPools, poolCommandsFor, poolReadLine, isPoolName } from "../scripts/chat/StateSpeech.js";
 
 let pass = 0;
 const t = (name, fn) => { fn(); pass++; console.log("  ok -", name); };
@@ -225,6 +229,126 @@ t("S just after the voice stops is still caught, so it cannot move a token", () 
 
 t("S while typing is a letter", () =>
   assert.equal(isStopSpeechKey({ code: "KeyS" }, { speaking: true, typing: true }), false));
+
+// --- 0.16.0: Ser's sheet, raw data exactly as stored in Shackles on f1 ---
+
+const sneakAttack = { type: "feat", system: { subType: "classFeat", uses: { value: 0, per: "" },
+  actions: [{ name: "Use", actionType: "other", damage: { parts: [{ types: ["precision"], formula: "(ceil(@class.level / 2))d6" }] }, activation: { type: "free" } }] } };
+const lightSteps = { type: "feat", system: { subType: "classFeat", uses: { value: null, per: "" },
+  actions: [{ name: "Use", actionType: "other", activation: { type: "full" } }] } };
+const kiPool = { type: "feat", system: { subType: "classFeat", uses: { value: 8, per: "day" },
+  actions: [{ name: "Use", actionType: "other", activation: { type: "special" } }] } };
+
+t("Sneak Attack, an action that rolls damage, gets a command (Josh, 2026-10-15)", () =>
+  assert.equal(isUsefulFeature(sneakAttack), true));
+
+t("Light Steps, an action that rolls nothing and has no uses, does not", () =>
+  assert.equal(isUsefulFeature(lightSteps), false));
+
+t("Ki Pool, daily uses, gets a command", () =>
+  assert.equal(isUsefulFeature(kiPool), true));
+
+t("a feature drawing on a pool through a charge link counts as charged", () =>
+  assert.equal(isUsefulFeature({ isCharged: true, system: { actions: [{ actionType: "other" }] } }), true));
+
+t("a passive feature with no actions gets no command", () =>
+  assert.equal(isUsefulFeature({ isCharged: false, system: { actions: [] } }), false));
+
+t("PF1's live action getters are read when present", () => {
+  assert.equal(hasRollingAction({ actions: { contents: [{ hasAttack: false, hasDamage: true }] } }), true);
+  assert.equal(hasRollingAction({ actions: { contents: [{ hasAttack: false, hasDamage: false, hasSave: false, actionType: "other" }] } }), false);
+});
+
+t("attacks and saves count as rolling; an empty damage formula does not", () => {
+  assert.equal(hasRollingAction({ system: { actions: [{ actionType: "mwak" }] } }), true);
+  assert.equal(hasRollingAction({ system: { actions: [{ actionType: "other", save: { type: "fort" } }] } }), true);
+  assert.equal(hasRollingAction({ system: { actions: [{ actionType: "other", damage: { parts: [{ formula: "  " }] } }] } }), false);
+});
+
+t("running out says so in words, for daily uses and charges too", () => {
+  assert.equal(usesLeftLine({ system: { uses: { per: "day", value: 0, max: 3 } } }), LAST_ONE);
+  assert.equal(usesLeftLine({ system: { uses: { per: "charges", value: 0, max: 50 } } }), LAST_ONE);
+  assert.equal(usesLeftLine({ isSingleUse: true, system: { quantity: 0, uses: { per: "single" } } }), LAST_ONE);
+});
+
+t("healing is read as healing, not damage (Josh: cure potions said '14 damage')", () => {
+  const card = { rolls: [], system: { rolls: { attacks: [{ attack: null, damage: [{ total: 14 }] }] } } };
+  assert.equal(renderAttackTotals(extractRollTotals(card), { healing: true }), "14 healing.");
+  assert.equal(renderAttackTotals(extractRollTotals(card)), "14 damage.");
+});
+
+t("/pool reads one pool the way Josh asked", () =>
+  assert.equal(renderPools([{ name: "Ki Pool", value: 7, max: 8 }]), "Ki Pool, 7 of 8 left."));
+
+t("/pool with more than one gives the count first, like /bf", () =>
+  assert.equal(renderPools([{ name: "Ki Pool", value: 7, max: 8 }, { name: "Grit", value: 2, max: 3 }]),
+    "2 pools. Ki Pool, 7 of 8 left. Grit, 2 of 3 left."));
+
+t("/pool with none, or only empty ones, says No pools.", () => {
+  assert.equal(renderPools([]), "No pools.");
+  assert.equal(renderPools([{ name: "Weapon Finesse", value: 0, max: 0 }]), "No pools.");
+});
+
+t("/sr on the spell-likes book says uses, not prepared", () =>
+  assert.equal(bookSlotLine({ label: "Spell-likes", spellLike: true, level: 1, left: 2, total: 2 }), "Spell-likes: 2 of 2 1st-level uses left."));
+
+t("/sr on the spell-likes book with nothing at that level", () =>
+  assert.equal(bookSlotLine({ label: "Spell-likes", spellLike: true, level: 3, left: 0, total: 0 }), "Spell-likes, none."));
+
+t("/sr keeps the book name when there are several books", () => {
+  assert.equal(bookSlotLine({ label: "Sorcerer", showLabel: true, level: 7, spontaneous: true, left: 5, total: 5 }), "Sorcerer: 5 of 5 7th-level spells left.");
+  assert.equal(bookSlotLine({ label: "Sorcerer", showLabel: false, level: 7, spontaneous: true, left: 5, total: 5 }), "5 of 5 7th-level spells left.");
+});
+
+t("any modifier alone can be the stop key (Josh: Control is also VoiceOver's)", () => {
+  let s = loneModifier(undefined, { type: "keydown", key: "Alt", code: "AltLeft" }, "Alt");
+  s = loneModifier(s, { type: "keyup", key: "Alt", code: "AltLeft" }, "Alt");
+  assert.equal(s.stop, true);
+  let c = loneModifier(undefined, { type: "keydown", key: "Control", code: "ControlLeft" }, "Alt");
+  c = loneModifier(c, { type: "keyup", key: "Control", code: "ControlLeft" }, "Alt");
+  assert.equal(c.stop, false);
+});
+
+t("Option+Tab-style chords do not count as a lone Option", () => {
+  let s = loneModifier(undefined, { type: "keydown", key: "Alt", code: "AltLeft" }, "Alt");
+  s = loneModifier(s, { type: "keydown", key: "Tab", code: "Tab", altKey: true }, "Alt");
+  s = loneModifier(s, { type: "keyup", key: "Alt", code: "AltLeft" }, "Alt");
+  assert.equal(s.stop, false);
+});
+
+t("a non-modifier stop key fires on its own keydown, unmodified only", () => {
+  assert.equal(isChosenStopKey({ code: "F8" }, "F8"), true);
+  assert.equal(isChosenStopKey({ code: "F8", shiftKey: true }, "F8"), false);
+  assert.equal(isChosenStopKey({ code: "F8" }, "Control"), false);
+});
+
+// --- 0.16.0: one read command per pool (Josh's correction, 2026-10-15) ---
+
+t("Ser's Ki Pool becomes /ki, and says only her ki", () => {
+  const [ki] = poolCommandsFor([{ id: "k", name: "Ki Pool", max: 8 }]);
+  assert.equal(ki.command, "ki");
+  assert.equal(poolReadLine(ki.noun, 7, 8), "7 of 8 ki left.");
+});
+
+t("Sparkbang's Grit becomes /grit", () =>
+  assert.equal(poolCommandsFor([{ id: "g", name: "Grit", max: 3 }])[0].command, "grit"));
+
+t("an arcane pool becomes /arcane", () =>
+  assert.equal(poolCommandsFor([{ id: "a", name: "Arcane Pool", max: 6 }])[0].command, "arcane"));
+
+t("a second pool of the same kind gets a 2, like /clc2", () =>
+  assert.deepEqual(poolCommandsFor([{ id: "a", name: "Ki Pool", max: 8 }, { id: "b", name: "Ki Pool (Monk)", max: 4 }]).map(p => p.command), ["ki", "ki2"]));
+
+t("ordinary daily uses are not pools - no /stunning", () => {
+  assert.equal(isPoolName("Stunning Fist"), false);
+  assert.equal(poolCommandsFor([{ id: "s", name: "Stunning Fist", max: 9 }]).length, 0);
+});
+
+t("a pool with no maximum gets no command", () =>
+  assert.equal(poolCommandsFor([{ id: "k", name: "Ki Pool", max: 0 }]).length, 0));
+
+t("an empty pool still answers", () =>
+  assert.equal(poolReadLine("ki", 0, 8), "0 of 8 ki left."));
 
 t("Ctrl+S and other keys are not the stop key", () => {
   assert.equal(isStopSpeechKey({ code: "KeyS", ctrlKey: true }, { speaking: true }), false);

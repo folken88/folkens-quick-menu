@@ -776,10 +776,18 @@ export class QuickMenuManager {
     debugLog('New current menu:', this.currentMenu);
     debugLog('Selected index:', this.selectedIndex);
     
-    // Check if menu is empty
+    // An empty category. Josh, 2026-10-09: Right on Olbryn's Containers just
+    // said "3. Containers" again. The old "Empty menu" line came within the
+    // speech rate-limiter's 50 ms of the item's own name and was dropped, and
+    // he was left inside an empty list. Say so, and stay where he was.
     if (!this.currentMenu || this.currentMenu.length === 0) {
-      debugLog('WARNING: Empty submenu created!');
-      game.folkenQuickMenu.tts.speak('Empty menu');
+      const previous = this.menuStack.pop();
+      if (previous) {
+        this.currentMenu = previous.menu;
+        this.selectedIndex = previous.selectedIndex;
+      }
+      game.folkenQuickMenu.tts.speak(`${menuItem.label || 'That'}, empty.`, { interrupt: true, urgent: true });
+      this.render();
       return;
     }
     

@@ -145,7 +145,7 @@ export function describeShape(message) {
  * attacks there were and to label them, which matters on a full attack where
  * four numbers arrive one after another.
  */
-export function renderAttackTotals(totals = {}, { terse = true } = {}) {
+export function renderAttackTotals(totals = {}, { terse = true, healing = false } = {}) {
   const attacks = Array.isArray(totals.attacks) && totals.attacks.length
     ? totals.attacks
     : (totals.attack === null || totals.attack === undefined
@@ -154,10 +154,13 @@ export function renderAttackTotals(totals = {}, { terse = true } = {}) {
 
   if (!attacks.length) return '';
 
+  // Josh, 2026-10-09: cure potions, cure wands and False Life were read as
+  // "14 damage". PF1 marks those actions as healing; the caller says so.
+  const word = healing ? 'healing' : 'damage';
   const hasDamage = (d) => d !== null && d !== undefined && d > 0;
   const one = ({ attack, damage }) => {
-    if (attack === null || attack === undefined) return hasDamage(damage) ? `${damage} damage` : '';
-    return hasDamage(damage) ? `${attack} to hit, ${damage} damage` : `${attack} to hit`;
+    if (attack === null || attack === undefined) return hasDamage(damage) ? `${damage} ${word}` : '';
+    return hasDamage(damage) ? `${attack} to hit, ${damage} ${word}` : `${attack} to hit`;
   };
   if (!attacks.some(a => one(a))) return '';
 

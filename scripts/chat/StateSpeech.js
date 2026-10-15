@@ -151,3 +151,75 @@ export function sentence(text) {
 function has(v) {
   return v !== null && v !== undefined;
 }
+
+/**
+ * /pool - what is left in each daily pool. Josh, 2026-10-15: Ser had no way to
+ * check her ki without spending a point. One question, one answer, worded
+ * like /bf: the count first when there is more than one.
+ *
+ * @param {{name: string, value: number, max: number}[]} pools
+ */
+export function renderPools(pools = []) {
+  const list = pools.filter(p => p && Number(p.max) > 0);
+  if (!list.length) return 'No pools.';
+  const one = (p) => `${p.name}, ${Math.max(0, Number(p.value) || 0)} of ${p.max} left`;
+  if (list.length === 1) return sentence(one(list[0]));
+  return sentence(`${list.length} pools. ${list.map(one).join('. ')}`);
+}
+
+/** Feature names that are pools even without the word "pool" in them. */
+const POOL_NAMES = /^(grit|panache|luck|stamina|resolve|mythic power|inspiration|focus)$/i;
+
+/**
+ * Is this daily resource a pool - ki, grit, arcane pool - rather than an
+ * ordinary feature with uses per day?
+ */
+export function isPoolName(name) {
+  const n = String(name ?? '').trim();
+  return /\bpool\b/i.test(n) || POOL_NAMES.test(n);
+}
+
+/**
+ * The pool's spoken noun and its command. "Ki Pool" is ki and /ki; "Grit" is
+ * grit and /grit; "Arcane Pool" is arcane and /arcane.
+ */
+export function poolNoun(name) {
+  const n = String(name ?? '').replace(/\s*\(.*?\)\s*/g, ' ').replace(/\bpool\b/i, '').trim();
+  return (n || String(name ?? '')).toLowerCase();
+}
+
+export function poolCommand(name) {
+  const first = poolNoun(name).split(/\s+/)[0] ?? '';
+  return first.replace(/[^a-z0-9]/g, '');
+}
+
+/**
+ * What /ki says. Josh, 2026-10-15: one command per pool, each answering one
+ * question - "7 of 8 ki left."
+ */
+export function poolReadLine(noun, value, max) {
+  const left = Math.max(0, Number(value) || 0);
+  if (!(Number(max) > 0)) return `No ${noun}.`;
+  return `${left} of ${max} ${noun} left.`;
+}
+
+/**
+ * The pool read commands for a character, from its resources. Generated, so a
+ * multiclass character gets a second pool's command after /scan with nobody
+ * setting it up; a second pool of the same kind gets a 2, the way /clc2 does.
+ *
+ * @param {{id: string, name: string, max: number}[]} resources
+ */
+export function poolCommandsFor(resources = []) {
+  const seen = new Map();
+  const out = [];
+  for (const r of resources) {
+    if (!r || !(Number(r.max) > 0) || !isPoolName(r.name)) continue;
+    const base = poolCommand(r.name);
+    if (!base) continue;
+    const n = (seen.get(base) ?? 0) + 1;
+    seen.set(base, n);
+    out.push({ itemId: r.id, name: r.name, noun: poolNoun(r.name), command: n === 1 ? base : `${base}${n}` });
+  }
+  return out;
+}

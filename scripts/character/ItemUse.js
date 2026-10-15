@@ -48,3 +48,45 @@ export function isTriggerable(item) {
 
   return false;
 }
+
+/** PF1 action types that make an attack roll. */
+const ATTACK_ACTION_TYPES = new Set(['mwak', 'rwak', 'twak', 'msak', 'rsak', 'mcman', 'rcman']);
+
+/**
+ * Does any of the item's actions roll something - an attack, damage, healing or
+ * a save? Reads PF1's live action getters when they exist, and the raw action
+ * data otherwise, so it can be tested without Foundry.
+ */
+export function hasRollingAction(item) {
+  const live = item?.actions?.contents;
+  const list = Array.isArray(live) ? live : (Array.isArray(item?.system?.actions) ? item.system.actions : []);
+  for (const action of list) {
+    if (!action) continue;
+    if (action.hasAttack === true || action.hasDamage === true || action.hasSave === true) return true;
+    if (ATTACK_ACTION_TYPES.has(action.actionType)) return true;
+    const parts = action.damage?.parts ?? [];
+    if (parts.some(p => String(p?.formula ?? (Array.isArray(p) ? p[0] : '') ?? '').trim())) return true;
+    if (action.save?.type) return true;
+  }
+  return false;
+}
+
+/**
+ * Does a class feature, feat or racial ability earn a command?
+ *
+ * Josh, 2026-10-15: Ser's Sneak Attack had no command. It is a class feature
+ * whose action rolls its damage, (ceil(@class.level / 2))d6, but it has no
+ * uses per day - and the old test only let a feature in if it had daily uses
+ * or an item-level activation, which PF1 11 no longer has (activation lives on
+ * the action now). His correction an hour later set the rule: Light Steps has
+ * an action too, but it never rolls anything, so it needs no command.
+ *
+ * So: a feature gets a command if it has real uses (ki pool, rage, anything
+ * drawing on a pool through a charge link) or if its action rolls something.
+ */
+export function isUsefulFeature(item) {
+  if (!item) return false;
+  const charged = typeof item.isCharged === 'boolean' ? item.isCharged : !!item.system?.uses?.per;
+  if (charged) return true;
+  return hasRollingAction(item);
+}

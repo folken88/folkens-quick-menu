@@ -174,3 +174,29 @@ export function parseSlotReportCommand(command) {
   const m = /^sr(\d)$/.exec(String(command ?? '').toLowerCase());
   return m ? Number(m[1]) : null;
 }
+
+/**
+ * One spellbook's line in the /sr readout.
+ *
+ * Josh, 2026-10-09: spell-likes are not prepared - his drow Darkness and
+ * Faerie Fire are innate, usable so many times a day - so the spell-likes book
+ * says "uses", and a level with none says "Spell-likes, none." rather than
+ * "No 3rd-level spells prepared", which sounded like a misreading. PF1 keeps
+ * spell-like uses in the same preparation fields and marks the book prepared,
+ * so the book's fixed key, spelllike, is what tells it apart.
+ *
+ * The book's name stays on the line when a character has more than one book,
+ * so each count can be told apart (Reese: ranger and wizard).
+ */
+export function bookSlotLine({ label = '', showLabel = false, spellLike = false, level, spontaneous, left, total } = {}) {
+  if (spellLike) {
+    const name = label || 'Spell-likes';
+    if (!(Number(total) > 0)) return `${name}, none.`;
+    const lvl = Number(level);
+    const lvlName = lvl === 0 ? '0-level' : `${ordinal(lvl)}-level`;
+    const remaining = Number.isFinite(left) ? Math.max(0, left) : 0;
+    return `${name}: ${remaining} of ${total} ${lvlName} uses left.`;
+  }
+  const line = slotReportLine({ level, spontaneous, left, total });
+  return showLabel && label ? `${label}: ${line}` : line;
+}

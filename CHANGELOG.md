@@ -2,6 +2,55 @@
 
 All notable changes to the FolkenGames Quick Menu module will be documented in this file.
 
+## [0.16.0] - 2026-10-15
+
+From Josh's 0.15.0 test report (2026-10-09) and his notes setting up Ser for
+Shackles (2026-10-15).
+
+### Added
+- **One read command per pool: `/ki`, `/grit`, `/arcane`...** "7 of 8 ki left."
+  Generated from the character's own pools at `/scan`, so a multiclass character
+  gets a new pool's command with nobody setting it up, and a second pool of the
+  same kind gets a 2, as `/clc2` does. Reading never spends anything - Josh had
+  no way to check Ser's ki without using `/kp`.
+- **Stop Speech Key setting.** Control is VoiceOver's stop key too, so one press
+  silenced both voices. Each player picks: Control, Alt (Option), Shift or Meta
+  pressed alone, or any key such as F8. S still stops the voice while it talks.
+- **Dice So Nice silent-dice guard.** Its sound preloads sat in
+  `game.audio.pending` after Foundry had already run that queue, so dice
+  animated in silence in fresh tabs. Anything left waiting is now run once
+  audio is unlocked.
+
+### Fixed
+- **Sneak Attack had no command.** Class features got a command only with daily
+  uses or an item-level activation, which PF1 11 no longer has. Now a feature
+  gets one if it has real uses or its action rolls something (attack, damage,
+  healing, save). Light Steps, which only posts its card, still does not.
+- **Nine consumables never had a command** (the Crackling Staff, drugs, and
+  more): the filter read `consumableType`, which PF1 calls `subType`.
+- **Templates were not really skipped.** PF1 ignores the `measureTemplate` option
+  and decides from its own client setting. The Quick Menu now turns the template
+  off in PF1's `pf1CreateActionUse` hook, for its own uses only.
+- **Healing was read as damage** - cure potions and wands, False Life. Now
+  "14 healing."
+- **"That was the last one."** for daily uses and wand charges that reach zero
+  too, not "0 of 3 left".
+- **Up-casting a cantrip broke every cantrip** (`/0as1` spent a 1st and set the
+  cantrip count from at-will to 0). Cantrips are refused now.
+- **A withdrawn up-cast offer was silent**, and a Y after it went to chat. Now
+  "Offer withdrawn.", and a Y or N that follows is answered, not posted.
+- **The up-cast prompt cut off the spell's name.** It waits its turn now.
+- **Unknown commands** say just "No command." (Josh's wording).
+- **`/sr` for spell-likes** says uses, not prepared: "Spell-likes: 2 of 2
+  1st-level uses left." and "Spell-likes, none."
+- **Empty categories** (Olbryn's Containers) said nothing: the "Empty menu" line
+  was dropped by the speech rate-limiter. Now "Containers, empty." and the menu
+  stays where it was.
+- `/clc` and `/conc` no longer pass the removed `async` option to
+  `Roll#evaluate`.
+
+- 337 assertions over 13 suites.
+
 ## [0.15.2] - 2026-10-10
 
 ### Fixed

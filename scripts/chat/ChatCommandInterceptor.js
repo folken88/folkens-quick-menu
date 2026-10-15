@@ -9,7 +9,7 @@
 import { debugLog } from '../module.js';
 import { CollisionResolver } from './CollisionResolver.js';
 import { spellOut } from './AbbreviationGenerator.js';
-import { parseYesNo, parseTypedUpcast, parseSlotReportCommand, slotReportLine } from '../spells/Upcast.js';
+import { parseYesNo, parseTypedUpcast, parseSlotReportCommand, bookSlotLine } from '../spells/Upcast.js';
 import { playEarcon } from '../tts/Earcons.js';
 import { renderAC, renderCMD, renderActiveBuffs, renderInactiveBuffs } from './StateSpeech.js';
 
@@ -69,7 +69,8 @@ export class ChatCommandInterceptor {
       if (answer === true) { executor.confirmUpcast(); return false; }
       if (answer === false) { executor.cancelUpcast({ announce: true }); return false; }
     } else if (executor?.recentlyExpiredUpcast && parseYesNo(trimmed) !== null) {
-      // He answered, but too late. Say so rather than post a bare "Y" to the table.
+      // He answered, but too late or after another command withdrew the
+      // offer. Say which, rather than post a bare "Y" to the table.
       executor.answerExpiredUpcast();
       return false;
     }
@@ -187,7 +188,9 @@ export class ChatCommandInterceptor {
     // answer was a red notification he cannot see - a typo like /prc sounded
     // exactly like a roll that had not come back yet.
     if (!this._someoneElseHandles(command)) {
-      this._fail(`No command, slash, ${spellOut(command)}.`);
+      // Josh, 2026-10-09: reading back what he typed was too much; once he
+      // hears "No command" he uses /find to work out what he meant.
+      this._fail('No command.');
     }
     // Still passed on, so any module that does know the command can run it.
     return true;
@@ -245,8 +248,12 @@ export class ChatCommandInterceptor {
           total += Number(spell.system?.preparation?.max) || 0;
         }
       }
-      const line = slotReportLine({ level, spontaneous: !!book.spontaneous, left, total });
-      return inUse.length > 1 ? `${book.label || key}: ${line}` : line;
+      return bookSlotLine({
+        label: book.label || (key === 'spelllike' ? 'Spell-likes' : key),
+        showLabel: inUse.length > 1,
+        spellLike: key === 'spelllike',
+        level, spontaneous: !!book.spontaneous, left, total,
+      });
     });
 
     const msg = lines.join(' ');
@@ -618,6 +625,7 @@ export class ChatCommandInterceptor {
       '<strong>Y</strong> / <strong>N</strong> — Answer an up-cast offer when a spontaneous caster runs out of slots at a level',
       '<strong>/6cl7</strong> — Cast a spell from a higher slot: the spell\'s command, then the slot level',
       '<strong>/sr1</strong> to <strong>/sr9</strong> — Spell slots left at that level',
+      '<strong>/ki</strong>, <strong>/grit</strong>, ... — What is left in each of your pools, one command per pool',
       '<strong>/fqm rename [old] [new]</strong> — Rename a command abbreviation',
       '<strong>/fqm reset</strong> — Clear all custom aliases',
       '<strong>/fqm help</strong> — Show this help',
@@ -626,7 +634,7 @@ export class ChatCommandInterceptor {
       'Spells, attacks, items, and feats require <strong>/scan</strong> first.',
     ];
     this._whisper(lines.join('<br>'));
-    game.folkenQuickMenu?.tts?.speak('Commands: /scan to scan character. /list to browse by category. /find to search. /st for status, /hp for hit points, /ac for armour class, /cmd for combat maneuver defense, /cmb to roll a maneuver, /cond for conditions, /bf for the buffs that are on, /bfo for the buffs that are off. /sr then a level for spell slots left. /fqm rename to rename a command. /fqm help for help.');
+    game.folkenQuickMenu?.tts?.speak('Commands: /scan to scan character. /list to browse by category. /find to search. /st for status, /hp for hit points, /ac for armour class, /cmd for combat maneuver defense, /cmb to roll a maneuver, /cond for conditions, /bf for the buffs that are on, /bfo for the buffs that are off. /sr then a level for spell slots left. Each pool has its own read command, like /ki or /grit. /fqm rename to rename a command. /fqm help for help.');
   }
 
   // ─── Utility ───────────────────────────────────────────────

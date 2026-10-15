@@ -495,7 +495,7 @@ export class TTSManager {
    * the card shape so the real path can be identified from a console instead of
    * guessed at a third time.
    */
-  announceAttackResult(chatMessage, { quietIfNone = false } = {}) {
+  announceAttackResult(chatMessage, { quietIfNone = false, healing = false } = {}) {
     if (!getSetting('enableTTS') || !chatMessage) return;
 
     const totals = extractRollTotals(chatMessage);
@@ -507,7 +507,7 @@ export class TTSManager {
     try { mode = getSetting('verbosity') || 'auto'; } catch (_) {}
     const terse = shouldBeTerse(mode, !!game.combat);
 
-    const line = renderAttackTotals(totals, { terse });
+    const line = renderAttackTotals(totals, { terse, healing });
 
     if (line) {
       debugLog('attack total read from', totals.source);

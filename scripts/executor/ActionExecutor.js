@@ -10,7 +10,8 @@ import { armAnnouncement } from './Announcer.js';
 import { canOfferUpcast, findUpcastLevel, planUpcast, slotsAt, ordinal,
          upcastPrompt, upcastConfirmation, noSlotsMessage } from '../spells/Upcast.js';
 import { playEarcon } from '../tts/Earcons.js';
-import { useOutcome, usesLeftLine } from './UseOutcome.js';
+import { useOutcome, usesLeftLine, LAST_ONE } from './UseOutcome.js';
+import { poolReadLine } from '../chat/StateSpeech.js';
 
 /**
  * Actions slow enough that silence between the keypress and the result reads as
@@ -34,7 +35,12 @@ export class ActionExecutor {
     // Any new command withdraws a pending up-cast offer. 0.14.0's documentation
     // said this happened and it did not: /6dis, then /per, then Y within 30
     // seconds would still spend a 7th and cast Disintegrate.
-    this.cancelUpcast();
+    //
+    // Josh, 2026-10-09: the withdrawal was silent, and a "y" typed after it
+    // went to chat as a public message. Now he hears it, and a Y or N that
+    // follows is caught and answered instead of posted.
+    const withdrew = this.withdrawUpcast();
+    if (withdrew) this._tts()?.speak('Offer withdrawn.', { interrupt: true, urgent: true });
 
     if (!actor) {
       this._fail('No character assigned.');
@@ -42,7 +48,7 @@ export class ActionExecutor {
     }
 
     if (ACKNOWLEDGED.has(actionItem.actionType) && actionItem.label) {
-      this._tts()?.speak(actionItem.label, { interrupt: true, urgent: true });
+      this._tts()?.speak(actionItem.label, { interrupt: !withdrew, queue: withdrew, urgent: true });
     }
 
     switch (actionItem.actionType) {
@@ -73,6 +79,9 @@ export class ActionExecutor {
         break;
       case 'caster_level':
         await this.executeCasterLevelCheck(actionItem, actor);
+        break;
+      case 'pool_read':
+        this.executePoolRead(actionItem, actor);
         break;
       case 'concentration':
         await this.executeConcentrationCheck(actionItem, actor);
@@ -145,9 +154,47 @@ export class ActionExecutor {
    * can't do by ear." Skipping placement still resolves the effect.
    */
   _useOptions(extra = {}) {
-    let skip = true;
-    try { skip = game.settings.get('folken-games-quick-menu', 'skipTemplates') !== false; } catch (_) {}
-    return { skipDialog: true, ...(skip ? { measureTemplate: false } : {}), ...extra };
+    return { skipDialog: true, ...(this._skipTemplates() ? { measureTemplate: false } : {}), ...extra };
+  }
+
+  _skipTemplates() {
+    try { return game.settings.get('folken-games-quick-menu', 'skipTemplates') !== false; } catch (_) { return true; }
+  }
+
+  /**
+   * Use an item or spell through PF1, with the template really skipped.
+   *
+   * Josh found it, 2026-10-09: PF1 11.11 ignores the measureTemplate option.
+   * It decides for itself, from its own client setting "Place measure template
+   * on quick rolls", so /wcs and /saf still sat waiting for a shape to be
+   * placed on the map. PF1 does fire pf1CreateActionUse after making that
+   * decision and before acting on it, so the Quick Menu turns the template off
+   * there - for its own uses only, without touching anyone's settings.
+   */
+  async _pf1Use(doc, extra = {}) {
+    this._installTemplateGuard();
+    const skip = this._skipTemplates();
+    if (skip) this._suppressTemplates = (this._suppressTemplates || 0) + 1;
+    try {
+      return await doc.use(this._useOptions(extra));
+    } finally {
+      if (skip) this._suppressTemplates = Math.max(0, (this._suppressTemplates || 1) - 1);
+    }
+  }
+
+  _installTemplateGuard() {
+    if (this._templateGuard || typeof Hooks === 'undefined') return;
+    this._templateGuard = Hooks.on('pf1CreateActionUse', (actionUse) => {
+      if (this._suppressTemplates > 0 && actionUse?.shared) actionUse.shared.useMeasureTemplate = false;
+    });
+  }
+
+  /** Is this item's action healing? PF1 marks it as actionType "heal". */
+  _isHealing(item) {
+    const live = item?.defaultAction ?? item?.actions?.contents?.[0];
+    if (typeof live?.isHealing === 'boolean') return live.isHealing;
+    const raw = live ?? item?.system?.actions?.[0];
+    return raw?.actionType === 'heal';
   }
 
   /**
@@ -210,9 +257,10 @@ export class ActionExecutor {
    * all: Shield or Mage Armor have nothing to report beyond the name already
    * spoken when the cast was accepted.
    */
-  _hookSpellResult() {
+  _hookSpellResult(item = null) {
+    const healing = this._isHealing(item);
     return this._announceOnce((message) =>
-      this._tts()?.announceAttackResult(message, { quietIfNone: true }));
+      this._tts()?.announceAttackResult(message, { quietIfNone: true, healing }));
   }
 
   _createPF2eFakeEvent() {
@@ -265,7 +313,7 @@ export class ActionExecutor {
 
     const hookId = this._hookAttackResult();
     try {
-      const outcome = useOutcome(await item.use(this._useOptions(actionItem.fullAttack ? { fullAttack: true } : {})));
+      const outcome = useOutcome(await this._pf1Use(item, actionItem.fullAttack ? { fullAttack: true } : {}));
       if (!outcome.ok) { hookId.off(); this._fail(outcome.reason); }
     } catch (error) {
       console.error("Attack roll error:", error);
@@ -319,9 +367,9 @@ export class ActionExecutor {
    * moment the command is accepted, and only a failure is spoken after.
    */
   async _cast(spell) {
-    const hookId = this._hookSpellResult();
+    const hookId = this._hookSpellResult(spell);
     try {
-      const outcome = useOutcome(await spell.use(this._useOptions()));
+      const outcome = useOutcome(await this._pf1Use(spell));
       if (!outcome.ok) { hookId.off(); this._fail(outcome.reason); return false; }
       return true;
     } catch (error) {
@@ -330,6 +378,18 @@ export class ActionExecutor {
       this._fail(`${spell.name} failed.`);
       return false;
     }
+  }
+
+  /**
+   * /ki and friends: read a pool, never spend it. Josh, 2026-10-15: using /kp
+   * to find out how much ki was left would spend a point.
+   */
+  executePoolRead(actionItem, actor) {
+    const item = actor.items.get(actionItem.itemId);
+    if (!item) { this._missing(); return; }
+    const value = item.charges ?? item.system?.uses?.value;
+    const max = item.maxCharges ?? item.system?.uses?.max;
+    this._tts()?.speak(poolReadLine(actionItem.poolNoun || item.name.toLowerCase(), value, max), { interrupt: true });
   }
 
   // ─── Up-casting ──────────────────────────
@@ -344,8 +404,11 @@ export class ActionExecutor {
     this.pendingUpcast = { spellId: spell.id, actorId: actor.id, level, upcastLevel, spellName: spell.name };
     this.pendingUpcast.timer = setTimeout(() => this._expireUpcast(), 30000);
 
+    // Queued, not interrupting: the spell's name was spoken the moment the
+    // command was accepted, and Josh heard "Disintegrate" cut off by the
+    // prompt (2026-10-09). The question still comes last.
     const message = upcastPrompt(spell.name, level, upcastLevel);
-    this._tts()?.speak(message, { interrupt: true, urgent: true });
+    this._tts()?.speak(message, { interrupt: false, queue: true, urgent: true });
     try {
       ChatMessage.create({
         whisper: [game.user.id],
@@ -370,6 +433,20 @@ export class ActionExecutor {
   _expireUpcast() {
     this.cancelUpcast();
     this._expiredAt = Date.now();
+    this._lapseReason = 'Offer expired.';
+  }
+
+  /**
+   * Withdraw a pending offer because another command came in. Returns whether
+   * there was one. A Y or N in the next few seconds is then answered with
+   * "Offer withdrawn." instead of being posted to chat.
+   */
+  withdrawUpcast() {
+    if (!this.pendingUpcast) return false;
+    this.cancelUpcast();
+    this._expiredAt = Date.now();
+    this._lapseReason = 'Offer withdrawn.';
+    return true;
   }
 
   cancelUpcast({ announce = false } = {}) {
@@ -382,7 +459,7 @@ export class ActionExecutor {
   /** A Y or N that arrived after the offer expired. */
   answerExpiredUpcast() {
     this._expiredAt = null;
-    this._fail('Offer expired.');
+    this._fail(this._lapseReason || 'Offer expired.');
   }
 
   async confirmUpcast() {
@@ -408,6 +485,9 @@ export class ActionExecutor {
     const level = spell.system?.level ?? 0;
 
     if (!book?.spontaneous) { this._fail('Only spontaneous casters choose a slot.'); return; }
+    // Josh, 2026-10-09: /0as1 was allowed, spent a 1st-level slot and set the
+    // cantrip count from empty (at will) to 0, which broke every cantrip.
+    if (!(level >= 1)) { this._fail('Cantrips do not use slots.'); return; }
     if (!(slotLevel > level)) { this._fail(`A ${ordinal(slotLevel)} slot is not higher than ${ordinal(level)}.`); return; }
     if (slotsAt(book, slotLevel) <= 0) { this._fail(`No ${ordinal(slotLevel)} slots left.`); return; }
 
@@ -487,14 +567,14 @@ export class ActionExecutor {
    * are left - "2 of 3 left" - instead of "sent to chat".
    */
   async _useItem(item, actor) {
-    const hookId = this._hookSpellResult();
+    const hookId = this._hookSpellResult(item);
     try {
-      const outcome = useOutcome(await item.use(this._useOptions()));
+      const outcome = useOutcome(await this._pf1Use(item));
       if (!outcome.ok) { hookId.off(); this._fail(outcome.reason); return; }
 
       const fresh = actor.items.get(item.id);
       if (!fresh) {
-        this._tts()?.speak('That was the last one.', { interrupt: false, queue: true });
+        this._tts()?.speak(LAST_ONE, { interrupt: false, queue: true });
         return;
       }
       const left = usesLeftLine(fresh);
@@ -584,7 +664,7 @@ export class ActionExecutor {
     const hookId = this._hookRollResult();
     try {
       const roll = new Roll(`1d20 + ${casterLevel}`);
-      await roll.evaluate({ async: true });
+      await roll.evaluate();
       await ChatMessage.create({
         rolls: [roll],
         flavor: `Caster Level Check (${actionItem.spellbook || 'Primary'})`,
@@ -604,7 +684,7 @@ export class ActionExecutor {
     const hookId = this._hookRollResult();
     try {
       const roll = new Roll(`1d20 + ${concentrationBonus}`);
-      await roll.evaluate({ async: true });
+      await roll.evaluate();
       await ChatMessage.create({
         rolls: [roll],
         flavor: `Concentration Check (${actionItem.spellbook || 'Primary'})`,

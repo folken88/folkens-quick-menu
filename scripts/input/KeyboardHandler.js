@@ -4,7 +4,7 @@
  */
 
 import { debugLog, getSetting } from '../module.js';
-import { menuClaimsKey, isDuplicateKeydown, loneControl, isStopSpeechKey } from './MenuKeys.js';
+import { menuClaimsKey, isDuplicateKeydown, loneModifier, isStopSpeechKey, isChosenStopKey, LONE_MODIFIERS } from './MenuKeys.js';
 import { playEarcon } from '../tts/Earcons.js';
 
 export class KeyboardHandler {
@@ -33,7 +33,9 @@ export class KeyboardHandler {
     // and never consumed: the key still reaches the screen reader, which uses
     // the same press to silence itself.
     const watchControl = (event) => {
-      this._ctrl = loneControl(this._ctrl, event);
+      const chosen = this._stopKey();
+      if (!LONE_MODIFIERS[chosen]) return;
+      this._ctrl = loneModifier(this._ctrl, event, chosen);
       if (this._ctrl.stop) this.stopSpeech();
     };
     document.addEventListener('keydown', watchControl, { capture: true });
@@ -90,6 +92,16 @@ export class KeyboardHandler {
       return;
     }
 
+    // The player's own stop key, when it is not a modifier (F8, Pause...).
+    if (isChosenStopKey(event, this._stopKey())) {
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      this._rememberConsumed(event);
+      this.stopSpeech();
+      return;
+    }
+
     // S stops the voice while it is talking, as in the Poker Dungeon.
     const tts = game.folkenQuickMenu?.tts;
     if (tts && isStopSpeechKey(event, {
@@ -142,6 +154,15 @@ export class KeyboardHandler {
    */
   _rememberConsumed(event) {
     this._lastConsumed = { code: event.code, timeStamp: event.timeStamp };
+  }
+
+  /**
+   * The Stop Speech Key setting. Josh, 2026-10-09: Control is VoiceOver's stop
+   * key too, so one press silenced both voices. Each player picks their own:
+   * Control, Alt (Option), Shift or Meta pressed alone, or any key code.
+   */
+  _stopKey() {
+    try { return getSetting('ttsStopKey') || 'Control'; } catch (_) { return 'Control'; }
   }
 
   /** Cut the voice off, and confirm with the short "ack" blip if it was talking. */

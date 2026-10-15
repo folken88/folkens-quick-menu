@@ -10,7 +10,8 @@ import assert from "node:assert/strict";
 // --- a stub Foundry, just enough for the executor ---
 const spoken = [];
 globalThis.window = globalThis;
-globalThis.Hooks = { once() {}, on() { return 1; }, off() {} };
+const hookHandlers = {};
+globalThis.Hooks = { once() {}, on(name, fn) { (hookHandlers[name] ??= []).push(fn); return 1; }, off() {} };
 globalThis.ChatMessage = { create() {} };
 globalThis.foundry = {
   utils: { getProperty: (obj, path) => path.split(".").reduce((o, k) => o?.[k], obj) },
@@ -199,6 +200,62 @@ await t("a Y after the offer lapsed is told so", async () => {
   ex.answerExpiredUpcast();
   assert.equal(spoken.at(-1), "Offer expired.");
   assert.equal(ex.recentlyExpiredUpcast, false);
+});
+
+// --- 0.16.0 ---
+
+await t("a withdrawn offer is announced, and a following Y is answered, not posted", async () => {
+  const ex = new ActionExecutor();
+  ex.pendingUpcast = { spellId: "d", actorId: "a1", level: 6, upcastLevel: 7 };
+  await ex.execute({ actionType: "skill", label: "Perception", skillId: "per" }, null);
+  assert.equal(spoken[0], "Offer withdrawn.");
+  assert.equal(ex.recentlyExpiredUpcast, true);
+  ex.answerExpiredUpcast();
+  assert.equal(spoken.at(-1), "Offer withdrawn.");
+});
+
+await t("/0as1: cantrips cannot be up-cast (Josh: it broke every cantrip)", async () => {
+  const book = spontaneousBook({ 0: 4, 1: 4 });
+  const spell = { id: "a", name: "Acid Splash", system: { level: 0, spellbook: "primary" }, spellbook: book, use: async () => ({}) };
+  await new ActionExecutor().castFromSlot(spell, makeActor({ items: [spell] }), 1);
+  assert.equal(spoken.at(-1), "Cantrips do not use slots.");
+  assert.equal(book.spells.spell1.value, 4);
+});
+
+await t("/ki reads the pool and spends nothing", async () => {
+  let used = false;
+  const ki = { id: "k", name: "Ki Pool", charges: 7, maxCharges: 8, use: async () => { used = true; } };
+  await new ActionExecutor().execute({ actionType: "pool_read", itemId: "k", poolNoun: "ki", label: "Ki Pool, left" }, makeActor({ items: [ki] }));
+  assert.deepEqual(spoken, ["7 of 8 ki left."]);
+  assert.equal(used, false);
+});
+
+await t("templates are really skipped: PF1's own decision is overridden in its hook", async () => {
+  let shared;
+  const wand = { id: "w", name: "Wand", system: {}, use: async () => {
+    shared = { useMeasureTemplate: true };           // what PF1 decides from its client setting
+    for (const fn of hookHandlers.pf1CreateActionUse ?? []) fn({ shared });
+    return {};
+  } };
+  const ex = new ActionExecutor();
+  await ex.execute({ actionType: "item", itemId: "w", label: "Wand" }, makeActor({ items: [wand] }));
+  ex._pending?.off();
+  assert.equal(shared.useMeasureTemplate, false);
+});
+
+await t("outside a Quick Menu use, PF1's template decision is left alone", async () => {
+  new ActionExecutor()._installTemplateGuard();
+  const shared = { useMeasureTemplate: true };
+  for (const fn of hookHandlers.pf1CreateActionUse ?? []) fn({ shared });
+  assert.equal(shared.useMeasureTemplate, true);
+});
+
+await t("a cure potion is recognised as healing; a sword is not", async () => {
+  const ex = new ActionExecutor();
+  assert.equal(ex._isHealing({ system: { actions: [{ actionType: "heal" }] } }), true);
+  assert.equal(ex._isHealing({ defaultAction: { isHealing: true } }), true);
+  assert.equal(ex._isHealing({ system: { actions: [{ actionType: "mwak" }] } }), false);
+  assert.equal(ex._isHealing(null), false);
 });
 
 console.log(`\n${pass} assertions passed.`);

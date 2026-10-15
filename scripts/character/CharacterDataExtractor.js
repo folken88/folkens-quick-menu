@@ -6,7 +6,8 @@
 import { debugLog } from '../module.js';
 import { stripMarkup } from '../chat/StateSpeech.js';
 import { distinctSpellbooks } from './Spellbooks.js';
-import { isTriggerable } from './ItemUse.js';
+import { isTriggerable, isUsefulFeature } from './ItemUse.js';
+import { poolCommandsFor } from '../chat/StateSpeech.js';
 
 export class CharacterDataExtractor {
   constructor() {
@@ -207,6 +208,28 @@ export class CharacterDataExtractor {
       actionType: 'maneuver',
       forceAbbrev: 'cmb'
     });
+
+    // Pool reads: /ki, /grit, /arcane - one per pool the character really has,
+    // generated from PF1's resources so a new class's pool appears after /scan.
+    try {
+      const resources = Object.values(actor.system?.resources ?? {}).map(r => {
+        const item = r?.item ?? actor.items.get(r?._id ?? r?.id);
+        return item && item.type !== 'consumable' ? { id: item.id, name: item.name, max: Number(r?.max) } : null;
+      }).filter(Boolean);
+      for (const pool of poolCommandsFor(resources)) {
+        combatActions.push({
+          id: `pool_${pool.itemId}`,
+          label: `${pool.name}, left`,
+          type: 'action',
+          actionType: 'pool_read',
+          forceAbbrev: pool.command,
+          itemId: pool.itemId,
+          poolNoun: pool.noun,
+        });
+      }
+    } catch (error) {
+      console.warn('folken-games-quick-menu | pool commands skipped:', error);
+    }
 
     return combatActions;
   }
@@ -409,18 +432,22 @@ export class CharacterDataExtractor {
       };
 
       switch (category) {
-        case 'consumables':
-          // Potions, scrolls, wands only
-          if (item.type === 'consumable' && 
-              (item.system.consumableType === 'potion' || 
-               item.system.consumableType === 'scroll' ||
-               item.system.consumableType === 'wand' ||
-               item.name.toLowerCase().includes('potion') ||
-               item.name.toLowerCase().includes('scroll') ||
-               item.name.toLowerCase().includes('wand'))) {
+        case 'consumables': {
+          // Josh, 2026-10-09: nine consumables never had a command - the
+          // Crackling Staff, drugs, and the rest. This tested
+          // system.consumableType, which PF1 does not have (it is subType), so
+          // only things with potion, scroll or wand in the NAME got in. Now any
+          // consumable that does something is in, plus the usual kinds.
+          const kind = item.system.subType ?? item.system.consumableType;
+          const name = item.name.toLowerCase();
+          if (item.type === 'consumable' && (
+                isTriggerable(item) ||
+                ['potion', 'scroll', 'wand', 'staff'].includes(kind) ||
+                name.includes('potion') || name.includes('scroll') || name.includes('wand'))) {
             filteredItems.push(itemData);
           }
           break;
+        }
         case 'equipment':
           // Only equipment that actually does something when triggered. The old
           // test ended in `|| item.system.equipped`, which handed a command to
@@ -459,9 +486,13 @@ export class CharacterDataExtractor {
     debugLog('Getting abilities for actor:', actor.name);
     
     const abilities = [];
-    const features = actor.items.filter(item => 
-      ['feat', 'class'].includes(item.type) &&
-      (item.system.uses?.max > 0 || item.system.activation?.type)
+    // Josh, 2026-10-15: Ser's Sneak Attack rolls its damage but has no daily
+    // uses, and PF1 11 keeps activation on the action, not the item - so the
+    // old test (uses.max > 0 || system.activation.type) left it out. A
+    // feature now gets a command if it has real uses or its action rolls
+    // something; one that only posts its card, like Light Steps, does not.
+    const features = actor.items.filter(item =>
+      ['feat', 'class'].includes(item.type) && isUsefulFeature(item)
     );
 
     features.forEach(feature => {

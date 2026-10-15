@@ -68,6 +68,22 @@ Hooks.once('ready', async function() {
   // Setup keyboard listeners
   game.folkenQuickMenu.keyboard.initialize();
 
+  // Dice So Nice went silent in fresh tabs (Josh, 2026-10-09). It queues its
+  // sound preloads on game.audio.pending, which Foundry runs once, on the
+  // first click or key - and anything queued after that is never run, so the
+  // dice animate in silence. Josh's own workaround each session was to run the
+  // queue by hand. This does the same: once audio is unlocked, anything left
+  // waiting is run. It only ever runs what was already meant to run.
+  setInterval(() => {
+    try {
+      const audio = game.audio;
+      if (!audio || audio.locked || !Array.isArray(audio.pending) || !audio.pending.length) return;
+      for (const fn of audio.pending.splice(0)) {
+        try { fn(); } catch (_) { /* one bad preload must not stop the rest */ }
+      }
+    } catch (_) { /* never let this break anything */ }
+  }, 2000);
+
   // Agent API: a stable, owned-actor-scoped read surface for a player's AI
   // assistant. Exposed on the module object so it survives Foundry internals
   // changing underneath it.
@@ -354,6 +370,17 @@ function registerSettings() {
   });
 
   // Jump-to-chat key (accessibility): focuses the chat prompt, which v14 leaves unnamed
+  // Josh, 2026-10-09: Control is also VoiceOver's stop key, so one press
+  // silenced both voices. Each player chooses their own.
+  game.settings.register(MODULE_ID, 'ttsStopKey', {
+    name: 'Stop Speech Key',
+    hint: 'Stops the Quick Menu voice. "Control", "Alt" (Option on a Mac), "Shift" or "Meta" mean that key pressed and released on its own; anything else is a key code such as "F8" or "Pause", pressed with no modifiers, and works even while typing. S also stops the voice while it is talking and you are not typing.',
+    scope: 'client',
+    config: true,
+    type: String,
+    default: 'Control'
+  });
+
   game.settings.register(MODULE_ID, 'chatFocusKey', {
     name: 'Jump-to-Chat Key',
     hint: 'KeyboardEvent.code that moves focus to the chat prompt (fixes v14 announcing the chat box as "new line"). Default: Backslash. Speech speed and volume keys are configurable above.',

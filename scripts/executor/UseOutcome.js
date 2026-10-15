@@ -62,6 +62,8 @@ export function useOutcome(result) {
  *
  * @returns {string} "2 of 3 left." / "4 left." / "" when there is nothing to count
  */
+export const LAST_ONE = 'That was the last one.';
+
 export function usesLeftLine(item) {
   const sys = item?.system ?? {};
   const uses = sys.uses ?? {};
@@ -70,15 +72,20 @@ export function usesLeftLine(item) {
   // Checked first: PF1 gives them uses { per: 'single', max: 1 } as well, and
   // read as a per-day item that came out "0 of 1 left." for a stack of 143
   // (found live on f1, 2026-10-10).
+  //
+  // Josh, 2026-10-09: when it runs out, say so in words, not as one more
+  // number - "That was the last one." catches the ear mid-fight where "0 of 3
+  // left" does not. That goes for daily uses and wand charges too.
   const singleUse = item?.isSingleUse ?? (uses.per === 'single');
   if (singleUse) {
-    return Number.isFinite(sys.quantity) ? `${sys.quantity} left.` : '';
+    if (!Number.isFinite(sys.quantity)) return '';
+    return sys.quantity <= 0 ? LAST_ONE : `${sys.quantity} left.`;
   }
 
   // Uses per day, week, or charges - a real limited resource.
   if (uses.per && Number.isFinite(uses.max) && uses.max > 0) {
     const left = Number.isFinite(uses.value) ? uses.value : 0;
-    return `${left} of ${uses.max} left.`;
+    return left <= 0 ? LAST_ONE : `${left} of ${uses.max} left.`;
   }
 
   return '';
