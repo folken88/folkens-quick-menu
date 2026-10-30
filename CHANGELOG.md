@@ -2,6 +2,65 @@
 
 All notable changes to the FolkenGames Quick Menu module will be documented in this file.
 
+## [0.17.0] - 2026-10-29
+
+From Josh's 0.16.1 test report and two follow-ups (2026-10-29), on Ser in
+Shackles. He pinned down, by ear, five rounds each, the two ways a result went
+missing.
+
+### Changed
+- **Nothing cuts a result off any more.** Every item, attack and power used to
+  speak its name with interrupt on, and that cancelled whatever was still being
+  spoken - the previous command's result. Josh's log: eight attack results ended
+  by "interrupted" the moment the next name started. Now, by his rule, a use
+  speaks the result, not the name. From the menu the falling tone already says
+  it went; a chat command gets the short "ack" blip, which goes through the
+  AudioContext and cancels nothing. Menu navigation still interrupts - that is
+  navigation, not a report.
+- **A line is never handed to Chrome while it is talking.** Chrome drops such a
+  line silently while firing onstart and onend as if it had spoken, which is why
+  a skill check right after an attack was never heard (0 of 5 Perception totals;
+  12 seconds apart, 5 of 5). The module now keeps its own queue and speaks each
+  line only once the engine has been silent for 150 ms - the change Josh tested
+  in his own tab, 5 of 5.
+- **The stop key stops only the line playing now.** Whatever is waiting still
+  plays, in order. Josh's case: /balr by mistake, then /per, then Option -
+  Balrog's report stops and Perception's result plays straight after.
+- **A dead voice is announced.** When the watchdog resets three times running
+  and nothing starts, two long falling tones play and a whisper in chat says to
+  quit and reopen Chrome. Until now a dead voice sounded exactly like a quiet
+  moment, and he kept rolling into silence. A line the engine never started is
+  tried once more after a reset, so one hiccup does not throw a result away.
+
+### Added
+- **Ability damage, drain and nonlethal are named.** The rum said "1 damage" for
+  1 Constitution damage; Wack Juce said "2 damage" for 2 nonlethal. Now "1
+  Constitution damage. Fort DC 5." and "2 nonlethal."
+- **The save the target faces** is read after the roll when the card carries
+  one: "Fort DC 20." Healing skips its harmless save.
+- **"hits"** for PF1's +100 always-hits attacks, instead of "123 to hit".
+- **Ammunition is read, never spent.** /arro says "21 arrows left." The bow
+  already takes an arrow off per shot, and /arro took one off as well, so every
+  arrow spent that way was counted twice.
+
+### Fixed
+- **Two stacks with one name.** Ser's two Potion of Cure Light Wounds entries,
+  one at 0 and one at 1: /pclw only ever used the first and said "None left."
+  Now the command moves on to the next stack with something in it, and the
+  count read back is the total.
+- **An empty container had a command.** The Liar's Dice Set only posted its
+  card. A container earns an entry only when there is something inside.
+- **The error tone's pitch is set directly as well as scheduled**, so an
+  instrumented run reads 220 Hz, not the oscillator's 440 default. What played
+  was always 220.
+
+### Not changed
+- Foundry's deprecation warnings for renderTemplate, TextEditor and Math.clamped
+  come from PF1 and other modules, not from the Quick Menu.
+- The -2 Broken penalty on the Scroll of Magic Missile is the item's own flag.
+
+- 374 assertions over 16 suites.
+
 ## [0.16.1] - 2026-10-15
 
 ### Fixed

@@ -7,6 +7,8 @@ import { debugLog, getSetting } from '../module.js';
 import { stripMarkup, expandForSpeech } from '../chat/StateSpeech.js';
 import { pickVoice, voiceChoices } from './VoiceChoice.js';
 import { extractRollTotals, renderAttackTotals, describeShape, shouldBeTerse } from '../chat/RollTotals.js';
+import { SpeechQueue } from './SpeechQueue.js';
+import { playEarcon } from './Earcons.js';
 
 export class TTSManager {
   constructor() {
@@ -21,6 +23,17 @@ export class TTSManager {
     this.VOL_MIN = 0.1;  this.VOL_MAX = 1.0;
     this.liveRate = this._loadNum('folken-qm-tts-rate', ((getSetting('ttsSpeed') || 120) / 100), this.RATE_MIN, this.RATE_MAX);
     this.liveVolume = this._loadNum('folken-qm-tts-volume', 1.0, this.VOL_MIN, this.VOL_MAX);
+
+    // Our own queue in front of Chrome's. Nothing is handed to the engine
+    // while it is still talking, because Chrome silently drops such a line
+    // while firing its events as if it had spoken (Josh, 2026-10-29).
+    if (this.speechSynthesis) {
+      this.queue = new SpeechQueue({
+        engine: this.speechSynthesis,
+        speakNow: (entry, handlers) => this._speakNow(entry, handlers),
+        onVoiceDown: () => this._voiceDown(),
+      });
+    }
 
     // Initialize when voices are loaded
     this.initializeVoices();
@@ -108,21 +121,25 @@ export class TTSManager {
     text = expandForSpeech(stripMarkup(text));
     if (!text) return;
 
-    // Prevent rapid TTS calls that cause interruption errors.
-    // Urgent messages (rate/volume feedback) always speak so an adjustment is audible.
+    // The same line twice within a tenth of a second is a doubled keypress -
+    // a screen reader can deliver one press as two keydowns - not two
+    // requests. Different lines are never dropped: the queue takes them all.
     const now = Date.now();
-    if (!options.urgent && now - (this.lastSpeak || 0) < 50) {
-      debugLog('TTS call too rapid, skipping:', text);
+    if (text === this._lastText && now - (this.lastSpeak || 0) < 100) {
+      debugLog('TTS duplicate, skipping:', text);
       return;
     }
     this.lastSpeak = now;
+    this._lastText = text;
 
     debugLog('Speaking:', text);
 
-    // Stop current speech if interrupting
-    if (options.interrupt !== false) {
-      this.stop();
-    }
+    // Nothing cuts a line off except menu navigation (interrupt: true) and the
+    // stop key. A result waits its turn and is spoken once Chrome is silent.
+    // Until 0.17.0 every item, attack and power spoke its name with interrupt
+    // on when used, which cancelled the previous command's result mid-word;
+    // Josh's log showed eight attack results ended by "interrupted" the
+    // moment the next name started.
 
     const provider = getSetting('ttsProvider') || 'auto';
 
@@ -231,17 +248,31 @@ export class TTSManager {
    * Speak via browser Web Speech API (original behavior).
    */
   _speakViaBrowser(text, options = {}) {
+    if (!this.queue) return;
+    this.queue.enqueue(text, {
+      interrupt: options.interrupt === true,
+      rate: options.rate,
+      pitch: options.pitch,
+      volume: options.volume,
+    });
+  }
+
+  /**
+   * Build one utterance and hand it to Chrome. Only the queue calls this, and
+   * only once the engine is silent. The queue hears about start and end so it
+   * knows when to send the next line; the watchdog hears about every word so
+   * it knows the engine is alive.
+   */
+  _speakNow(entry, handlers) {
+    const { text, options = {} } = entry;
     const utterance = new SpeechSynthesisUtterance(text);
 
     if (this.defaultVoice) {
       utterance.voice = this.defaultVoice;
     }
 
-    // Base rate from the live, player-adjustable value ([ / ] keys)
-    const baseRate = this.liveRate;
-
-    // Adjust rate based on content length for better comprehension
-    let rate = options.rate || baseRate;
+    // Base rate from the live, player-adjustable value (, / . keys)
+    let rate = options.rate || this.liveRate;
     if (text.length > 100) rate *= 0.9;
     if (text.length > 200) rate *= 0.85;
 
@@ -249,37 +280,44 @@ export class TTSManager {
     utterance.pitch = options.pitch || 1.0;
     utterance.volume = options.volume ?? this.liveVolume; // live, player-adjustable ( - / = keys )
 
-    // Every utterance goes straight to the browser's own queue, which advances
-    // itself. Until 0.15.0 this kept its own queue behind a `speaking` flag that
-    // only an utterance's onend could clear - and Chrome drops onend under load,
-    // after a cancel(), and after its 15-second auto-pause. Once one was lost the
-    // flag stuck, every queued line (roll results among them) waited forever, and
-    // only interrupting lines still spoke. The Poker Dungeon hit exactly this and
-    // fixed it the same way; this is a port of that fix.
     const alive = () => { this.lastAliveTs = Date.now(); };
-    utterance.onstart = alive;
+    utterance.onstart = () => { alive(); handlers.onstart?.(); };
     utterance.onboundary = alive;
+    utterance.onend = () => { alive(); handlers.onend?.(); };
     utterance.onerror = (event) => {
       alive();
       if (event?.error !== 'interrupted' && event?.error !== 'canceled') console.error('TTS error:', event.error);
+      handlers.onerror?.(event);
     };
 
-    try { this.speechSynthesis.speak(utterance); } catch (_) {}
+    this.speechSynthesis.speak(utterance);
   }
 
   /**
-   * Stop current speech, and everything queued behind it.
-   * @returns {boolean} whether anything was actually speaking or waiting
+   * The stop key: silence the line playing now. Everything waiting still
+   * plays, in order. Josh, 2026-10-29: "If Option cleared the line too, it
+   * would throw away the Perception result, which is the very thing I'm trying
+   * to avoid."
+   * @returns {boolean} whether anything was actually playing
    */
   stop() {
+    this.lastAliveTs = Date.now();
+    if (this.queue) return this.queue.stopCurrent();
     const busy = !!(this.speechSynthesis.speaking || this.speechSynthesis.pending);
     try { this.speechSynthesis.cancel(); } catch (_) {}
-    this.lastAliveTs = Date.now();
     return busy;
+  }
+
+  /** Drop everything, playing and waiting. */
+  stopAll() {
+    this.lastAliveTs = Date.now();
+    if (this.queue) this.queue.clear();
+    else try { this.speechSynthesis.cancel(); } catch (_) {}
   }
 
   /** Is anything speaking or queued right now? */
   get isSpeaking() {
+    if (this.queue) return this.queue.busy;
     return !!(this.speechSynthesis?.speaking || this.speechSynthesis?.pending);
   }
 
@@ -304,8 +342,30 @@ export class TTSManager {
         console.warn('folken-games-quick-menu | speech engine wedged, resetting');
         try { eng.cancel(); } catch (_) {}
         this.lastAliveTs = Date.now();
+        this.queue?.noteReset();
       }, 3000),
     ];
+  }
+
+  /**
+   * The voice is dead: the watchdog has reset three times running and nothing
+   * has started. Josh, 2026-10-29, the second time in a fortnight: after a long
+   * session Chrome reported speaking with nothing coming out, every voice in
+   * every tab, and only quitting Chrome brought it back. The Quick Menu cannot
+   * say so, but its tones go through the AudioContext and still play, so a
+   * sound he has never heard before means "the voice is down", and a whisper
+   * in chat says what to do about it.
+   */
+  _voiceDown() {
+    console.warn('folken-games-quick-menu | speech engine is not producing sound; quit and reopen Chrome');
+    try { playEarcon('voiceDown', { volume: this.liveVolume }); } catch (_) {}
+    try {
+      ChatMessage.create({
+        whisper: [game.user.id],
+        content: '<div class="fqm-chat-msg"><strong>The Quick Menu voice is down.</strong> Chrome\'s speech engine has stopped making sound. Quit Chrome completely and reopen it.</div>',
+        speaker: { alias: 'Quick Menu' },
+      });
+    } catch (_) { /* the tone is what matters */ }
   }
 
   /**
@@ -530,10 +590,10 @@ export class TTSManager {
   announceError(message) {
     const baseRate = this.liveRate;
     
-    this.speak(`Error: ${message}`, { 
-      interrupt: true, 
-      rate: baseRate * 0.9, 
-      pitch: 0.8 
+    this.speak(`Error: ${message}`, {
+      interrupt: false,
+      rate: baseRate * 0.9,
+      pitch: 0.8
     });
   }
 

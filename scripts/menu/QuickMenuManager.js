@@ -196,7 +196,7 @@ export class QuickMenuManager {
     if (this.currentMenu.length > 1) return false;
     const only = this.currentMenu[0];
     game.folkenQuickMenu?.tts?.speak(
-      only ? `${only.label}. Only item. Left to go back.` : 'Empty. Left to go back.');
+      only ? `${only.label}. Only item. Left to go back.` : 'Empty. Left to go back.', { interrupt: true });
     return true;
   }
 
@@ -987,7 +987,9 @@ export class QuickMenuManager {
       const displayNum = selectedItem.displayNumber !== undefined ? selectedItem.displayNumber : this.selectedIndex + 1;
       const message = `${displayNum}. ${selectedItem.label}`;
       debugLog('Announcing:', message);
-      game.folkenQuickMenu.tts.speak(message);
+      // Navigation is the one thing allowed to cut the voice off: arrowing
+      // past an item should not wait for its name to finish.
+      game.folkenQuickMenu.tts.speak(message, { interrupt: true });
       
       // Update visual UI and scroll to selection
       this.render();

@@ -11,6 +11,11 @@
  *   close  falling sweep, 900 to 600 Hz    - the menu has closed
  *   open   rising sweep, 600 to 900 Hz     - the menu has opened
  *
+ * One of our own, for a case poker never had:
+ *
+ *   voiceDown  two long slides, 440 down to 110 Hz - the speech engine is
+ *              dead; quit Chrome and reopen it (Josh, 2026-10-29)
+ *
  * They are generated with WebAudio rather than played from files, so they are
  * separate from the speech engine: they cannot be dropped by the speech rate
  * limiter, cleared by an interrupting line, or lost when speech itself fails.
@@ -26,6 +31,7 @@ export const EARCONS = Object.freeze({
   ack:   [{ at: 0, dur: 0.08, from: 1200 }],
   close: [{ at: 0, dur: 0.10, from: 900, to: 600 }],
   open:  [{ at: 0, dur: 0.10, from: 600, to: 900 }],
+  voiceDown: [{ at: 0, dur: 0.35, from: 440, to: 110 }, { at: 0.45, dur: 0.35, from: 440, to: 110 }],
 });
 
 /**
@@ -73,6 +79,11 @@ export function playEarcon(kind, { volume = 1 } = {}) {
       const start = now + tone.at;
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
+      // Set the pitch directly as well as scheduling it. The scheduled value
+      // is what plays, but frequency.value keeps reporting the 440 Hz default
+      // until the start time arrives - which is how Josh's instrumented run
+      // logged the 220 Hz error tones as 440 (2026-10-29).
+      osc.frequency.value = tone.from;
       osc.frequency.setValueAtTime(tone.from, start);
       if (tone.to !== null) osc.frequency.linearRampToValueAtTime(tone.to, start + tone.dur);
       gain.gain.setValueAtTime(0, start);

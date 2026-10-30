@@ -172,7 +172,7 @@ const fullAttack = {
 t("every attack on the card is read, not just the first", () => {
   const r = extractRollTotals(fullAttack);
   assert.equal(r.attacks.length, 2);
-  assert.deepEqual(r.attacks, [{ attack: 30, damage: 11 }, { attack: 20, damage: 10 }]);
+  assert.deepEqual(r.attacks, [{ attack: 30, damage: 11, types: [] }, { attack: 20, damage: 10, types: [] }]);
 });
 
 t("the first attack stays available for callers that want one number", () => {

@@ -346,14 +346,21 @@ export class AbbreviationResolver {
       console.error('AbbreviationResolver: error gathering action items:', error);
     }
 
-    // Deduplicate: if two items share the same label + actionType, keep the first
-    const seen = new Set();
+    // Deduplicate: if two items share the same label + actionType, keep the
+    // first - and remember the others as alternates, so a command whose first
+    // stack is empty moves on to the next one with the same name. Josh,
+    // 2026-10-29: two Potion of Cure Light Wounds stacks, one at 0, and /pclw
+    // said "None left." with a potion still in the bag.
+    const kept = new Map();
     const deduped = [];
     for (const item of items) {
       const key = `${item.label}::${item.actionType}`;
-      if (!seen.has(key)) {
-        seen.add(key);
+      const first = kept.get(key);
+      if (!first) {
+        kept.set(key, item);
         deduped.push(item);
+      } else if (item.itemId && first.itemId && item.itemId !== first.itemId) {
+        (first.alternates ??= []).push(item.itemId);
       }
     }
 

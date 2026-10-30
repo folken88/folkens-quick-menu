@@ -69,7 +69,9 @@ await t("a potion with none left says so, and never 'sent to chat'", async () =>
   const potion = { id: "p", name: "Cure Light Wounds", use: async () => 3, system: {} };
   const actor = makeActor({ items: [potion] });
   await new ActionExecutor().execute({ actionType: "item", itemId: "p", label: "Cure Light Wounds" }, actor);
-  assert.deepEqual(spoken, ["Cure Light Wounds", "None left."]);
+  // 0.17.0: the name is no longer spoken on use - it cut off the previous
+  // result (Josh, 2026-10-29). Only the outcome is heard.
+  assert.deepEqual(spoken, ["None left."]);
 });
 
 await t("a rod after a use says how many uses are left", async () => {
@@ -79,7 +81,7 @@ await t("a rod after a use says how many uses are left", async () => {
   const ex = new ActionExecutor();
   await ex.execute({ actionType: "item", itemId: "r", label: "Rod" }, actor);
   ex._pending?.off();
-  assert.deepEqual(spoken, ["Rod", "2 of 3 left."]);
+  assert.deepEqual(spoken, ["2 of 3 left."]);
 });
 
 await t("using the last of something says it was the last", async () => {
@@ -119,13 +121,13 @@ await t("templates are skipped so area spells do not wait on the map", async () 
 
 // --- spells ---
 
-await t("a successful cast says the name once, and no trailing 'cast'", async () => {
+await t("a successful cast says nothing itself - the result comes from the card", async () => {
   const book = spontaneousBook({ 6: 2 });
   const spell = { id: "d", name: "Disintegrate", system: { level: 6, spellbook: "primary" }, spellbook: book, use: async () => ({}) };
   const ex = new ActionExecutor();
   await ex.execute({ actionType: "spell", itemId: "d", label: "Disintegrate" }, makeActor({ items: [spell], books: { primary: book } }));
   ex._pending?.off();
-  assert.deepEqual(spoken, ["Disintegrate"]);
+  assert.deepEqual(spoken, []);
 });
 
 await t("a prepared spell with no casts left is refused before PF1 is asked", async () => {

@@ -458,18 +458,29 @@ export class CharacterDataExtractor {
           }
           break;
         case 'containers':
-          // Containers and their contents
-          // Containers stay, as places to look inside. Loot only if it actually
-          // does something: Josh found every loot item was being given a command
-          // with no check at all (2026-10-09), so a torch or a gem became one
-          // more thing to arrow past.
-          if (item.type === 'container' || (item.type === 'loot' && isTriggerable(item))) {
-            // For containers, create submenu with contents
+          // Ammunition is read, never spent. Josh, 2026-10-29: the bow already
+          // takes an arrow off per shot, and /arro took one off as well, so
+          // arrows were counted twice. "21 arrows left." instead, like /ki.
+          if (item.type === 'loot' && item.system.subType === 'ammo') {
+            itemData.actionType = 'ammo_read';
+            filteredItems.push(itemData);
+            break;
+          }
+          // A container is a place to look inside, so it earns an entry only
+          // when there is something inside. Josh, 2026-10-29: Ser's Liar's
+          // Dice Set is an empty container with no action, and /lds only
+          // posted its card. Loot only if it actually does something: every
+          // loot item was being given a command with no check at all
+          // (2026-10-09), so a torch or a gem became one more thing to arrow
+          // past.
+          if (item.type === 'container') {
             if (item.system.contents && item.system.contents.length > 0) {
               itemData.type = 'container_category';
               itemData.actionType = 'submenu';
               itemData.containerContents = item.system.contents;
+              filteredItems.push(itemData);
             }
+          } else if (item.type === 'loot' && isTriggerable(item)) {
             filteredItems.push(itemData);
           }
           break;

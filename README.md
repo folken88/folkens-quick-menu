@@ -226,15 +226,25 @@ These work anywhere in Foundry (whether or not the menu is open). They are suppr
 
 ### What you hear
 
-- **Accepted.** Attacks, maneuvers, spells and items say their name the moment
-  the command is accepted, because PF1 can take two seconds or more to answer.
-  From the menu, the menu also closes at once with a falling tone.
+- **Accepted.** From the menu, the menu closes at once with a falling tone. A
+  chat command for an attack, maneuver, spell or item gets one short high blip,
+  because PF1 can take two seconds or more to answer. The name is not spoken:
+  when you use something you hear the result, not the name (Josh's rule).
 - **Result.** The roll: "30 to hit, 11 damage", or "31 damage" for a Fireball.
-  Items with uses say what is left: "2 of 3 left."
+  Ability damage and nonlethal say so: "1 Constitution damage", "2 nonlethal".
+  An attack that always hits says "hits". A save the target faces is added:
+  "Fort DC 15." Items with uses say what is left: "2 of 3 left." Ammunition is
+  only ever read, never spent: "17 arrows left."
 - **Failed.** Two low pulses - the Poker Dungeon's error sound - then why, if
   there is a why: "None left.", "No charges.", "Not found. Type slash scan.",
-  "No command, slash, p, r, c."
+  "No command."
 - **Stopped.** One short high blip when the stop key cuts the voice off.
+- **Voice down.** Two long falling slides, and a whisper in chat: Chrome's
+  speech engine has stopped making sound. Quit Chrome completely and reopen it.
+
+Nothing cuts a result off except menu navigation and the stop key. Every result
+waits its turn and is spoken once the voice is silent, in order. The stop key
+stops only the line playing now; whatever is waiting still plays.
 
 Area spells, scrolls and wands no longer wait for a template to be placed on the
 map (setting: *Skip Template Placement*).

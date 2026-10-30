@@ -162,7 +162,7 @@ export class ChatCommandInterceptor {
         this._fail('No character assigned.');
         return false;
       }
-      this.executor.execute(result.actionItem, actor);
+      this.executor.execute(result.actionItem, actor, { source: 'chat' });
       return false;
     }
 
@@ -212,11 +212,11 @@ export class ChatCommandInterceptor {
     return false;
   }
 
-  /** The error earcon, then the reason - heard even if speech is busy. */
+  /** The error earcon at once, then the reason when the voice is free. */
   _fail(reason) {
     const tts = game.folkenQuickMenu?.tts;
     try { playEarcon('error', { volume: tts?.liveVolume ?? 1 }); } catch (_) {}
-    if (reason) tts?.speak(reason, { interrupt: true, urgent: true });
+    if (reason) tts?.speak(reason, { interrupt: false, queue: true });
   }
 
   // ─── /sr0 to /sr9 ───────────────────────────────────────────
@@ -258,7 +258,7 @@ export class ChatCommandInterceptor {
 
     const msg = lines.join(' ');
     this._whisper(`<strong>${actor.name}:</strong> ${msg}`);
-    game.folkenQuickMenu?.tts?.speak(msg, { interrupt: true });
+    game.folkenQuickMenu?.tts?.speak(msg, { interrupt: false, queue: true });
   }
 
   // ─── /scan ──────────────────────────────────────────────────

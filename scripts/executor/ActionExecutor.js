@@ -12,13 +12,18 @@ import { canOfferUpcast, findUpcastLevel, planUpcast, slotsAt, ordinal,
 import { playEarcon } from '../tts/Earcons.js';
 import { useOutcome, usesLeftLine, LAST_ONE } from './UseOutcome.js';
 import { poolReadLine } from '../chat/StateSpeech.js';
+import { firstWithStock, stockLine, ammoReadLine } from '../character/Stock.js';
 
 /**
  * Actions slow enough that silence between the keypress and the result reads as
  * "nothing happened". Josh, 2026-10-09: Punch takes about 2.5 s, spells 1.2 to
- * 2.1 s; he heard nothing, pressed again, and got two attacks. These get their
- * name spoken the instant they are accepted. Skills, saves and checks answer in
- * a twentieth of a second, so they do not need it.
+ * 2.1 s; he heard nothing, pressed again, and got two attacks. Until 0.17.0
+ * these spoke their name the instant they were accepted - and that name, with
+ * interrupt on, cut off the previous command's result every time (Josh,
+ * 2026-10-29). His rule now: when he uses something he hears the result, not
+ * the name. The menu has already said the name while he arrowed to it, and the
+ * falling tone says it went; a chat command gets the short "ack" blip instead,
+ * which goes through the AudioContext and cancels nothing.
  */
 const ACKNOWLEDGED = new Set(['attack', 'strike', 'maneuver', 'spell', 'item', 'item_activate', 'item_consume']);
 
@@ -28,8 +33,9 @@ export class ActionExecutor {
    * Execute an action item against an actor
    * @param {Object} actionItem - The action item with actionType and relevant keys
    * @param {Actor} actor - The Foundry actor to execute against
+   * @param {{source?: 'menu'|'chat'}} [context] where the command came from
    */
-  async execute(actionItem, actor) {
+  async execute(actionItem, actor, { source = 'menu' } = {}) {
     debugLog('ActionExecutor: executing', actionItem.actionType, actionItem.label);
 
     // Any new command withdraws a pending up-cast offer. 0.14.0's documentation
@@ -40,15 +46,15 @@ export class ActionExecutor {
     // went to chat as a public message. Now he hears it, and a Y or N that
     // follows is caught and answered instead of posted.
     const withdrew = this.withdrawUpcast();
-    if (withdrew) this._tts()?.speak('Offer withdrawn.', { interrupt: true, urgent: true });
+    if (withdrew) this._tts()?.speak('Offer withdrawn.', { interrupt: false, queue: true });
 
     if (!actor) {
       this._fail('No character assigned.');
       return;
     }
 
-    if (ACKNOWLEDGED.has(actionItem.actionType) && actionItem.label) {
-      this._tts()?.speak(actionItem.label, { interrupt: !withdrew, queue: withdrew, urgent: true });
+    if (source === 'chat' && ACKNOWLEDGED.has(actionItem.actionType)) {
+      this._earcon('ack');
     }
 
     switch (actionItem.actionType) {
@@ -82,6 +88,9 @@ export class ActionExecutor {
         break;
       case 'pool_read':
         this.executePoolRead(actionItem, actor);
+        break;
+      case 'ammo_read':
+        this.executeAmmoRead(actionItem, actor);
         break;
       case 'concentration':
         await this.executeConcentrationCheck(actionItem, actor);
@@ -139,7 +148,26 @@ export class ActionExecutor {
    */
   _fail(reason) {
     this._earcon('error');
-    if (reason) this._tts()?.speak(reason, { interrupt: true, urgent: true });
+    if (reason) this._tts()?.speak(reason, { interrupt: false, queue: true });
+  }
+
+  /**
+   * The item a command means. Josh, 2026-10-29: Ser had two Potion of Cure
+   * Light Wounds stacks, one at 0 and one at 1, and the command only ever used
+   * the first, so /pclw said "None left." with a potion still in the bag. The
+   * resolver records the other stacks with the same name as alternates, and
+   * the first with anything in it is used.
+   */
+  _pickItem(actor, actionItem) {
+    const ids = [actionItem.itemId, ...(actionItem.alternates ?? [])];
+    return firstWithStock(ids.map(id => actor.items.get(id)));
+  }
+
+  /** Every stack a command covers, as they are now. */
+  _stacks(actor, item, actionItem) {
+    const ids = new Set([item.id, ...(actionItem?.alternates ?? [])]);
+    if (actionItem?.itemId) ids.add(actionItem.itemId);
+    return [...ids].map(id => actor.items.get(id)).filter(Boolean);
   }
 
   /** A command whose item has gone since the last /scan. */
@@ -389,7 +417,19 @@ export class ActionExecutor {
     if (!item) { this._missing(); return; }
     const value = item.charges ?? item.system?.uses?.value;
     const max = item.maxCharges ?? item.system?.uses?.max;
-    this._tts()?.speak(poolReadLine(actionItem.poolNoun || item.name.toLowerCase(), value, max), { interrupt: true });
+    this._tts()?.speak(poolReadLine(actionItem.poolNoun || item.name.toLowerCase(), value, max), { interrupt: false, queue: true });
+  }
+
+  /**
+   * /arro: read the ammunition, never spend it. Josh, 2026-10-29: the Verdant
+   * Fang Bow already takes an arrow off per shot (two /vfb took Ser from 21 to
+   * 17), and /arro took one off as well whenever it was typed, so every arrow
+   * "spent" that way was counted twice.
+   */
+  executeAmmoRead(actionItem, actor) {
+    const item = actor.items.get(actionItem.itemId);
+    if (!item) { this._missing(); return; }
+    this._tts()?.speak(ammoReadLine(item.name, item.system?.quantity), { interrupt: false, queue: true });
   }
 
   // ─── Up-casting ──────────────────────────
@@ -491,7 +531,7 @@ export class ActionExecutor {
     if (!(slotLevel > level)) { this._fail(`A ${ordinal(slotLevel)} slot is not higher than ${ordinal(level)}.`); return; }
     if (slotsAt(book, slotLevel) <= 0) { this._fail(`No ${ordinal(slotLevel)} slots left.`); return; }
 
-    if (spell.name) this._tts()?.speak(spell.name, { interrupt: true, urgent: true });
+    this._earcon('ack');
     await this._castWithSlot(spell, actor, level, slotLevel);
   }
 
@@ -548,14 +588,14 @@ export class ActionExecutor {
   // ─── Item ─────────────────────────────────────────────────
 
   async executeItemUse(actionItem, actor) {
-    const item = actor.items.get(actionItem.itemId);
+    const item = this._pickItem(actor, actionItem);
     if (!item) { this._missing(); return; }
 
     if (this._isPF2e()) {
       await this._executePF2eItemUse(item, actionItem, actor);
       return;
     }
-    await this._useItem(item, actor);
+    await this._useItem(item, actor, actionItem);
   }
 
   /**
@@ -566,18 +606,20 @@ export class ActionExecutor {
    * rather than throwing, so it is checked. On success he hears how many uses
    * are left - "2 of 3 left" - instead of "sent to chat".
    */
-  async _useItem(item, actor) {
+  async _useItem(item, actor, actionItem = null) {
     const hookId = this._hookSpellResult(item);
     try {
       const outcome = useOutcome(await this._pf1Use(item));
       if (!outcome.ok) { hookId.off(); this._fail(outcome.reason); return; }
 
-      const fresh = actor.items.get(item.id);
-      if (!fresh) {
+      // Read AFTER the use, and across every stack with this name, so two
+      // half-empty potion stacks are counted as one supply.
+      const stacks = this._stacks(actor, item, actionItem);
+      if (!stacks.length) {
         this._tts()?.speak(LAST_ONE, { interrupt: false, queue: true });
         return;
       }
-      const left = usesLeftLine(fresh);
+      const left = stacks.length > 1 ? stockLine(stacks) : usesLeftLine(stacks[0]);
       if (left) this._tts()?.speak(left, { interrupt: false, queue: true });
     } catch (error) {
       console.error('Item use error:', error);
@@ -837,9 +879,9 @@ export class ActionExecutor {
       await this._executePF2eItemUse(null, actionItem, actor);
       return;
     }
-    const item = actor.items.get(actionItem.itemId);
+    const item = this._pickItem(actor, actionItem);
     if (!item) { this._missing(); return; }
-    await this._useItem(item, actor);
+    await this._useItem(item, actor, actionItem);
   }
 
   async executeItemConsume(actionItem, actor) {
@@ -847,9 +889,9 @@ export class ActionExecutor {
       await this._executePF2eItemUse(null, actionItem, actor);
       return;
     }
-    const item = actor.items.get(actionItem.itemId);
+    const item = this._pickItem(actor, actionItem);
     if (!item) { this._missing(); return; }
-    await this._useItem(item, actor);
+    await this._useItem(item, actor, actionItem);
   }
 
   // ─── Item Inspect ─────────────────────────────────────────
