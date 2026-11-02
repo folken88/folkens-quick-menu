@@ -4,7 +4,8 @@
  */
 
 import { debugLog, getSetting } from '../module.js';
-import { menuClaimsKey, isDuplicateKeydown, loneModifier, isStopSpeechKey, isChosenStopKey, LONE_MODIFIERS } from './MenuKeys.js';
+import { menuClaimsKey, isDuplicateKeydown, loneModifier, isStopSpeechKey, isChosenStopKey, LONE_MODIFIERS,
+         typeAheadLetter, DEFAULT_JOB_KEYS } from './MenuKeys.js';
 import { playEarcon } from '../tts/Earcons.js';
 
 export class KeyboardHandler {
@@ -102,9 +103,10 @@ export class KeyboardHandler {
       return;
     }
 
-    // S stops the voice while it is talking, as in the Poker Dungeon.
+    // S stops the voice while it is talking, as in the Poker Dungeon - with
+    // the menu closed. Open, S is a letter: it jumps to Skills.
     const tts = game.folkenQuickMenu?.tts;
-    if (tts && isStopSpeechKey(event, {
+    if (tts && !game.folkenQuickMenu?.menuManager?.isOpen && isStopSpeechKey(event, {
       typing: this.isTypingTarget(),
       speaking: tts.isSpeaking,
       msSinceSpeech: Date.now() - (tts.lastAliveTs || 0),
@@ -136,7 +138,7 @@ export class KeyboardHandler {
       // Claiming only what we use needs no guess, and it stops the menu eating
       // Tab, letters, function keys and anything else bound by the browser,
       // Foundry or an assistive tool, whatever modifier that tool happens to use.
-      if (!menuClaimsKey(event)) return;
+      if (!menuClaimsKey(event, Object.values(this._jobKeys()))) return;
 
       event.preventDefault();
       event.stopPropagation();
@@ -145,6 +147,17 @@ export class KeyboardHandler {
       this._rememberConsumed(event);
       this.handleMenuKeydown(event);
     }
+  }
+
+  /** The menu's Shift-letter jobs, each a setting. */
+  _jobKeys() {
+    const get = (name, fallback) => { try { return getSetting(name) || fallback; } catch (_) { return fallback; } };
+    return {
+      favorite: get('favoriteKey', DEFAULT_JOB_KEYS.favorite),
+      unfavorite: get('unfavoriteKey', DEFAULT_JOB_KEYS.unfavorite),
+      prepare: get('prepareKey', DEFAULT_JOB_KEYS.prepare),
+      unprepare: get('unprepareKey', DEFAULT_JOB_KEYS.unprepare),
+    };
   }
 
   /**
@@ -226,6 +239,9 @@ export class KeyboardHandler {
       [getSetting('ttsFasterKey')  || 'Period', () => tts.nudgeRate(+0.1)],
       [getSetting('ttsQuieterKey') || 'Minus',  () => tts.nudgeVolume(-0.1)],
       [getSetting('ttsLouderKey')  || 'Equal',  () => tts.nudgeVolume(+0.1)],
+      // Spoken detail, cycled on the fly. Josh, 2026-10-30: VoiceOver has
+      // verbosity levels he can change as he goes; he wants the same here.
+      [getSetting('detailKey')     || 'F9',     () => tts.cycleDetail()],
     ];
     for (const [code, run] of actions) {
       if (event.code === code) {
@@ -274,7 +290,22 @@ export class KeyboardHandler {
     // Always prevent default for menu navigation
     event.preventDefault();
     event.stopPropagation();
-    
+
+    // Shift plus a letter is a job: favorite, remove, prepare, unprepare.
+    if (event.shiftKey) {
+      const jobs = this._jobKeys();
+      if (event.code === jobs.favorite) menuManager.favoriteCurrentItem();
+      else if (event.code === jobs.unfavorite) menuManager.unfavoriteCurrentItem();
+      else if (event.code === jobs.prepare) menuManager.prepareCurrentSpell();
+      else if (event.code === jobs.unprepare) menuManager.unprepareCurrentSpell();
+      return;
+    }
+
+    // A plain letter is type-ahead. Josh, since 2026-10-07: P-E-R for
+    // Perception, the way VoiceOver users move through long lists on a Mac.
+    const letter = typeAheadLetter(event);
+    if (letter) { this.handleLetterInput(letter, menuManager); return; }
+
     switch (event.code) {
       case 'ArrowUp':
         menuManager.navigateUp();
@@ -298,26 +329,10 @@ export class KeyboardHandler {
         menuManager.navigateForward();
         break;
         
-      case 'KeyF':
-        menuManager.favoriteCurrentItem();
-        break;
-        
       case 'Slash':
         menuManager.showItemSubmenu();
         break;
-        
-      case 'KeyP':
-        menuManager.prepareCurrentSpell();
-        break;
-        
-      case 'KeyU':
-        menuManager.unprepareCurrentSpell();
-        break;
-        
-      case 'KeyR':  // R for Remove from favorites
-        menuManager.unfavoriteCurrentItem();
-        break;
-        
+
       // Left and Backspace step back one level.
       case 'ArrowLeft':
       case 'Backspace':
@@ -460,6 +475,24 @@ export class KeyboardHandler {
     }
 
     this.numberTimeout = setTimeout(() => this._commitNumber(menuManager), 500);
+  }
+
+  /**
+   * Type-ahead. Letters typed within a second of each other build a prefix,
+   * and the menu moves to the first item that starts with it. The same single
+   * letter pressed again moves to the next item starting with it. Never
+   * executes, like the digits.
+   */
+  handleLetterInput(letter, menuManager) {
+    if (this.letterTimeout) clearTimeout(this.letterTimeout);
+    const buffer = this.letterBuffer || '';
+    if (buffer.length === 1 && buffer === letter) {
+      menuManager?.navigateToPrefix(letter, { next: true });
+    } else {
+      this.letterBuffer = buffer + letter;
+      menuManager?.navigateToPrefix(this.letterBuffer);
+    }
+    this.letterTimeout = setTimeout(() => { this.letterBuffer = ''; this.letterTimeout = null; }, 1000);
   }
 
   /** Move to the position typed, if there is one. Never executes. */

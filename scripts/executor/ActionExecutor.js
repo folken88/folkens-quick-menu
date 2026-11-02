@@ -11,6 +11,7 @@ import { canOfferUpcast, findUpcastLevel, planUpcast, slotsAt, ordinal,
          upcastPrompt, upcastConfirmation, noSlotsMessage } from '../spells/Upcast.js';
 import { playEarcon } from '../tts/Earcons.js';
 import { useOutcome, usesLeftLine, LAST_ONE } from './UseOutcome.js';
+import { switchBuffOn } from './BuffOn.js';
 import { poolReadLine } from '../chat/StateSpeech.js';
 import { firstWithStock, stockLine, ammoReadLine } from '../character/Stock.js';
 
@@ -325,7 +326,7 @@ export class ActionExecutor {
   _hookSpellResult(item = null) {
     const healing = this._isHealing(item);
     return this._announceOnce((message) =>
-      this._tts()?.announceAttackResult(message, { quietIfNone: true, healing }));
+      this._tts()?.announceAttackResult(message, { quietIfNone: true, healing, item }));
   }
 
   _createPF2eFakeEvent() {
@@ -659,6 +660,21 @@ export class ActionExecutor {
     try {
       const outcome = useOutcome(await this._pf1Use(item));
       if (!outcome.ok) { hookId.off(); this._fail(outcome.reason); return; }
+
+      // A buff potion switches its buff on - the sheet's, or one imported from
+      // the compendium - and says so. Nothing to switch on is not an error.
+      if (item.type === 'consumable') {
+        try {
+          await switchBuffOn(actor, item, {
+            packs: typeof game !== 'undefined' ? [...(game.packs ?? [])] : [],
+            speak: (line) => this._tts()?.speak(line, { interrupt: false, queue: true }),
+            fromCompendium: (doc) => (typeof game !== 'undefined' && game.items?.fromCompendium)
+              ? game.items.fromCompendium(doc, { clearFolder: true }) : doc.toObject(),
+          });
+        } catch (error) {
+          console.warn('folken-games-quick-menu | buff switch failed:', error);
+        }
+      }
 
       // Read AFTER the use, and across every stack with this name, so two
       // half-empty potion stacks are counted as one supply.

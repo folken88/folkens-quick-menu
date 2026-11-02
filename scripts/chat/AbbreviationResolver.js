@@ -3,12 +3,14 @@
  * Handles auto-generation, collision detection, player alias persistence.
  */
 
-import { LEGACY_ALIASES, expandAbbreviation, expandAbbreviationHead, generateAbbreviation,
-         isLevelledSpell, spellAbbreviation, spellAbbreviationHead } from './AbbreviationGenerator.js';
+import { LEGACY_ALIASES, spellOut } from './AbbreviationGenerator.js';
+import { assignCodes } from './CommandTiers.js';
 import { debugLog } from '../module.js';
 
 const MODULE_ID = 'folken-games-quick-menu';
 const FLAG_KEY = 'chatAliases';
+/** Codes handed out by the generator, remembered by name and type. */
+const ASSIGNED_KEY = 'assignedCodes';
 
 export class AbbreviationResolver {
   constructor() {
@@ -41,97 +43,34 @@ export class AbbreviationResolver {
     const allActions = this._getAllActionItems(actor);
     debugLog(`AbbreviationResolver: found ${allActions.length} actions for ${actor.name}`);
 
-    // 2. Load player aliases from actor flags
+    // 2. Player aliases, and the codes remembered from the last build.
     const playerAliases = actor.getFlag(MODULE_ID, FLAG_KEY) || {};
+    const saved = actor.getFlag(MODULE_ID, ASSIGNED_KEY) || {};
 
-    // 3. Build a temporary map: abbreviation -> [actionItems]
-    const tempMap = new Map();
+    // 3. Assign by tier: aliases, the fixed core, remembered codes, then
+    //    anything new, oldest first. Nothing already assigned ever moves. See
+    //    CommandTiers.js for the rule and why (Josh, 2026-10-31: a potion took
+    //    his Perception command mid-fight).
+    const { map, reverse, assigned, fresh, moved } = assignCodes(allActions, { aliases: playerAliases, saved });
+    this.abbreviationMap = map;
+    this.reverseMap = reverse;
+    this.lastBuild = { fresh, moved };
 
-    for (const item of allActions) {
-      // Check for player-assigned alias first
-      let abbrev = playerAliases[item.id];
-
-      // Otherwise auto-generate
-      if (!abbrev) {
-        abbrev = generateAbbreviation(item.label, item);
+    // 4. Remember what was handed out, so the next build gives the same answer.
+    //    Only when it changed, and only if this user may write to the actor.
+    if (JSON.stringify(assigned) !== JSON.stringify(saved) && actor.isOwner !== false) {
+      try { await actor.setFlag(MODULE_ID, ASSIGNED_KEY, assigned); } catch (error) {
+        debugLog('AbbreviationResolver: could not remember codes:', error);
       }
-
-      if (!abbrev) continue;
-
-      abbrev = abbrev.toLowerCase();
-
-      if (!tempMap.has(abbrev)) {
-        tempMap.set(abbrev, []);
-      }
-      tempMap.get(abbrev).push(item);
     }
 
-    // 4. Separate clean mappings from collisions
-    for (const [abbrev, items] of tempMap) {
-      if (items.length === 1) {
-        this.abbreviationMap.set(abbrev, items[0]);
-        this.reverseMap.set(items[0].id, abbrev);
-      } else {
-        // Check if any of these have player aliases — those win
-        const aliased = items.filter(i => playerAliases[i.id] === abbrev);
-        const unaliased = items.filter(i => playerAliases[i.id] !== abbrev);
-
-        if (aliased.length === 1) {
-          // Player explicitly chose this abbreviation for one item
-          this.abbreviationMap.set(abbrev, aliased[0]);
-          this.reverseMap.set(aliased[0].id, abbrev);
-
-          // Auto-suffix the rest
-          let suffix = 2;
-          for (const item of unaliased) {
-            const suffixed = `${abbrev}${suffix}`;
-            this.abbreviationMap.set(suffixed, item);
-            this.reverseMap.set(item.id, suffixed);
-            suffix++;
-          }
-        } else if (items.filter(i => i.forceAbbrev && i.forceAbbrev.toLowerCase() === abbrev).length === 1) {
-          // An explicit code (clc2, conc2, a pool read) wins its collision. Found
-          // live on f1, 2026-10-15: Bolty's Grit feature abbreviates to /grit,
-          // and the new grit read - which Josh specified as /grit - was pushed
-          // out to /gle, a code nobody could guess. The read keeps the pool's
-          // name; the feature's own use command moves to the same code plus u,
-          // for use: /gritu. Using a pool's own item mostly just spends a point,
-          // which is exactly the trap Josh hit with /kp.
-          const winner = items.find(i => i.forceAbbrev && i.forceAbbrev.toLowerCase() === abbrev);
-          this.abbreviationMap.set(abbrev, winner);
-          this.reverseMap.set(winner.id, abbrev);
-          let n = 1;
-          for (const item of items.filter(i => i !== winner)) {
-            let code = n === 1 ? `${abbrev}u` : `${abbrev}u${n}`;
-            while (tempMap.has(code) || this.abbreviationMap.has(code)) { n++; code = `${abbrev}u${n}`; }
-            this.abbreviationMap.set(code, item);
-            this.reverseMap.set(item.id, code);
-            n++;
-          }
-        } else {
-          // Pull them apart by extending the last word until every one is
-          // distinct, instead of handing out a pick-a-number prompt. The old
-          // behaviour gave item one the bare code "tentatively" and then
-          // shadowed it with the collision list, so that item had no working
-          // command at all.
-          const spread = this._spreadCollision(items);
-          if (spread) {
-            for (const [code, item] of spread) {
-              this.abbreviationMap.set(code, item);
-              this.reverseMap.set(item.id, code);
-            }
-          } else {
-            // Could not separate them; still give every item something that
-            // fires, and keep the group only for reporting in /list.
-            this.collisions.set(abbrev, items);
-            items.forEach((item, idx) => {
-              const code = idx === 0 ? abbrev : `${abbrev}${idx + 1}`;
-              this.abbreviationMap.set(code, item);
-              this.reverseMap.set(item.id, code);
-            });
-          }
-        }
-      }
+    // A remembered code can only be lost to the player's own alias. Say so,
+    // out loud: Josh, 2026-11-01, "if a command ever does have to change, the
+    // voice says which one and what it is now, before I need it."
+    if (moved.length) {
+      const tts = game.folkenQuickMenu?.tts;
+      for (const m of moved.slice(0, 5)) tts?.speak(`${m.label} is now slash ${spellOut(m.to)}.`);
+      if (moved.length > 5) tts?.speak(`${moved.length - 5} more commands changed. Type slash f q m list.`);
     }
 
     // 5. Legacy aliases. Saves moved to three letters and Intimidate moved off
@@ -151,34 +90,15 @@ export class AbbreviationResolver {
   }
 
   /**
-   * Try to give every item in a colliding group its own command by taking more
-   * letters from the last word. Returns a Map(code -> item), or null if they
-   * could not be separated.
+   * The command for a sheet item, by its item id. Used when an item has just
+   * been added, to say its code.
+   * @param {string} itemId
+   * @returns {string|null}
    */
-  _spreadCollision(items) {
-    // Two strategies. Extending the last word handles "Scroll of Technomancy"
-    // vs "Scroll of Teleport". Extending the first handles "Detect Magic" vs
-    // "Dispel Magic", where the shared word is the last one and no amount of
-    // extending it will ever separate them.
-    // Spells keep their level prefix while being pulled apart, so a tiebreak
-    // never costs them the thing that makes the command derivable.
-    const strategies = [
-      (i, extra) => isLevelledSpell(i)
-        ? spellAbbreviation(i.label, i.level, extra)
-        : expandAbbreviation(i.label, extra),
-      (i, extra) => isLevelledSpell(i)
-        ? spellAbbreviationHead(i.label, i.level, extra)
-        : expandAbbreviationHead(i.label, extra),
-    ];
-    for (const build of strategies) {
-      for (let extra = 1; extra <= 6; extra++) {
-        const codes = items.map(i => build(i, extra));
-        if (new Set(codes).size !== items.length) continue;
-        if (codes.some(c => !c || this.abbreviationMap.has(c))) continue;
-        const out = new Map();
-        codes.forEach((c, i) => out.set(c, items[i]));
-        return out;
-      }
+  codeForItemId(itemId) {
+    if (!itemId) return null;
+    for (const [code, item] of this.abbreviationMap) {
+      if (item.itemId === itemId || item.alternates?.includes(itemId)) return code;
     }
     return null;
   }
@@ -252,11 +172,23 @@ export class AbbreviationResolver {
   }
 
   /**
-   * Clear all aliases for an actor and rebuild.
+   * Clear the player's aliases and rebuild. The remembered generated codes
+   * stay: /fqm reset undoes the player's renames, not the stability rule.
    * @param {Actor} actor
    */
   async clearAliases(actor) {
     await actor.unsetFlag(MODULE_ID, FLAG_KEY);
+    await this.buildForActor(actor);
+  }
+
+  /**
+   * Forget every remembered generated code too, so the next build starts from
+   * the rule alone. The player is warned first by the caller; whatever moves
+   * is spoken by the rebuild.
+   * @param {Actor} actor
+   */
+  async forgetAssignedCodes(actor) {
+    await actor.unsetFlag(MODULE_ID, ASSIGNED_KEY);
     await this.buildForActor(actor);
   }
 

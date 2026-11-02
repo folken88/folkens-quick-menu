@@ -12,6 +12,7 @@ import { SystemDetector } from './system/SystemDetector.js';
 import { ActionExecutor } from './executor/ActionExecutor.js';
 import { AbbreviationResolver } from './chat/AbbreviationResolver.js';
 import { ChatCommandInterceptor } from './chat/ChatCommandInterceptor.js';
+import { spellOut } from './chat/AbbreviationGenerator.js';
 import { buildApi } from './agent/AgentApi.js';
 
 // Module constants
@@ -114,32 +115,45 @@ Hooks.once('ready', async function() {
     console.warn(`${MODULE_ID} | Could not pre-build abbreviations:`, err);
   }
 
-  // Suggest re-scan when actor gains or loses items
-  Hooks.on('createItem', (item) => {
-    const resolverId = game.folkenQuickMenu.abbreviationResolver.currentActorId;
-    if (item.parent?.id === resolverId) {
+  // A gained item gets its command at once, and the command is spoken. Josh,
+  // 2026-11-01: "When I gain something new, the voice tells me its code out
+  // loud, once." Until 0.18.0 this only whispered "type /scan", which he
+  // never heard, and the rebuild at the next reload moved his Perception
+  // command for a potion. Under the tier rule nothing existing can move, so
+  // rebuilding here is safe.
+  Hooks.on('createItem', async (item) => {
+    const resolver = game.folkenQuickMenu.abbreviationResolver;
+    if (item.parent?.id !== resolver.currentActorId) return;
+    try { await resolver.buildForActor(item.parent); } catch (error) {
+      console.warn(`${MODULE_ID} | rebuild after new item failed:`, error);
+    }
+    const code = resolver.codeForItemId(item.id);
+    if (code) {
       ChatMessage.create({
         whisper: [game.user.id],
-        content: `<em>${item.name}</em> added. Type <strong>/scan</strong> to update your commands.`,
+        content: `<em>${item.name}</em> added: <strong>/${code}</strong>.`,
         speaker: { alias: 'Quick Menu' }
       });
-      // Josh, 2026-11-01: the whisper is a chat message he never hears. A
-      // potion bought mid-game moved his Perception command and nothing said
-      // so. Spoken too, until the command rule Tobias is weighing settles what
-      // a new item may and may not change.
-      game.folkenQuickMenu.tts?.speak(`${item.name} added. Type slash scan to update your commands.`);
+      game.folkenQuickMenu.tts?.speak(`${item.name} is slash ${spellOut(code)}.`);
+    } else {
+      // A buff, a passive, a gem: nothing to type, so nothing to say aloud.
+      ChatMessage.create({
+        whisper: [game.user.id],
+        content: `<em>${item.name}</em> added. No command: it has nothing to use.`,
+        speaker: { alias: 'Quick Menu' }
+      });
     }
   });
 
-  Hooks.on('deleteItem', (item) => {
-    const resolverId = game.folkenQuickMenu.abbreviationResolver.currentActorId;
-    if (item.parent?.id === resolverId) {
-      ChatMessage.create({
-        whisper: [game.user.id],
-        content: `<em>${item.name}</em> removed. Type <strong>/scan</strong> to update your commands.`,
-        speaker: { alias: 'Quick Menu' }
-      });
-    }
+  Hooks.on('deleteItem', async (item) => {
+    const resolver = game.folkenQuickMenu.abbreviationResolver;
+    if (item.parent?.id !== resolver.currentActorId) return;
+    try { await resolver.buildForActor(item.parent); } catch (_) {}
+    ChatMessage.create({
+      whisper: [game.user.id],
+      content: `<em>${item.name}</em> removed.`,
+      speaker: { alias: 'Quick Menu' }
+    });
   });
 
   console.log(`${MODULE_ID} | Chat command system initialized`);
@@ -394,6 +408,36 @@ function registerSettings() {
     type: String,
     default: 'Backslash'
   });
+
+  // Spoken detail on the fly. Josh, 2026-10-30; Tobias, 2026-11-01.
+  game.settings.register(MODULE_ID, 'detailKey', {
+    name: 'Spoken Detail Key',
+    hint: 'KeyboardEvent.code that cycles Spoken Detail: auto, short, full. Default: F9.',
+    scope: 'client',
+    config: true,
+    type: String,
+    default: 'F9'
+  });
+
+  // The open menu's jobs, on Shift plus a letter, because the plain letters
+  // are type-ahead (Josh, 2026-10-31). Each is its own setting so nobody is
+  // stuck with a key that clashes on their machine.
+  const jobs = [
+    ['favoriteKey', 'Add to Favorites Key (with Shift)', 'KeyF'],
+    ['unfavoriteKey', 'Remove from Favorites Key (with Shift)', 'KeyR'],
+    ['prepareKey', 'Prepare Spell Key (with Shift)', 'KeyP'],
+    ['unprepareKey', 'Unprepare Spell Key (with Shift)', 'KeyU'],
+  ];
+  for (const [key, name, def] of jobs) {
+    game.settings.register(MODULE_ID, key, {
+      name,
+      hint: `KeyboardEvent.code, pressed with Shift while the menu is open. Default: ${def}.`,
+      scope: 'client',
+      config: true,
+      type: String,
+      default: def
+    });
+  }
 }
 
 /**

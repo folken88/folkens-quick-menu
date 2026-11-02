@@ -4,17 +4,36 @@
  * dead to Josh, so it should not live only inside an event handler.
  */
 
-/** Every key the open menu responds to. Kept in step with handleMenuKeydown. */
+/** The 26 letters, for type-ahead: P-E-R jumps to Perception. */
+export const LETTER_KEYS = new Set(Array.from({ length: 26 }, (_, i) => `Key${String.fromCharCode(65 + i)}`));
+
+/**
+ * The menu's jobs - favorite, remove, prepare, unprepare - live on Shift plus a
+ * letter, because the plain letters navigate. Josh, 2026-10-31: "typing P E R
+ * for Perception would hit those first. My idea is Shift plus those letters."
+ * Each is a setting; these are the defaults.
+ */
+export const DEFAULT_JOB_KEYS = Object.freeze({ favorite: 'KeyF', unfavorite: 'KeyR', prepare: 'KeyP', unprepare: 'KeyU' });
+
+/** Every unmodified key the open menu responds to. Kept in step with handleMenuKeydown. */
 export const MENU_KEYS = new Set([
   'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
   'PageUp', 'PageDown',
   'Enter', 'NumpadEnter', 'Escape', 'Backspace',
-  'KeyF', 'KeyP', 'KeyU', 'KeyR', 'Slash',
+  'Slash',
+  ...LETTER_KEYS,
   'Digit0', 'Digit1', 'Digit2', 'Digit3', 'Digit4',
   'Digit5', 'Digit6', 'Digit7', 'Digit8', 'Digit9',
   'Numpad0', 'Numpad1', 'Numpad2', 'Numpad3', 'Numpad4',
   'Numpad5', 'Numpad6', 'Numpad7', 'Numpad8', 'Numpad9',
 ]);
+
+/** The letter a keydown types, lower case, or null when it is not a plain letter. */
+export function typeAheadLetter(event) {
+  if (!event || event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return null;
+  const m = /^Key([A-Z])$/.exec(event.code ?? '');
+  return m ? m[1].toLowerCase() : null;
+}
 
 /**
  * True only when the menu both uses this key and no modifier is held.
@@ -32,12 +51,12 @@ export const MENU_KEYS = new Set([
  * through to the page as part of its own chord, it is indistinguishable from the
  * player pressing that arrow. Nothing in the page can tell those apart.
  */
-export function menuClaimsKey(event) {
+export function menuClaimsKey(event, jobKeys = Object.values(DEFAULT_JOB_KEYS)) {
   if (!event) return false;
-  // Shift too. Josh, 2026-11-01: Shift plus an arrow or a letter was acting as
-  // the plain key, so a capital R with the menu open removed a favorite. Shift
-  // chords are left free for whatever comes next.
-  if (event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return false;
+  if (event.ctrlKey || event.altKey || event.metaKey) return false;
+  // Shift claims only the menu's jobs. Josh, 2026-11-01: Shift plus an arrow
+  // or a letter was acting as the plain key, so a capital R removed a favorite.
+  if (event.shiftKey) return [...jobKeys].includes(event.code);
   return MENU_KEYS.has(event.code);
 }
 

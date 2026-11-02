@@ -5,7 +5,7 @@
  * than left inside an event handler. Run: node test/menu-keys.test.mjs
  */
 import assert from "node:assert/strict";
-import { menuClaimsKey, isDuplicateKeydown, MENU_KEYS } from "../scripts/input/MenuKeys.js";
+import { menuClaimsKey, isDuplicateKeydown, MENU_KEYS, typeAheadLetter } from "../scripts/input/MenuKeys.js";
 
 let pass = 0;
 const t = (name, fn) => { fn(); pass++; console.log("  ok -", name); };
@@ -42,10 +42,19 @@ t("the menu action letters are claimed", () => {
 
 t("Tab is NOT swallowed", () => assert.equal(menuClaimsKey(key("Tab")), false));
 
-t("ordinary letters the menu does not use pass through", () => {
-  for (const c of ["KeyA", "KeyS", "KeyT", "KeyZ", "Space"]) {
-    assert.equal(menuClaimsKey(key(c)), false, c);
+t("plain letters are type-ahead, so the open menu claims them; Space still passes", () => {
+  // Josh, since 2026-10-07: P-E-R for Perception. Built 2026-11-01.
+  for (const c of ["KeyA", "KeyS", "KeyT", "KeyZ", "KeyP"]) {
+    assert.equal(menuClaimsKey(key(c)), true, c);
   }
+  assert.equal(menuClaimsKey(key("Space")), false);
+});
+
+t("the letter a keydown types, for type-ahead", () => {
+  assert.equal(typeAheadLetter(key("KeyP")), "p");
+  assert.equal(typeAheadLetter(key("KeyP", { shiftKey: true })), null, "Shift+P is a job, not a letter");
+  assert.equal(typeAheadLetter(key("Digit3")), null);
+  assert.equal(typeAheadLetter(key("KeyP", { ctrlKey: true })), null);
 });
 
 t("function keys pass through", () => {
@@ -82,7 +91,7 @@ t("Caps Lock as a screen-reader modifier needs no special case", () => {
 // --- shape ---
 
 t("nothing outside the declared set is claimed", () => {
-  for (const c of ["KeyQ", "BracketLeft", "Minus", "Equal", "Backslash"]) {
+  for (const c of ["BracketLeft", "Minus", "Equal", "Backslash", "Semicolon", "Quote"]) {
     assert.equal(MENU_KEYS.has(c), false, c);
     assert.equal(menuClaimsKey(key(c)), false, c);
   }
@@ -127,11 +136,18 @@ t("a genuine second press is not suppressed", () => {
   assert.equal(isDuplicateKeydown({ code: "Backquote", timeStamp: 3000 }, { code: "Backquote", timeStamp: 3000 }), true);
 });
 
-t("Shift chords pass through the open menu", () => {
-  // Josh, 2026-11-01: Shift+R acted as R and removed a favorite.
-  for (const c of ["KeyR", "KeyF", "KeyP", "KeyU", "ArrowDown", "Digit3"]) {
+t("Shift claims only the menu's four jobs; every other Shift chord passes through", () => {
+  // Josh, 2026-11-01: Shift+R acted as R and removed a favorite. Now Shift+R
+  // IS remove, by design, and Shift plus anything else is not ours.
+  for (const c of ["KeyR", "KeyF", "KeyP", "KeyU"]) {
+    assert.equal(menuClaimsKey(key(c, { shiftKey: true })), true, c);
+  }
+  for (const c of ["KeyA", "ArrowDown", "Digit3", "Slash", "Enter"]) {
     assert.equal(menuClaimsKey(key(c, { shiftKey: true })), false, c);
   }
+  // Rebound jobs follow the setting.
+  assert.equal(menuClaimsKey(key("KeyX", { shiftKey: true }), ["KeyX"]), true);
+  assert.equal(menuClaimsKey(key("KeyF", { shiftKey: true }), ["KeyX"]), false);
 });
 
 t("a different key at the same instant is not a duplicate", () =>

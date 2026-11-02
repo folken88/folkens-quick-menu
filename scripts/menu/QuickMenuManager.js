@@ -7,6 +7,7 @@ import { debugLog, getSetting } from '../module.js';
 import { CharacterDataExtractor } from '../character/CharacterDataExtractor.js';
 import { CharacterDataExtractorPF2e } from '../character/CharacterDataExtractorPF2e.js';
 import { playEarcon } from '../tts/Earcons.js';
+import { spellOut } from '../chat/AbbreviationGenerator.js';
 
 /** An earcon at the player's own voice volume. Never throws. */
 function earcon(kind) {
@@ -388,6 +389,35 @@ export class QuickMenuManager {
     // Announce just the current selection
     this.announceCurrentSelection({ prefix });
 
+    this.render();
+  }
+
+  /**
+   * Type-ahead: move to the first item whose name starts with what was typed,
+   * or, with next, to the one after the current item that does. A word start
+   * counts too, so "ret" finds "Potion of Expeditious Retreat". Never executes.
+   */
+  navigateToPrefix(prefix, { next = false } = {}) {
+    if (!this.isOpen || !this.currentMenu?.length || !prefix) return;
+    const norm = (s) => String(s ?? '').toLowerCase().replace(/^[^a-z0-9]+/, '');
+    const shown = (item) => norm(item.menuLabel ?? item.label);
+    const n = this.currentMenu.length;
+    const start = next ? this.selectedIndex + 1 : 0;
+    const find = (test) => {
+      for (let k = 0; k < n; k++) {
+        const i = (start + k) % n;
+        if (test(shown(this.currentMenu[i]))) return i;
+      }
+      return -1;
+    };
+    let found = find(label => label.startsWith(prefix));
+    if (found === -1) found = find(label => label.split(/[\s,(]+/).some(w => w.startsWith(prefix)));
+    if (found === -1) {
+      game.folkenQuickMenu?.tts?.speak(`Nothing starts with ${spellOut(prefix)}.`, { interrupt: true });
+      return;
+    }
+    this.selectedIndex = found;
+    this.announceCurrentSelection();
     this.render();
   }
 
@@ -991,7 +1021,9 @@ export class QuickMenuManager {
       const displayNum = selectedItem.displayNumber !== undefined ? selectedItem.displayNumber : this.selectedIndex + 1;
       // A prefix ("Stealth removed.") rides on the same line, so an action
       // that speaks and then redraws never speaks twice.
-      const message = `${prefix ? prefix + ' ' : ''}${displayNum}. ${selectedItem.label}`;
+      // menuLabel is what the menu calls a thing when its command keeps the
+      // sheet's name: the Grit feature is "Spend grit" here and /gritu in chat.
+      const message = `${prefix ? prefix + ' ' : ''}${displayNum}. ${selectedItem.menuLabel ?? selectedItem.label}`;
       debugLog('Announcing:', message);
       // Navigation is the one thing allowed to cut the voice off: arrowing
       // past an item should not wait for its name to finish.

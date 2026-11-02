@@ -48,9 +48,10 @@ NAVIGATION:
 
 MODIFIER KEY COMMANDS:
 - Ctrl+R: Read total value of current item
-- Ctrl+F: Favorite current item
-- Ctrl+P: Prepare current spell
-- X: Remove from favorites
+- Shift+F: Favorite current item
+- Shift+R: Remove from favorites
+- Shift+P / Shift+U: Prepare / unprepare current spell
+- Letters: type the start of a name to jump to it (P E R for Perception)
 - U: Unprepare current spell
 - /: Show item submenu
 
@@ -61,8 +62,8 @@ AUDIO CUES:
 - "Pop" sound: Item removed from favorites
 
 FAVORITES SYSTEM:
-- Ctrl+F: Favorite any item (including submenus and lore skills)
-- X: Remove from favorites (works on any item type)
+- Shift+F: Favorite any item (including submenus and lore skills)
+- Shift+R: Remove from favorites (works on any item type)
 - Favorited submenus execute most common action:
   * Skills → Perception seek action
   * Attacks → First available attack
@@ -192,11 +193,14 @@ QUANTITY DISPLAY:
 6. ACCESSIBILITY FEATURES
 =========================
 
-NUMBER NAVIGATION:
+LETTER AND NUMBER NAVIGATION:
 - Every item is read with its number: "3. Perception"
+- Type letters to jump: P E R moves to Perception; the same letter again moves
+  to the next item starting with it. A second of silence starts a new word.
 - Type the number to move to it; digits combine, so 3 then 8 reaches item 38
-- Typing a number never uses the item; Enter or Right does
-- First-letter type-ahead is not built. It is under discussion.
+- Neither ever uses the item; Enter or Right does
+- The menu's jobs are on Shift: Shift+F favorite, Shift+R remove, Shift+P
+  prepare, Shift+U unprepare. All four are settings.
 
 DETAILED INFORMATION:
 - Skills show proficiency level and modifier

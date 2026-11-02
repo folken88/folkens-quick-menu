@@ -7,6 +7,7 @@ import { debugLog, getSetting } from '../module.js';
 import { stripMarkup, expandForSpeech } from '../chat/StateSpeech.js';
 import { pickVoice, voiceChoices } from './VoiceChoice.js';
 import { extractRollTotals, renderAttackTotals, describeShape, shouldBeTerse } from '../chat/RollTotals.js';
+import { spellDetailLine } from '../chat/SpellDetail.js';
 import { SpeechQueue } from './SpeechQueue.js';
 import { playEarcon } from './Earcons.js';
 
@@ -69,6 +70,24 @@ export class TTSManager {
     if (announce) this.speak(`Voice volume ${Math.round(this.liveVolume * 100)} percent.`, { interrupt: true, urgent: true });
   }
   nudgeVolume(delta) { this.setVolume(this.liveVolume + delta); }
+
+  /** The Spoken Detail setting: 'auto', 'short' or 'full'. */
+  get detailMode() {
+    try { return getSetting('verbosity') || 'auto'; } catch (_) { return 'auto'; }
+  }
+
+  /**
+   * Cycle Spoken Detail on the fly and say where it landed. Josh, 2026-10-30:
+   * VoiceOver has verbosity levels he changes as he goes; he wants the same
+   * here, so a fight can be bare numbers and the lull after it can be full.
+   */
+  cycleDetail() {
+    const order = ['auto', 'short', 'full'];
+    const next = order[(order.indexOf(this.detailMode) + 1) % order.length];
+    try { game.settings.set('folken-games-quick-menu', 'verbosity', next); } catch (_) {}
+    const said = { auto: 'Spoken detail auto: short in combat, full out of it.', short: 'Spoken detail short.', full: 'Spoken detail full.' };
+    this.speak(said[next], { interrupt: true, urgent: true });
+  }
 
   /**
    * Initialize available voices
@@ -567,7 +586,7 @@ export class TTSManager {
    * the card shape so the real path can be identified from a console instead of
    * guessed at a third time.
    */
-  announceAttackResult(chatMessage, { quietIfNone = false, healing = false } = {}) {
+  announceAttackResult(chatMessage, { quietIfNone = false, healing = false, item = null } = {}) {
     if (!getSetting('enableTTS') || !chatMessage) return;
 
     const totals = extractRollTotals(chatMessage);
@@ -575,15 +594,17 @@ export class TTSManager {
     // Short while a combat is running, fuller outside it. A full attack can be
     // five numbers in a row; mid-fight they should arrive bare, and out of
     // combat there is room to label them.
-    let mode = 'auto';
-    try { mode = getSetting('verbosity') || 'auto'; } catch (_) {}
-    const terse = shouldBeTerse(mode, !!game.combat);
+    const terse = shouldBeTerse(this.detailMode, !!game.combat);
 
     const line = renderAttackTotals(totals, { terse, healing });
+    // For a spell or item: range, area, duration and SR at full detail, and
+    // "Plus notes" whenever there are notes on it (Josh, 2026-10-30).
+    const detail = item ? spellDetailLine(item, { terse }) : '';
+    const withDetail = (text) => detail ? `${text} ${detail}` : text;
 
     if (line) {
       debugLog('attack total read from', totals.source);
-      this.speak(line, { interrupt: false, queue: true });
+      this.speak(withDetail(line), { interrupt: false, queue: true });
       return;
     }
 
@@ -591,7 +612,7 @@ export class TTSManager {
     // and that is not an error. Since 0.17.0 its name is not spoken either, so
     // the blip was followed by nothing. Josh, 2026-11-01: he cannot tell that
     // from a lost result. Say the card went up.
-    if (quietIfNone) { this.speak('Card posted.', { interrupt: false, queue: true }); return; }
+    if (quietIfNone) { this.speak(withDetail('Card posted.'), { interrupt: false, queue: true }); return; }
 
     console.warn('folken-games-quick-menu | no roll total found on this card:',
       describeShape(chatMessage));

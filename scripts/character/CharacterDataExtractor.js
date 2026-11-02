@@ -212,27 +212,37 @@ export class CharacterDataExtractor {
 
     // Pool reads: /ki, /grit, /arcane - one per pool the character really has,
     // generated from PF1's resources so a new class's pool appears after /scan.
+    for (const pool of this._poolsOf(actor)) combatActions.push(this._poolReadEntry(pool));
+
+    return combatActions;
+  }
+
+  /** The character's pools - grit, ki, arcane pool, panache - from PF1's resources. */
+  _poolsOf(actor) {
     try {
       const resources = Object.values(actor.system?.resources ?? {}).map(r => {
         const item = r?.item ?? actor.items.get(r?._id ?? r?.id);
         return item && item.type !== 'consumable' ? { id: item.id, name: item.name, max: Number(r?.max) } : null;
       }).filter(Boolean);
-      for (const pool of poolCommandsFor(resources)) {
-        combatActions.push({
-          id: `pool_${pool.itemId}`,
-          label: `${pool.name}, left`,
-          type: 'action',
-          actionType: 'pool_read',
-          forceAbbrev: pool.command,
-          itemId: pool.itemId,
-          poolNoun: pool.noun,
-        });
-      }
+      return poolCommandsFor(resources);
     } catch (error) {
       console.warn('folken-games-quick-menu | pool commands skipped:', error);
+      return [];
     }
+  }
 
-    return combatActions;
+  /** The menu entry that reads a pool: "Grit" in the menu, /grit in chat. */
+  _poolReadEntry(pool) {
+    return {
+      id: `pool_${pool.itemId}`,
+      label: `${pool.name}, left`,
+      menuLabel: pool.name,
+      type: 'action',
+      actionType: 'pool_read',
+      forceAbbrev: pool.command,
+      itemId: pool.itemId,
+      poolNoun: pool.noun,
+    };
   }
 
   /**
@@ -536,19 +546,30 @@ export class CharacterDataExtractor {
       ['feat', 'class'].includes(item.type) && isUsefulFeature(item)
     );
 
+    // A pool's own feature spends a point. Josh, 2026-11-01: in chat /grit
+    // reads and /gritu spends, but the menu's "Grit" spent - he wants the menu
+    // to match chat, for every pool. So the menu shows "Grit", which reads,
+    // and "Spend grit", which is the feature. The feature keeps its sheet name
+    // as its label so its command stays /gritu.
+    const pools = new Map(this._poolsOf(actor).map(p => [p.itemId, p]));
+
     features.forEach(feature => {
+      const pool = pools.get(feature.id);
       abilities.push({
         id: `ability_${feature.id}`,
         label: feature.name,
+        menuLabel: pool ? `Spend ${pool.noun}` : undefined,
         type: 'action',
         actionType: 'item',
         itemId: feature.id,
         uses: feature.system.uses || null,
         activation: feature.system.activation || null
       });
+      if (pool) abilities.push(this._poolReadEntry(pool));
     });
 
-    return abilities.sort((a, b) => a.label.localeCompare(b.label));
+    const shown = (a) => a.menuLabel ?? a.label;
+    return abilities.sort((a, b) => shown(a).localeCompare(shown(b)));
   }
 
   /**

@@ -2,6 +2,43 @@
 
 All notable changes to the FolkenGames Quick Menu module will be documented in this file.
 
+## [0.19.0] - 2026-11-01
+
+Tobias's rulings of 2026-11-01 on the questions Josh had open.
+
+### Added
+- **A command never changes under the player.** Codes are assigned in tiers -
+  the fixed core (skills, saves, checks, initiative, maneuvers, stabilize,
+  caster level, concentration, pool reads), then permanent things oldest first,
+  then consumables - and nothing assigned earlier ever moves. A newcomer whose
+  code is taken extends its own. Every generated code is remembered on the
+  actor by name and type, so a rebuild, a reload or a restocked potion gets the
+  same answer; a player's `/fqm` alias beats everything. The core is identical
+  on every character (Tobias: "consistency across characters is critical").
+  Josh's /per went to a potion on 2026-10-31; it cannot now. `CommandTiers.js`.
+- **A gained item's command is spoken once**: "Potion of Fly is slash p, f, l."
+  The rebuild happens at once, not at the next reload. If a code ever has to
+  change - only an alias can do it - the voice says which and what it is now.
+- **Letter type-ahead in the menu.** P-E-R jumps to Perception; the same letter
+  again goes to the next match; a word start counts ("ret" finds Expeditious
+  Retreat). The menu's jobs move to Shift+F/R/P/U, each a setting. Numbers
+  still work. S stops speech only with the menu closed; open, it is a letter.
+- **Spoken Detail on the fly.** F9 (a setting) cycles auto, short, full and
+  says which. At full, a spell's line adds range, area, duration and whether
+  spell resistance applies; at any level "Plus notes" means hand-written notes
+  are on the card. `SpellDetail.js`.
+- **Buff potions switch their buff on.** The sheet's buff of that name, or one
+  imported from the compendium (PF1's own packs first), set active, and said:
+  "Shield on." / "Fly on, from the compendium." A potion with no buff anywhere
+  says nothing extra. `BuffOn.js`.
+- **Pools in the menu match chat.** Abilities shows "Grit", which reads, and
+  "Spend grit", which is the feature (still /gritu in chat). Every pool.
+
+### Notes
+- 415 assertions over 20 suites. New: command-tiers, spell-detail, buff-on.
+- Still for Tobias: merging stacks on purchase stays with the sheet (Josh's
+  Claude helps mid-game when Foundry will not stack identical potions).
+
 ## [0.18.0] - 2026-11-01
 
 From Josh's three 0.17.0 reports (2026-10-31, 2026-11-01 ×2): a logged game on

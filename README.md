@@ -147,6 +147,25 @@ module's own meta-commands gets an `x` appended (`/statx`, not `/stat`).
 /fqm help              → Show all available meta-commands
 ```
 
+### A Command Never Changes Under You
+
+Codes are assigned in tiers, and nothing assigned earlier ever moves:
+
+1. **The fixed core** - every skill, save and ability check, initiative, combat
+   maneuver, stabilize, caster level, concentration and pool read - comes from
+   system keys, so it is identical on every character in every game. Perception
+   is `/per`, Will is `/wil`, Intimidate is `/itm`.
+2. **Permanent things** - attacks, spells, features, gear - oldest first by the
+   date Foundry stamped on the item. The thing you had first keeps its code; a
+   newcomer that would collide extends its own.
+3. **Consumables** always give way.
+
+Every generated code is remembered on the character by name and type, so a
+rebuild, a reload or a restocked potion gets the same answer. Your own `/fqm
+rename` beats everything. When you gain an item its code is spoken once: "Potion
+of Fly is slash p, f, l." If a code ever has to change - only your own alias can
+cause that - the voice says which and what it is now.
+
 ### Where Aliases Are Stored
 
 Aliases persist in actor flags at `actor.flags['folken-games-quick-menu'].chatAliases`. You can inspect them in the browser console:
@@ -191,12 +210,13 @@ Quick Menu
 | `Right/Enter` | Select / enter submenu |
 | `Left` / `Backspace` | Back one level |
 | `Escape` | Close the whole menu, in one press |
-| `F` | Add to favorites |
-| `R` | Remove from favorites |
-| `P` | Prepare spell (+1) |
-| `U` | Unprepare spell (-1) |
+| `A-Z` | Type-ahead: letters typed within a second jump to the first item starting with them ("per" → Perception); the same letter again goes to the next match. Never uses an item |
+| `Shift+F` | Add to favorites (configurable) |
+| `Shift+R` | Remove from favorites (configurable) |
+| `Shift+P` | Prepare spell (+1) (configurable) |
+| `Shift+U` | Unprepare spell (-1) (configurable) |
 | `/` | Options: Take 10/20 on a skill, Normal/Full Attack on an attack. Anything else says "No options" and is never used |
-| `Shift`+anything | Passed through; the menu claims only unmodified keys |
+| `Shift`+anything else | Passed through |
 | `0-9` | Move to that position in the list. Digits combine, so 38 reaches item 38. Never uses an item |
 | `Scroll wheel` | Navigate |
 
@@ -222,8 +242,9 @@ These work anywhere in Foundry (whether or not the menu is open). They are suppr
 | `,` / `.` | Reading speed slower / faster (announced, persisted); configurable |
 | `-` / `=` | Voice volume down / up (announced, persisted); configurable |
 | `Control`, alone | Stop the voice. Works everywhere, including the chat box - the screen-reader convention. Ctrl+anything else is left alone |
-| `S` | Stop the voice, while it is talking and you are not typing (as in the Poker Dungeon). Otherwise S is Foundry's as usual |
-| `\` (Backslash) | Jump focus to the chat prompt (fixes v14 announcing it as "new line"); configurable |
+| `S` | Stop the voice, while it is talking, you are not typing and the menu is closed (as in the Poker Dungeon). With the menu open S is a letter |
+| `\` (Backslash) | Jump focus to the chat prompt (fixes v14 announcing it as "new line"), closing the menu first if it is open; configurable |
+| `F9` | Cycle Spoken Detail: auto, short, full - announced; configurable |
 
 ### What you hear
 
@@ -240,7 +261,11 @@ These work anywhere in Foundry (whether or not the menu is open). They are suppr
   15." Items with uses say what is left: "2 of 3 left."; something that gives a
   point back says "Regained. 2 of 3." Ammunition is only ever read, never spent:
   "17 arrows left." A card with nothing to roll says "Card posted." Plain
-  `/r`, `/d` and `/h` rolls are read too.
+  `/r`, `/d` and `/h` rolls are read too. A buff potion switches its buff on
+  and says so: "Shield on." - the sheet's buff, or one imported from the PF1
+  compendium. At full detail a spell adds its range, area, duration and
+  whether spell resistance applies; at any level "Plus notes" means there are
+  hand-written notes on the card.
 - **Failed.** Two pulses at 400 Hz - the Poker Dungeon's error sound, raised so
   it carries over a screen reader - then why, if there is a why: "None left.",
   "No charges.", "Not found. Type slash scan.", "No command." Anything that
