@@ -22,10 +22,12 @@ const t = (name, fn) => { fn(); pass++; console.log("  ok -", name); };
 
 // --- the error sound is the Poker Dungeon's, exactly ---
 
-t("error is two low pulses at 220 Hz, matching poker", () => {
+t("error is two pulses at 400 Hz - poker's shape, raised from 220 for Josh", () => {
+  // Josh, 2026-11-01: 220 got lost under VoiceOver and the voice, and laptop
+  // speakers lose most of what sits below about 300 Hz.
   const tones = EARCONS.error;
   assert.equal(tones.length, 2);
-  for (const tone of tones) { assert.equal(tone.from, 220); assert.equal(tone.dur, 0.10); }
+  for (const tone of tones) { assert.equal(tone.from, 400); assert.equal(tone.dur, 0.10); }
   assert.equal(tones[1].at, 0.13);
 });
 

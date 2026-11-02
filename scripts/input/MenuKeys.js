@@ -34,7 +34,10 @@ export const MENU_KEYS = new Set([
  */
 export function menuClaimsKey(event) {
   if (!event) return false;
-  if (event.ctrlKey || event.altKey || event.metaKey) return false;
+  // Shift too. Josh, 2026-11-01: Shift plus an arrow or a letter was acting as
+  // the plain key, so a capital R with the menu open removed a favorite. Shift
+  // chords are left free for whatever comes next.
+  if (event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return false;
   return MENU_KEYS.has(event.code);
 }
 
@@ -48,17 +51,22 @@ export function menuClaimsKey(event) {
  * afterwards went to a closed menu. That is the whole bug.
  *
  * Making each key do one job is the real fix, so a double press is harmless.
- * This guard is the belt to that braces, and it needs no guessed time window:
- * it matches on the exact same timeStamp, so it can only ever suppress a literal
- * duplicate of the event we just serviced. A genuine second press, however fast,
- * carries a different timeStamp.
+ * This guard is the belt to those braces. It first matched only the exact same
+ * timeStamp, but Josh's game log of 2026-10-31 showed 22 doubled Slash
+ * keydowns 1 to 4 ms apart, a backtick 5 ms apart and a Left Bracket 1 ms
+ * apart - all trusted, none a repeat, each with its own timeStamp - and the
+ * menu acted on both: one speed key press stepped the speed twice. They come
+ * with the first key after switching back into Chrome. Nobody presses a key
+ * twice in ten milliseconds, so the same code inside that window is one press.
  */
+export const DUPLICATE_WINDOW_MS = 10;
+
 export function isDuplicateKeydown(last, event) {
   if (!last || !event) return false;
   if (last.code !== event.code) return false;
-  return typeof last.timeStamp === 'number'
-    && typeof event.timeStamp === 'number'
-    && last.timeStamp === event.timeStamp;
+  if (typeof last.timeStamp !== 'number' || typeof event.timeStamp !== 'number') return false;
+  const apart = event.timeStamp - last.timeStamp;
+  return apart >= 0 && apart <= DUPLICATE_WINDOW_MS;
 }
 
 /**

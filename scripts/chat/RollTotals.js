@@ -96,7 +96,7 @@ export function extractRollTotals(message) {
       // an entry without an attack was skipped whole, so its damage was never
       // read out either.
       if (attack === null && damage === null) continue;
-      attacks.push({ attack, damage, types: damageTypesOf(entry?.damage) });
+      attacks.push({ attack, damage, types: damageTypesOf(entry?.damage), ...critOf(entry, damage) });
     }
     if (attacks.length) {
       return {
@@ -140,6 +140,44 @@ function damageTypesOf(damageRolls) {
     for (const t of Array.isArray(list) ? list : [list]) if (t) types.add(String(t));
   }
   return [...types];
+}
+
+/**
+ * The natural d20, the threat and the confirmation on one attack entry.
+ *
+ * Verified on a real Pair O Deez card from Goblin Deez (2026-11-01 04:31:58Z):
+ * the attack roll's first term is the d20, with `results[0].result` the face
+ * and `options.critical` the threat range (19 there); a threat adds
+ * `critConfirm` (a roll) and `critDamage` (the extra rolls, type "crit"). The
+ * card shows "Critical Damage 78" = the 17 normal + 61 extra, so that is what
+ * is read back. Fields are added only when present, so an ordinary entry's
+ * shape is unchanged.
+ *
+ * Josh's rule, 2026-10-29: the line adds what he has to act on - "a crit or
+ * natural 20 or 1". In the 2026-10-31 game a confirmed threat was read as a
+ * plain to-hit and damage.
+ */
+function critOf(entry, damage) {
+  const out = {};
+  const roll = asRoll(entry?.attack);
+  const die = roll?.terms?.[0];
+  const face = die?.results?.[0]?.result;
+  const natural = (die?.faces === 20 || die?.class === 'Die' || /^\d*d20\b/.test(String(die?.formula ?? roll?.formula ?? ''))) && Number.isFinite(face) ? face : null;
+  if (natural !== null) out.natural = natural;
+  const threshold = Number(roll?.options?.critical);
+  const confirm = totalOf(entry?.critConfirm);
+  const threat = (natural !== null && Number.isFinite(threshold) && natural >= threshold) || confirm !== null;
+  if (threat) out.threat = true;
+  if (confirm !== null) out.confirm = confirm;
+  const extra = Array.isArray(entry?.critDamage) ? totalsFrom(entry.critDamage).reduce((a, b) => a + b, 0) : 0;
+  if (threat && extra > 0) out.critTotal = (damage ?? 0) + extra;
+  return out;
+}
+
+function asRoll(candidate) {
+  if (!candidate) return null;
+  if (typeof candidate === 'string') { try { return JSON.parse(candidate); } catch (_) { return null; } }
+  return typeof candidate === 'object' ? candidate : null;
 }
 
 function saveOf(message) {
@@ -192,10 +230,20 @@ export function renderAttackTotals(totals = {}, { terse = true, healing = false 
   // PF1 writes an attack that always hits as +100 (the Scroll of Magic
   // Missile), which came out as "123 to hit". Josh, 2026-10-29: say "hits".
   const toHit = (attack) => attack >= 100 ? 'hits' : `${attack} to hit`;
-  const one = ({ attack, damage, types }) => {
+  // PF1: a natural 20 always hits and a natural 1 always misses. A threat says
+  // so, with its confirmation roll and what the damage becomes if it confirms:
+  // "41 to hit, threat, confirms 44, 17 damage, 78 on a crit."
+  const one = ({ attack, damage, types, natural, threat, confirm, critTotal }) => {
     const word = damageWord(types, healing);
-    if (attack === null || attack === undefined) return hasDamage(damage) ? `${damage} ${word}` : '';
-    return hasDamage(damage) ? `${toHit(attack)}, ${damage} ${word}` : toHit(attack);
+    const dmg = hasDamage(damage) ? `${damage} ${word}` : '';
+    if (attack === null || attack === undefined) return dmg;
+    if (natural === 1) return 'natural 1, miss';
+    const parts = [natural === 20 ? 'natural 20, hits' : toHit(attack)];
+    if (threat) parts.push('threat');
+    if (confirm !== null && confirm !== undefined) parts.push(`confirms ${confirm}`);
+    if (dmg) parts.push(dmg);
+    if (threat && critTotal) parts.push(`${critTotal} on a crit`);
+    return parts.join(', ');
   };
   if (!attacks.some(a => one(a))) return '';
 

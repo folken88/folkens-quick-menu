@@ -214,7 +214,35 @@ export class ActionExecutor {
     if (this._templateGuard || typeof Hooks === 'undefined') return;
     this._templateGuard = Hooks.on('pf1CreateActionUse', (actionUse) => {
       if (this._suppressTemplates > 0 && actionUse?.shared) actionUse.shared.useMeasureTemplate = false;
+      if (this._singleAttacks > 0) this._makeSingleAttack(actionUse);
     });
+  }
+
+  /**
+   * The Normal entry under Slash rolled a full attack. Josh, 2026-11-01:
+   * Normal Punch gave two swings, Normal Pair O Deez all five.
+   *
+   * Read in PF1 11.11's own pf1.js: process() fires pf1CreateActionUse, then
+   * sets shared.fullAttack = true itself, and with skipDialog hands an empty
+   * formData to alterRollData, where `fullAttack ??= true` becomes the real
+   * decision. So setting shared here is overwritten; the one place that
+   * sticks is the formData alterRollData is given.
+   */
+  _makeSingleAttack(actionUse) {
+    const original = actionUse?.alterRollData;
+    if (typeof original !== 'function') return;
+    actionUse.alterRollData = async function (formData = {}) {
+      formData.fullAttack = false;
+      return original.call(this, formData);
+    };
+  }
+
+  /** The charge cost of the item's first action; 0 when it has none. */
+  _chargeCost(item) {
+    const live = item?.defaultAction ?? item?.actions?.contents?.[0];
+    const raw = live?.uses ?? item?.system?.actions?.[0]?.uses;
+    const cost = Number(raw?.autoDeductChargesCost);
+    return Number.isFinite(cost) ? cost : 0;
   }
 
   /** Is this item's action healing? PF1 marks it as actionType "heal". */
@@ -274,6 +302,15 @@ export class ActionExecutor {
     });
   }
 
+  /**
+   * Read the next plain roll of ours: /r 1d20, /d, /h. Josh asked in the
+   * 0.16.0 round; these go to Foundry or PF1, not through an executor, so the
+   * interceptor arms the reader when it sees one go past.
+   */
+  announceNextRoll() {
+    return this._hookRollResult();
+  }
+
   _hookAttackResult() {
     return this._announceOnce((message) => this._tts()?.announceAttackResult(message));
   }
@@ -315,8 +352,10 @@ export class ActionExecutor {
     const skillKey = actionItem.skillKey || actionItem.id;
     const rollOptions = { skipDialog: true };
 
-    if (actionItem.take10) rollOptions.take10 = true;
-    else if (actionItem.take20) rollOptions.take20 = true;
+    // PF1 11.11 reads neither take10 nor take20; its option is staticRoll.
+    // Josh, 2026-11-01: Take 10 on Perception gave 21, 22 and 21 - plain d20s.
+    if (actionItem.take10) rollOptions.staticRoll = 10;
+    else if (actionItem.take20) rollOptions.staticRoll = 20;
 
     const hookId = this._hookRollResult();
     try {
@@ -341,7 +380,16 @@ export class ActionExecutor {
 
     const hookId = this._hookAttackResult();
     try {
-      const outcome = useOutcome(await this._pf1Use(item, actionItem.fullAttack ? { fullAttack: true } : {}));
+      // PF1 ignores a fullAttack option on use(); the Normal entry is made a
+      // single attack through the pf1CreateActionUse hook instead.
+      const single = actionItem.fullAttack === false;
+      if (single) this._singleAttacks = (this._singleAttacks || 0) + 1;
+      let outcome;
+      try {
+        outcome = useOutcome(await this._pf1Use(item));
+      } finally {
+        if (single) this._singleAttacks = Math.max(0, (this._singleAttacks || 1) - 1);
+      }
       if (!outcome.ok) { hookId.off(); this._fail(outcome.reason); }
     } catch (error) {
       console.error("Attack roll error:", error);
@@ -619,7 +667,10 @@ export class ActionExecutor {
         this._tts()?.speak(LAST_ONE, { interrupt: false, queue: true });
         return;
       }
-      const left = stacks.length > 1 ? stockLine(stacks) : usesLeftLine(stacks[0]);
+      let left = stacks.length > 1 ? stockLine(stacks) : usesLeftLine(stacks[0]);
+      // A negative charge cost gives a point back. Josh, 2026-11-01: Regain
+      // Grit said "2 of 3 left.", the same words as spending one.
+      if (left && this._chargeCost(item) < 0) left = `Regained. ${left.replace(/ left\.$/, '.')}`;
       if (left) this._tts()?.speak(left, { interrupt: false, queue: true });
     } catch (error) {
       console.error('Item use error:', error);

@@ -322,28 +322,28 @@ export class TTSManager {
   }
 
   /**
-   * The two engine workarounds the Poker Dungeon needed, both independent of
-   * any state of ours so neither can desync:
-   *  - Chrome silently pauses speech after about 15 s of output; resume() every
-   *    8 s un-pauses it and does nothing otherwise.
-   *  - A cancel() landing mid-utterance can wedge Chrome's engine for good: it
-   *    claims to be speaking with a dead queue. If it says it is busy and no
-   *    word has started for 8 s, cancel() clears it.
+   * One engine workaround from the Poker Dungeon: Chrome silently pauses
+   * speech after about 15 s of output, and resume() every 8 s un-pauses it.
+   * Only while the engine has something in hand - Josh, 2026-10-31: on an idle
+   * engine it did nothing but show up in his log every 8 seconds.
+   *
+   * The watchdog that used to live here cancelled the engine whenever it
+   * claimed to be busy with no word of ours for 8 s. Josh's logs (2026-10-31
+   * and 2026-11-01) showed that doing more harm than good: every one of its
+   * cancels landed on a line handed over but not started, which is the very
+   * thing that jams Chrome, it never revived a dead voice, and it cut off a
+   * test line of his that was playing fine. The queue now does this itself:
+   * one cancel per stuck line, then the alarm, then hands off.
    */
   _startEngineWatch() {
     if (this._engineWatch) return;
     this.lastAliveTs = Date.now();
     this._engineWatch = [
-      setInterval(() => { try { this.speechSynthesis.resume(); } catch (_) {} }, 8000),
       setInterval(() => {
         const eng = this.speechSynthesis;
-        if (!(eng.speaking || eng.pending)) return;
-        if (Date.now() - (this.lastAliveTs || 0) < 8000) return;
-        console.warn('folken-games-quick-menu | speech engine wedged, resetting');
-        try { eng.cancel(); } catch (_) {}
-        this.lastAliveTs = Date.now();
-        this.queue?.noteReset();
-      }, 3000),
+        if (!(eng.speaking || eng.pending || eng.paused)) return;
+        try { eng.resume(); } catch (_) {}
+      }, 8000),
     ];
   }
 
@@ -358,7 +358,19 @@ export class TTSManager {
    */
   _voiceDown() {
     console.warn('folken-games-quick-menu | speech engine is not producing sound; quit and reopen Chrome');
-    try { playEarcon('voiceDown', { volume: this.liveVolume }); } catch (_) {}
+    // Full volume, not his voice volume, and again every 20 s while the voice
+    // stays down. Josh, 2026-10-31: the first version was easy to miss.
+    try { playEarcon('voiceDown', { volume: 1 }); } catch (_) {}
+    if (!this._voiceDownRepeat) {
+      this._voiceDownRepeat = setInterval(() => {
+        if (!this.queue?.voiceDownAnnounced) {
+          clearInterval(this._voiceDownRepeat);
+          this._voiceDownRepeat = null;
+          return;
+        }
+        try { playEarcon('voiceDown', { volume: 1 }); } catch (_) {}
+      }, 20000);
+    }
     try {
       ChatMessage.create({
         whisper: [game.user.id],
@@ -576,8 +588,10 @@ export class TTSManager {
     }
 
     // A spell or item with nothing to roll - Shield, Mage Armor - has no number,
-    // and that is not an error. Its name was spoken when it was accepted.
-    if (quietIfNone) return;
+    // and that is not an error. Since 0.17.0 its name is not spoken either, so
+    // the blip was followed by nothing. Josh, 2026-11-01: he cannot tell that
+    // from a lost result. Say the card went up.
+    if (quietIfNone) { this.speak('Card posted.', { interrupt: false, queue: true }); return; }
 
     console.warn('folken-games-quick-menu | no roll total found on this card:',
       describeShape(chatMessage));

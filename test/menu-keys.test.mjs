@@ -111,17 +111,27 @@ t("the same press delivered twice is recognised as one", () => {
   assert.equal(isDuplicateKeydown(first, second), true);
 });
 
-t("a genuine second press is not suppressed, however fast", () => {
+t("the same key within ten milliseconds is one press", () => {
+  // Josh's game log, 2026-10-31: Slash doubled 22 times 1 to 4 ms apart, a
+  // backtick 5 ms apart, Left Bracket 1 ms apart - each with its own
+  // timeStamp, and the speed key stepped twice for one press.
   const first = { code: "Backquote", timeStamp: 1416.274 };
-  const later = { code: "Backquote", timeStamp: 1416.275 };
-  assert.equal(isDuplicateKeydown(first, later), false);
+  assert.equal(isDuplicateKeydown(first, { code: "Backquote", timeStamp: 1416.275 }), true);
+  assert.equal(isDuplicateKeydown(first, { code: "Backquote", timeStamp: 1421.274 }), true);
+  assert.equal(isDuplicateKeydown(first, { code: "Backquote", timeStamp: 1426.274 }), true);
 });
 
-t("the guard needs no time window to tune", () => {
-  // Two presses two full seconds apart are still two presses, and a duplicate
-  // two seconds later would still be caught - the test is identity, not nearness.
+t("a genuine second press is not suppressed", () => {
+  assert.equal(isDuplicateKeydown({ code: "Backquote", timeStamp: 1 }, { code: "Backquote", timeStamp: 12 }), false);
   assert.equal(isDuplicateKeydown({ code: "Backquote", timeStamp: 1 }, { code: "Backquote", timeStamp: 3000 }), false);
   assert.equal(isDuplicateKeydown({ code: "Backquote", timeStamp: 3000 }, { code: "Backquote", timeStamp: 3000 }), true);
+});
+
+t("Shift chords pass through the open menu", () => {
+  // Josh, 2026-11-01: Shift+R acted as R and removed a favorite.
+  for (const c of ["KeyR", "KeyF", "KeyP", "KeyU", "ArrowDown", "Digit3"]) {
+    assert.equal(menuClaimsKey(key(c, { shiftKey: true })), false, c);
+  }
 });
 
 t("a different key at the same instant is not a duplicate", () =>

@@ -373,21 +373,21 @@ export class QuickMenuManager {
   /**
    * Navigate back to previous menu
    */
-  navigateBack() {
+  navigateBack({ prefix = '' } = {}) {
     if (!this.isOpen) return;
-    
+
     if (this.menuStack.length === 0) {
       this.closeMenu();
       return;
     }
-    
+
     const previousState = this.menuStack.pop();
     this.currentMenu = previousState.menu;
     this.selectedIndex = previousState.selectedIndex;
-    
+
     // Announce just the current selection
-    this.announceCurrentSelection();
-    
+    this.announceCurrentSelection({ prefix });
+
     this.render();
   }
 
@@ -589,36 +589,38 @@ export class QuickMenuManager {
     // Remove from favorites
     this.favorites.splice(favoriteIndex, 1);
     this.saveFavorites();
-    
-    game.folkenQuickMenu.tts.speak(`${selectedItem.label} removed`);
-    
-    // Refresh the favorites menu
-    this.refreshFavoritesMenu();
+
+    // One line, not two. Josh, 2026-10-31: "removed" was spoken and the
+    // redraw's name interrupted it in the same instant - a cancel on a line
+    // Chrome had not started, which is what jams its voice. R in Favorites is
+    // how it died in play.
+    this.refreshFavoritesMenu({ prefix: `${selectedItem.label} removed.` });
   }
 
   /**
    * Refresh the favorites menu after changes
+   * @param {object} [opts]
+   * @param {string} [opts.prefix] words to put in front of the item announced
    */
-  refreshFavoritesMenu() {
+  refreshFavoritesMenu({ prefix = '' } = {}) {
     if (!this.isOpen || this.menuStack.length === 0) return;
-    
+
     // Check if we're in favorites submenu
     const parentState = this.menuStack[this.menuStack.length - 1];
     if (parentState.menu === this.rootMenuItems && parentState.selectedIndex === 0) {
       // We're in the favorites submenu, refresh it
       this.currentMenu = this.getFavorites();
-      
+
       // Adjust selection if needed
       if (this.selectedIndex >= this.currentMenu.length) {
         this.selectedIndex = Math.max(0, this.currentMenu.length - 1);
       }
-      
+
       // If no favorites left, announce and go back
       if (this.currentMenu.length === 0) {
-        game.folkenQuickMenu.tts.speak('No favorites remaining');
-        this.navigateBack();
+        this.navigateBack({ prefix: `${prefix} No favorites remaining.`.trim() });
       } else {
-        this.announceCurrentSelection();
+        this.announceCurrentSelection({ prefix });
         this.render();
       }
     }
@@ -701,7 +703,8 @@ export class QuickMenuManager {
           label: `Normal ${selectedItem.label}`,
           type: 'action',
           actionType: 'attack',
-          itemId: selectedItem.itemId
+          itemId: selectedItem.itemId,
+          fullAttack: false
         },
         {
           id: `${selectedItem.id}_full`,
@@ -713,8 +716,9 @@ export class QuickMenuManager {
         }
       ];
     } else {
-      // For other types, just execute normally
-      this.navigateForward();
+      // Slash on anything else used the item. Josh, 2026-11-01: a key that
+      // asks for options must not spend a potion. Say there are none.
+      game.folkenQuickMenu.tts.speak(`${selectedItem.label}. No options.`, { interrupt: true });
       return;
     }
     
@@ -976,16 +980,18 @@ export class QuickMenuManager {
   /**
    * Announce current selection via TTS
    */
-  announceCurrentSelection() {
+  announceCurrentSelection({ prefix = '' } = {}) {
     if (!getSetting('enableTTS') || !this.currentMenu) return;
-    
+
     debugLog('Announcing current selection. Menu length:', this.currentMenu.length, 'Selected index:', this.selectedIndex);
-    
+
     const selectedItem = this.currentMenu[this.selectedIndex];
     if (selectedItem) {
       // Use displayNumber if available, otherwise use index + 1
       const displayNum = selectedItem.displayNumber !== undefined ? selectedItem.displayNumber : this.selectedIndex + 1;
-      const message = `${displayNum}. ${selectedItem.label}`;
+      // A prefix ("Stealth removed.") rides on the same line, so an action
+      // that speaks and then redraws never speaks twice.
+      const message = `${prefix ? prefix + ' ' : ''}${displayNum}. ${selectedItem.label}`;
       debugLog('Announcing:', message);
       // Navigation is the one thing allowed to cut the voice off: arrowing
       // past an item should not wait for its name to finish.

@@ -2,6 +2,81 @@
 
 All notable changes to the FolkenGames Quick Menu module will be documented in this file.
 
+## [0.18.0] - 2026-11-01
+
+From Josh's three 0.17.0 reports (2026-10-31, 2026-11-01 ×2): a logged game on
+Sparkbang in Goblin Deez, and 575 lab cancels that found what kills Chrome's
+voice.
+
+### Fixed
+- **The voice no longer dies from a cancel.** Josh's measurement: a
+  `speechSynthesis.cancel()` landing on a line Chrome has been handed but has not
+  started, or in the same instant it starts, jams the engine (4 of 4 at 0 ms;
+  every unstarted cancel stalled or killed it); 1 ms or more after the start
+  event, 575 of 575 survived. 0.17.0 cancelled at once on every interrupt, so R
+  in Favorites ("removed" then the redraw's name in the same tick) and an arrow
+  landing on a hand-off both did it. Now a cut waits for the start plus a 20 ms
+  margin (his number: twenty times the measured edge), an idle engine is never
+  cancelled, and neither is speech that is not ours. Removing a favorite is one
+  line: "Stealth removed. 1. Perception."
+- **The watchdog no longer makes a dead engine worse.** It cancelled every 8 s
+  while Chrome claimed to be busy - 21 times in one dead stretch, each a cancel
+  on an unstarted line - and never revived anything. A line that never starts
+  now gets one cancel and one more try; if that does not start either, the
+  voice is declared down and the engine is left alone until something starts.
+  `resume()` only runs while the engine has something in hand.
+- **Take 10 and Take 20 rolled a plain d20.** PF1 11.11's option is
+  `staticRoll`, not the flags that were being passed.
+- **Normal attack rolled a full attack.** PF1 ignores a `fullAttack` option on
+  `use()`; read in its own `pf1.js`, the decision is made in `alterRollData`
+  from an empty formData, so the Normal entry sets it there.
+- **Containers never showed.** PF1 11.11 keeps contents in `item.items`;
+  `system.contents` is null. A container with something inside is a submenu
+  of its contents again.
+- **Two stacks with one name in the menu.** The menu listed Potion of True
+  Strike twice and the first said "That was the last one." with three in the
+  other stack. One entry per name, with the total, the same as chat.
+- **Shift was not passed through.** Shift+R acted as R and removed a favorite.
+  The open menu claims unmodified keys only.
+- **Slash on anything but a skill or attack used the item.** It says "No
+  options." and spends nothing.
+- **Backslash with the menu open.** P, E, R and Enter went to the still-open
+  menu, twice. Going to chat closes the menu first: "Menu closed. Chat input".
+- **Doubled keydowns.** 22 doubled Slash presses 1 to 4 ms apart in one game,
+  each with its own timeStamp, so the exact-match guard let them through and a
+  speed key stepped twice. The same key within 10 ms is one press.
+- **"/per/pod" failed in silence.** Text left from a failed command with the
+  next one typed onto it gets the tones and "No command." like any other miss.
+- **Utility Shot said "That was the last one."** on uses whose value was never
+  set. A blank is not a zero; nothing is said.
+- **Regain Grit sounded like a spend.** A negative charge cost reads "Regained.
+  2 of 3."
+- The stale guide claimed first-letter navigation, which has never existed.
+
+### Added
+- **Crits, natural 20s and natural 1s** (Josh's rule of 2026-10-29, verified on
+  his real Pair O Deez card): "41 to hit, threat, confirms 44, 17 damage, 78 on
+  a crit." / "natural 20, hits" / "natural 1, miss".
+- **"Card posted."** for a use with nothing to roll, so the blip is never
+  followed by a silence he cannot tell from a lost result.
+- **Plain `/r`, `/d` and `/h` rolls are read aloud** (asked in the 0.16.0 round).
+- **A new item is spoken**, not only whispered: "Potion of Fly added. Type
+  slash scan to update your commands."
+
+### Changed
+- The error tone is 400 Hz, up from 220: Josh's call, it was lost under
+  VoiceOver and laptop speakers.
+- The voice-down alarm is three slides at full volume and repeats every 20 s
+  until a line is heard again.
+
+### Notes
+- 393 assertions over 17 suites. New: `test/menu-items.test.mjs`; the speech
+  queue suite replays Josh's cancel timings.
+- Not in this release, for Tobias to rule on: the command-code rule (a command
+  never changes under the player; fixed core; saved codes), first-letter
+  navigation, spell detail and verbosity levels, merging stacks on purchase,
+  the S key, grit read-vs-spend in the menu.
+
 ## [0.17.0] - 2026-10-29
 
 From Josh's 0.16.1 test report and two follow-ups (2026-10-29), on Ser in

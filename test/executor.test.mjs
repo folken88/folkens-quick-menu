@@ -63,6 +63,39 @@ function spontaneousBook(slots) {
   return { spontaneous: true, inUse: true, spells };
 }
 
+// --- Take 10 and Take 20 (Josh, 2026-11-01: they rolled a plain d20) ---
+
+await t("Take 10 and Take 20 pass PF1's staticRoll, not a flag it ignores", async () => {
+  const calls = [];
+  const actor = makeActor();
+  actor.rollSkill = async (key, opts) => { calls.push([key, opts]); };
+  const ex = new ActionExecutor();
+  await ex.execute({ actionType: "skill", skillKey: "per", label: "Perception", take10: true }, actor);
+  await ex.execute({ actionType: "skill", skillKey: "per", label: "Perception", take20: true }, actor);
+  await ex.execute({ actionType: "skill", skillKey: "per", label: "Perception" }, actor);
+  assert.equal(calls[0][1].staticRoll, 10);
+  assert.equal(calls[1][1].staticRoll, 20);
+  assert.equal(calls[2][1].staticRoll, undefined);
+  assert.equal("take10" in calls[0][1], false);
+});
+
+await t("the Normal entry makes PF1's alterRollData see fullAttack false; a chat attack is left alone", async () => {
+  const weapon = { id: "w", name: "Punch", system: {}, use: async () => {
+    // What PF1's process() does after pf1CreateActionUse: hand alterRollData an empty formData.
+    const actionUse = { shared: {}, alterRollData: async function (formData) { this.shared.fullAttack = formData.fullAttack ?? true; } };
+    for (const fn of hookHandlers.pf1CreateActionUse ?? []) fn(actionUse);
+    await actionUse.alterRollData({});
+    seen.push(actionUse.shared.fullAttack);
+    return {};
+  } };
+  const seen = [];
+  const actor = makeActor({ items: [weapon] });
+  const ex = new ActionExecutor();
+  await ex.execute({ actionType: "attack", itemId: "w", label: "Normal Punch", fullAttack: false }, actor);
+  await ex.execute({ actionType: "attack", itemId: "w", label: "Punch" }, actor);
+  assert.deepEqual(seen, [false, true]);
+});
+
 // --- refusals are refusals ---
 
 await t("a potion with none left says so, and never 'sent to chat'", async () => {

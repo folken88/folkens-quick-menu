@@ -7,6 +7,7 @@ import { debugLog } from '../module.js';
 import { stripMarkup } from '../chat/StateSpeech.js';
 import { distinctSpellbooks } from './Spellbooks.js';
 import { isTriggerable, isUsefulFeature } from './ItemUse.js';
+import { mergeStacks, containerContents } from './MenuItems.js';
 import { poolCommandsFor } from '../chat/StateSpeech.js';
 
 export class CharacterDataExtractor {
@@ -412,8 +413,15 @@ export class CharacterDataExtractor {
    */
   getItemsByCategory(actor, category) {
     debugLog('Getting items by category:', category);
-    
-    const allItems = actor.items.filter(item => 
+
+    // Inside one container: its contents, each usable the way it would be
+    // from the top level.
+    if (typeof category === 'string' && category.startsWith('container:')) {
+      const box = actor.items.get(category.slice('container:'.length));
+      return mergeStacks(this._containerEntries(box)).sort((a, b) => a.label.localeCompare(b.label));
+    }
+
+    const allItems = actor.items.filter(item =>
       ['consumable', 'equipment', 'loot', 'weapon', 'container'].includes(item.type)
     );
 
@@ -474,10 +482,10 @@ export class CharacterDataExtractor {
           // (2026-10-09), so a torch or a gem became one more thing to arrow
           // past.
           if (item.type === 'container') {
-            if (item.system.contents && item.system.contents.length > 0) {
-              itemData.type = 'container_category';
+            if (containerContents(item).length > 0) {
+              itemData.type = 'item_category';
+              itemData.id = `container:${item.id}`;
               itemData.actionType = 'submenu';
-              itemData.containerContents = item.system.contents;
               filteredItems.push(itemData);
             }
           } else if (item.type === 'loot' && isTriggerable(item)) {
@@ -487,7 +495,29 @@ export class CharacterDataExtractor {
       }
     });
 
-    return filteredItems.sort((a, b) => a.label.localeCompare(b.label));
+    // Two stacks with one name are one entry, so the menu and chat agree.
+    return mergeStacks(filteredItems).sort((a, b) => a.label.localeCompare(b.label));
+  }
+
+  /** The entries for what a container holds. */
+  _containerEntries(box) {
+    const entries = [];
+    for (const item of containerContents(box)) {
+      if (!item?.name) continue;
+      const ammo = item.type === 'loot' && item.system?.subType === 'ammo';
+      if (!(ammo || item.type === 'consumable' || isTriggerable(item))) continue;
+      entries.push({
+        id: `item_${item.id ?? item._id}`,
+        label: item.name,
+        type: 'action',
+        actionType: ammo ? 'ammo_read' : 'item',
+        itemId: item.id ?? item._id,
+        quantity: item.system?.quantity || 1,
+        uses: item.system?.uses || null,
+        originalItem: item,
+      });
+    }
+    return entries;
   }
 
   /**

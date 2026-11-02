@@ -83,9 +83,13 @@ export function usesLeftLine(item) {
   }
 
   // Uses per day, week, or charges - a real limited resource.
+  //
+  // A blank value is not a zero. Josh, 2026-11-01: Utility Shot's uses have a
+  // max that follows his grit but a value that was never set, and the use
+  // spends nothing, yet it said "That was the last one." every time.
   if (uses.per && Number.isFinite(uses.max) && uses.max > 0) {
-    const left = Number.isFinite(uses.value) ? uses.value : 0;
-    return left <= 0 ? LAST_ONE : `${left} of ${uses.max} left.`;
+    if (!Number.isFinite(uses.value)) return '';
+    return uses.value <= 0 ? LAST_ONE : `${uses.value} of ${uses.max} left.`;
   }
 
   return '';

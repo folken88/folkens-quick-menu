@@ -16,6 +16,48 @@ import { extractRollTotals, renderAttackTotals, describeShape, isOwnMessage, sho
 let pass = 0;
 const t = (name, fn) => { fn(); pass++; console.log("  ok -", name); };
 
+// --- crits, natural 20s and natural 1s (real Pair O Deez card, Goblin Deez, 2026-11-01) ---
+
+const d20 = (face, bonus, critical = 19) => JSON.stringify({
+  formula: `1d20 + ${bonus}`, total: face + bonus,
+  terms: [{ class: "Die", faces: 20, results: [{ result: face }] }],
+  options: { critical },
+});
+const dmg = (total, damageType = ["piercing"], type = "normal") => JSON.stringify({ formula: "x", total, options: { damageType, type } });
+
+t("a threat reads its confirmation and the damage on a crit", () => {
+  // Shot two of the real card: 19 on the die, threat range 19, confirmation 44,
+  // 13 + 4 normal damage, 61 more if it confirms - the card shows "Critical Damage 78".
+  const r = extractRollTotals({ system: { rolls: { attacks: [{
+    attack: d20(19, 22), critConfirm: d20(15, 29),
+    damage: [dmg(13), dmg(4, ["negative", "force"])],
+    critDamage: [dmg(17), dmg(3), dmg(9, ["negative"], "crit"), dmg(13), dmg(2), dmg(17, ["force"], "crit")],
+  }] } } });
+  assert.equal(r.attacks[0].natural, 19);
+  assert.equal(r.attacks[0].threat, true);
+  assert.equal(r.attacks[0].confirm, 44);
+  assert.equal(r.attacks[0].critTotal, 78);
+  assert.equal(renderAttackTotals(r), "41 to hit, threat, confirms 44, 17 damage, 78 on a crit.");
+});
+
+t("an ordinary swing on the same card carries no crit fields", () => {
+  const r = extractRollTotals({ system: { rolls: { attacks: [{ attack: d20(4, 22), damage: [dmg(12), dmg(3)] }] } } });
+  assert.deepEqual(r.attacks[0], { attack: 26, damage: 15, types: ["piercing"], natural: 4 });
+  assert.equal(renderAttackTotals(r), "26 to hit, 15 damage.");
+});
+
+t("a natural 20 is announced and always hits; a natural 1 always misses", () => {
+  const twenty = extractRollTotals({ system: { rolls: { attacks: [{ attack: d20(20, 10, 20), critConfirm: d20(7, 10, 20), damage: [dmg(9)], critDamage: [dmg(8, ["piercing"], "crit")] }] } } });
+  assert.equal(renderAttackTotals(twenty), "natural 20, hits, threat, confirms 17, 9 damage, 17 on a crit.");
+  const one = extractRollTotals({ system: { rolls: { attacks: [{ attack: d20(1, 10), damage: [dmg(9)] }] } } });
+  assert.equal(renderAttackTotals(one), "natural 1, miss.");
+});
+
+t("a threat whose confirmation PF1 did not roll still says threat", () => {
+  const r = extractRollTotals({ system: { rolls: { attacks: [{ attack: d20(19, 5), damage: [dmg(6)] }] } } });
+  assert.equal(renderAttackTotals(r), "24 to hit, threat, 6 damage.");
+});
+
 // --- shape 1: ordinary d20 cards, which already worked ---
 
 t("a skill card total comes from message.rolls", () => {

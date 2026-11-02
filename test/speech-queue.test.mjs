@@ -106,6 +106,7 @@ t("the stop key stops the line playing now; the one waiting still plays", () => 
   engine.start();
   q.enqueue("23");
   assert.equal(q.stopCurrent(), true);
+  clock.tick(20);                       // the cancel lands 20 ms after the start, never sooner
   assert.equal(engine.cancels, 1);
   clock.tick(200);
   assert.deepEqual(engine.spoken.at(-1), "23");
@@ -122,6 +123,7 @@ t("navigation cuts the current line off and goes ahead of waiting reports, which
   engine.start();
   q.enqueue("23");                                  // a result waiting
   q.enqueue("3. Perception", { interrupt: true });  // he opened the menu and arrowed
+  clock.tick(20);
   assert.equal(engine.cancels, 1);
   clock.tick(200);
   assert.equal(engine.spoken.at(-1), "3. Perception");
@@ -166,6 +168,125 @@ t("an engine that says it is busy with no line of ours is waited for, not cancel
   assert.deepEqual(engine.spoken, ["ours"]);
 });
 
+// --- what kills the voice: a cancel before the line starts (Josh, 2026-10-31 / 11-01) ---
+//
+// 575 lab cancels 1 ms or more after onstart: no death. Four at 0 ms: four
+// deaths. One cancel on a line not yet started: dead or stalled every time.
+
+t("R in Favorites: 'removed' then the redraw in one tick never cancels before the start", () => {
+  const { clock, engine, q } = setup();
+  clock.tick(5000);                                    // the engine has been quiet a while
+  q.enqueue("Stealth removed");                        // handed over at once
+  q.enqueue("1. Perception", { interrupt: true });     // same tick
+  assert.equal(engine.cancels, 0, "no cancel on an unstarted line");
+  clock.tick(300);
+  assert.equal(engine.cancels, 0, "still none: Chrome has not started it");
+  engine.start();
+  clock.tick(19);
+  assert.equal(engine.cancels, 0, "not inside the margin either");
+  clock.tick(1);
+  assert.equal(engine.cancels, 1, "20 ms after the start it is cut");
+  clock.tick(160);
+  assert.equal(engine.spoken.at(-1), "1. Perception");
+});
+
+t("an arrow landing right on a hand-off waits for the start too", () => {
+  // His game log, 23:07:34: "4. Spells" cancelled by "5. Items" 2 ms after it
+  // was handed over. 0.17.0 cancelled at once.
+  const { clock, engine, q } = setup();
+  clock.tick(5000);
+  q.enqueue("4. Spells", { interrupt: true });
+  clock.tick(2);
+  q.enqueue("5. Items", { interrupt: true });
+  assert.equal(engine.cancels, 0);
+  engine.start(); clock.tick(20);
+  assert.equal(engine.cancels, 1);
+  clock.tick(160);
+  assert.deepEqual(engine.spoken, ["4. Spells", "5. Items"]);
+});
+
+t("a held key speaks only the item he lands on, even before the first has started", () => {
+  const { clock, engine, q } = setup();
+  clock.tick(5000);
+  q.enqueue("1. Favorites", { interrupt: true });
+  q.enqueue("2. Skills", { interrupt: true });
+  q.enqueue("3. Combat", { interrupt: true });
+  engine.start(); clock.tick(200);
+  assert.deepEqual(engine.spoken, ["1. Favorites", "3. Combat"]);
+});
+
+t("an idle engine is never cancelled by navigation", () => {
+  // 0.17.0 called cancel() on every arrow press; his game log showed 35 of 66
+  // cancels landing on nothing. Pointless, and after a death each one was a
+  // cancel before a start.
+  const { clock, engine, q } = setup();
+  q.enqueue("1. Favorites", { interrupt: true });
+  engine.start(); engine.finish(); clock.tick(5000);
+  q.enqueue("2. Skills", { interrupt: true });
+  assert.equal(engine.cancels, 0);
+});
+
+t("the stop key on a line that has not started waits for the start", () => {
+  const { clock, engine, q } = setup();
+  clock.tick(5000);
+  q.enqueue("long report");
+  assert.equal(q.stopCurrent(), true, "it counts as playing: Chrome has it");
+  assert.equal(engine.cancels, 0);
+  engine.start(); clock.tick(20);
+  assert.equal(engine.cancels, 1);
+});
+
+t("the stop key on another module's speech cancels it; on silence it does nothing", () => {
+  const { engine, q } = setup();
+  assert.equal(q.stopCurrent(), false);
+  assert.equal(engine.cancels, 0);
+  engine.speaking = true;
+  assert.equal(q.stopCurrent(), true);
+  assert.equal(engine.cancels, 1);
+});
+
+t("a line that never starts gets one cancel and one retry; a second failure means the voice is down", () => {
+  const { clock, engine, q, alarms } = setup();
+  clock.tick(5000);
+  q.enqueue("23");
+  engine.speaking = true;                 // Chrome claims to be speaking, nothing comes out
+  clock.tick(7900);
+  assert.equal(engine.cancels, 0, "not yet stuck");
+  clock.tick(200);
+  assert.equal(engine.cancels, 1, "one cancel per stuck stretch");
+  assert.equal(alarms.length, 0);
+  clock.tick(200);                        // the usual 150 ms of silence after a cancel
+  assert.deepEqual(engine.spoken, ["23", "23"], "the retry, handed over once the cancel cleared the engine");
+  engine.speaking = true;                 // and that one never starts either
+  clock.tick(8200);
+  assert.equal(engine.cancels, 1, "no second cancel: it did not help");
+  assert.equal(alarms.length, 1, "the alarm");
+  assert.equal(q.dead, true);
+  q.enqueue("next command");
+  clock.tick(200);
+  assert.equal(engine.spoken.at(-1), "next command", "lines still go out, so a start can be noticed");
+  engine.start();
+  assert.equal(q.dead, false, "a start means the voice is back");
+  assert.equal(q.voiceDownAnnounced, false);
+});
+
+t("an engine that claims to be busy for 8 s with our lines waiting is treated as stuck", () => {
+  // Nothing of ours in Chrome's hands, so the old watchdog was the only way out;
+  // now the queue does it itself, once, and then declares the voice down.
+  const { clock, engine, q, alarms } = setup();
+  engine.speaking = true;
+  q.enqueue("ours");
+  clock.tick(7900);
+  assert.equal(engine.cancels, 0, "patience first: it may be another module talking");
+  clock.tick(400);
+  assert.equal(engine.cancels, 1);
+  assert.deepEqual(engine.spoken, ["ours"], "the cancel cleared it and our line went out");
+  engine.speaking = true;                 // but it never starts
+  clock.tick(8300);
+  assert.equal(engine.cancels, 1);
+  assert.equal(alarms.length, 1);
+});
+
 // --- the watchdog: a wedged engine, and a dead one ---
 
 t("a line the engine never started is tried once more after a reset", () => {
@@ -192,7 +313,7 @@ t("a line that had started is not repeated after a reset", () => {
   assert.deepEqual(engine.spoken, ["long report"]);
 });
 
-t("three resets with nothing starting raise the voice-down alarm once", () => {
+t("resets with nothing starting raise the voice-down alarm once", () => {
   const { clock, engine, q, alarms } = setup();
   for (let i = 0; i < 5; i++) {
     q.enqueue(`line ${i}`);

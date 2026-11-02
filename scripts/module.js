@@ -123,6 +123,11 @@ Hooks.once('ready', async function() {
         content: `<em>${item.name}</em> added. Type <strong>/scan</strong> to update your commands.`,
         speaker: { alias: 'Quick Menu' }
       });
+      // Josh, 2026-11-01: the whisper is a chat message he never hears. A
+      // potion bought mid-game moved his Perception command and nothing said
+      // so. Spoken too, until the command rule Tobias is weighing settles what
+      // a new item may and may not change.
+      game.folkenQuickMenu.tts?.speak(`${item.name} added. Type slash scan to update your commands.`);
     }
   });
 

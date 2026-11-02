@@ -195,7 +195,8 @@ Quick Menu
 | `R` | Remove from favorites |
 | `P` | Prepare spell (+1) |
 | `U` | Unprepare spell (-1) |
-| `/` | Item submenu (Take 10/20) |
+| `/` | Options: Take 10/20 on a skill, Normal/Full Attack on an attack. Anything else says "No options" and is never used |
+| `Shift`+anything | Passed through; the menu claims only unmodified keys |
 | `0-9` | Move to that position in the list. Digits combine, so 38 reaches item 38. Never uses an item |
 | `Scroll wheel` | Navigate |
 
@@ -232,19 +233,33 @@ These work anywhere in Foundry (whether or not the menu is open). They are suppr
   when you use something you hear the result, not the name (Josh's rule).
 - **Result.** The roll: "30 to hit, 11 damage", or "31 damage" for a Fireball.
   Ability damage and nonlethal say so: "1 Constitution damage", "2 nonlethal".
-  An attack that always hits says "hits". A save the target faces is added:
-  "Fort DC 15." Items with uses say what is left: "2 of 3 left." Ammunition is
-  only ever read, never spent: "17 arrows left."
-- **Failed.** Two low pulses - the Poker Dungeon's error sound - then why, if
-  there is a why: "None left.", "No charges.", "Not found. Type slash scan.",
-  "No command."
+  An attack that always hits says "hits". A threat says so, with its
+  confirmation and what the damage becomes if it confirms: "41 to hit, threat,
+  confirms 44, 17 damage, 78 on a crit." A natural 20 is "natural 20, hits"; a
+  natural 1 is "natural 1, miss". A save the target faces is added: "Fort DC
+  15." Items with uses say what is left: "2 of 3 left."; something that gives a
+  point back says "Regained. 2 of 3." Ammunition is only ever read, never spent:
+  "17 arrows left." A card with nothing to roll says "Card posted." Plain
+  `/r`, `/d` and `/h` rolls are read too.
+- **Failed.** Two pulses at 400 Hz - the Poker Dungeon's error sound, raised so
+  it carries over a screen reader - then why, if there is a why: "None left.",
+  "No charges.", "Not found. Type slash scan.", "No command." Anything that
+  starts with a slash and is not a command, "/per/pod" included, gets this too.
 - **Stopped.** One short high blip when the stop key cuts the voice off.
-- **Voice down.** Two long falling slides, and a whisper in chat: Chrome's
-  speech engine has stopped making sound. Quit Chrome completely and reopen it.
+- **Voice down.** Three long falling slides at full volume, repeating every 20
+  seconds until a line is heard again, and a whisper in chat: Chrome's speech
+  engine has stopped making sound. Quit Chrome completely and reopen it.
 
 Nothing cuts a result off except menu navigation and the stop key. Every result
 waits its turn and is spoken once the voice is silent, in order. The stop key
 stops only the line playing now; whatever is waiting still plays.
+
+A line is never cut off before Chrome has started speaking it. Josh measured
+(2026-11-01, 575 cancels) that a cancel landing on a line Chrome has been handed
+but has not started, or in the same instant it starts, jams Chrome's voice until
+Chrome is quit; a cancel 1 ms or more after the start never did. So a cut waits
+for the start plus 20 ms, an idle engine is never cancelled, and a line that
+never starts gets one cancel and one more try before the voice is declared down.
 
 Area spells, scrolls and wands no longer wait for a template to be placed on the
 map (setting: *Skip Template Placement*).

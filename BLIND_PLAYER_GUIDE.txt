@@ -21,7 +21,7 @@ The Folken Games Quick Menu is a TTS-based hierarchical character navigation sys
 
 KEY FEATURES:
 - Text-to-Speech announcements for all actions
-- First letter navigation (no numbers needed)
+- Numbered items: type a number to move to it (digits combine, so 38 reaches item 38)
 - Audio feedback with specific sound cues
 - Universal favorites system (favorite any item type)
 - Smart submenu execution (favorited submenus execute most common action)
@@ -42,7 +42,7 @@ NAVIGATION:
 - Arrow Up/Down: Navigate through menu items
 - Arrow Right/Enter: Enter submenu or execute action
 - Arrow Left/Escape: Go back to previous menu
-- First Letter: Type first letter(s) of item name to jump to it
+- Numbers: Type an item's number to move to it (never uses it)
 - Mouse Wheel: Scroll up/down to navigate
 - Middle Mouse Click: Select current item
 
@@ -192,11 +192,11 @@ QUANTITY DISPLAY:
 6. ACCESSIBILITY FEATURES
 =========================
 
-FIRST LETTER NAVIGATION:
-- Type first letter(s) of any menu item to jump to it
-- Examples: Type "p" to jump to Perception, "str" to jump to Strength
-- Supports partial matching for longer names
-- Clears after 1 second of inactivity
+NUMBER NAVIGATION:
+- Every item is read with its number: "3. Perception"
+- Type the number to move to it; digits combine, so 3 then 8 reaches item 38
+- Typing a number never uses the item; Enter or Right does
+- First-letter type-ahead is not built. It is under discussion.
 
 DETAILED INFORMATION:
 - Skills show proficiency level and modifier
@@ -250,7 +250,7 @@ Menu not opening:
 PERFORMANCE TIPS:
 - Close unused applications for better TTS performance
 - Adjust TTS speed if announcements are too fast/slow
-- Use first letter navigation for faster menu access
+- Type an item's number for faster menu access
 - Favorite frequently used items for quick access
 
 SUPPORT:
@@ -262,7 +262,7 @@ SUPPORT:
 ======================
 
 ACTIVATION: Backquote key
-NAVIGATION: Arrow keys, first letter typing
+NAVIGATION: Arrow keys, item numbers
 AUDIO: Boop (submenu), Bong (end/error), Bajinger (favorite), Pop (unfavorite)
 
 SLASH COMMANDS (27 total):

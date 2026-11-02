@@ -15,6 +15,11 @@ import { renderAC, renderCMD, renderActiveBuffs, renderInactiveBuffs } from './S
 
 const MODULE_ID = 'folken-games-quick-menu';
 
+/** Foundry's dice commands, as ChatLog.parse names them. */
+const FOUNDRY_ROLL_COMMANDS = new Set(['roll', 'gmroll', 'blindroll', 'selfroll', 'publicroll']);
+/** PF1's /d damage and /h heal, which post a card with one roll on it. */
+const PF1_ROLL_COMMANDS = new Set(['d', 'damage', 'h', 'heal']);
+
 export class ChatCommandInterceptor {
   /**
    * @param {import('./AbbreviationResolver.js').AbbreviationResolver} resolver
@@ -80,11 +85,23 @@ export class ChatCommandInterceptor {
 
     // Only intercept commands Foundry doesn't recognize (same pattern as advanced-macros)
     let [parsedCommand] = chatLog.constructor.parse(trimmed);
-    if (parsedCommand !== 'invalid') return true;
+    if (parsedCommand !== 'invalid') {
+      // Foundry's own dice: /r 1d20 and its roll-mode cousins. Josh asked in
+      // the 0.16.0 round for these to be read aloud like everything else.
+      if (FOUNDRY_ROLL_COMMANDS.has(parsedCommand)) this.executor?.announceNextRoll?.();
+      return true;
+    }
 
     // Parse the /command and optional args
     const match = trimmed.match(/^\/([a-zA-Z0-9]+)(?:\s+(.*))?$/);
-    if (!match) return true;
+    if (!match) {
+      // Starts with a slash but is not shaped like a command: "/per/pod", the
+      // text of a failed command with the next one typed onto it. Josh,
+      // 2026-11-01: four times in one game this failed with no sound at all,
+      // only Foundry's on-screen error.
+      this._fail('No command.');
+      return true;
+    }
 
     const command = match[1].toLowerCase();
     const args = (match[2] || '').trim();
@@ -182,6 +199,13 @@ export class ChatCommandInterceptor {
         this.executor.castFromSlot(spell, actor, typed.slot);
         return false;
       }
+    }
+
+    // PF1's own /d damage and /h heal rolls post a card with a roll on it, and
+    // Josh wants that number read too.
+    if (PF1_ROLL_COMMANDS.has(command)) {
+      this.executor?.announceNextRoll?.();
+      return true;
     }
 
     // Not ours. Until 0.15.0 this passed through in silence, and Foundry's only

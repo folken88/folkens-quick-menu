@@ -246,6 +246,12 @@ export class KeyboardHandler {
    */
   focusChatInput() {
     const tts = game.folkenQuickMenu?.tts;
+    // Josh, 2026-11-01: twice he pressed Backslash, typed /per and Enter, and
+    // P, E, R and Enter went to the still-open menu. He wants the open menu to
+    // keep his keys, so going to chat means leaving the menu, and saying so.
+    const menu = game.folkenQuickMenu?.menuManager;
+    const closedMenu = !!menu?.isOpen;
+    if (closedMenu) menu.closeMenu();
     const input = document.querySelector(
       '#chat-message .chat-input, .chat-form .chat-input, .chat-input, prose-mirror.chat-input'
     );
@@ -254,7 +260,7 @@ export class KeyboardHandler {
     const editable = input.querySelector?.('[contenteditable="true"], .ProseMirror') || input;
     try { editable.focus?.(); } catch (_) {}
     try { input.focus?.(); } catch (_) {}
-    tts?.speak('Chat input', { interrupt: true, urgent: true });
+    tts?.speak(closedMenu ? 'Menu closed. Chat input' : 'Chat input', { interrupt: true, urgent: true });
   }
 
   /**

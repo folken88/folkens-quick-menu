@@ -27,11 +27,19 @@ export const EARCON_GAIN = 0.10;
 
 /** Tone plans: when each tone starts, how long it lasts, and its pitch. */
 export const EARCONS = Object.freeze({
-  error: [{ at: 0, dur: 0.10, from: 220 }, { at: 0.13, dur: 0.10, from: 220 }],
+  // Josh, 2026-11-01: 220 Hz got lost under VoiceOver and the voice, and laptop
+  // speakers lose most of what is below about 300 Hz. About 400.
+  error: [{ at: 0, dur: 0.10, from: 400 }, { at: 0.13, dur: 0.10, from: 400 }],
   ack:   [{ at: 0, dur: 0.08, from: 1200 }],
   close: [{ at: 0, dur: 0.10, from: 900, to: 600 }],
   open:  [{ at: 0, dur: 0.10, from: 600, to: 900 }],
-  voiceDown: [{ at: 0, dur: 0.35, from: 440, to: 110 }, { at: 0.45, dur: 0.35, from: 440, to: 110 }],
+  // Josh, 2026-10-31: easy to miss. Three slides instead of two, and
+  // TTSManager repeats it while the voice stays down.
+  voiceDown: [
+    { at: 0, dur: 0.40, from: 440, to: 110 },
+    { at: 0.50, dur: 0.40, from: 440, to: 110 },
+    { at: 1.00, dur: 0.40, from: 440, to: 110 },
+  ],
 });
 
 /**
