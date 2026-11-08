@@ -51,6 +51,22 @@ his rulings are noted in the table. Phase 2 decisions are still with him.
 | 10.2 | Lower the 150 ms gap the speech queue waits between lines, in steps: 100, test; 50, test; 20, test. Fixed in code, not a setting (a setting could kill the voice). Each step a build after 0.19.0. Measured: idle key-to-speech median 10 ms; interrupting key 153-157 ms, nearly all the 150 gap; the 0.18.0 "+20 ms" adds nothing audible. | `SpeechQueue.js` gap constant. Waiting since 11-01. |
 | 10.24 | Drop the item numbers in the menu ("27. Perception") now that type-ahead works (P, then P-E-R reaches Perception)? Or make numbers a per-player option. Dropping them also drops the ~505 ms wait after a digit. | Numbers are spoken by `announceCurrentSelection`; the two-digit wait is in `KeyboardHandler`. Blind-UI call, so Josh's preference carries weight; Tobias decides whether sighted players need numbers. |
 
+**Rulings 2026-11-07 (Tobias, same day):** 1.2 core codes win; clear leftover
+clash aliases when the core takes over. 2.6 hide the prepare/unprepare keys on an
+actor with no prepared spellbook (functions that don't apply to the caster type
+don't exist for them). 8.8 correct, no ammo tracking in one-shots; Sparkbang may
+return, so his sheet matters. 8.32 normal PF1 ray count unless metamagic; the 5 is
+a sheet error. 8.33 0-level spells never expend; the 1/1 and 0/0 spell-likes are
+data bugs, refresh from the PF1 compendium. 8.34 Tobias will look up the item.
+8.36 Auto Buff links are hand-made and sometimes break, so never assume one; rule:
+if the blind player needs to know it, the Quick Menu says it, so announce a buff
+spell's switch-on like a potion's, `/bf` stays a status check. 8.39 restore the
+scrolls. 8.41 Greenchaw's copy is bugged; compendiums need a mass cleanup, keep
+reporting. 10.2 lower the gap however Josh wants, in steps. 10.24 Josh decides;
+drop the numbers if he thinks they can go. 8.7 disable advanced-macros in Iron
+Gods (oversight; not needed with the Quick Menu). f2 stays on Lastwall; Goblin
+Deez is finished and nothing from it carries forward.
+
 ## Bugs confirmed on 0.19.0
 
 Each one checked against the 0.19.0 source on 2026-11-07; the code note is ours.
