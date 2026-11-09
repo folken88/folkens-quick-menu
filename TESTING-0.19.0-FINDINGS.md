@@ -1,8 +1,9 @@
 # 0.19.0 test findings (collected, not yet fixed)
 
-0.19.0 is frozen (commit `5d251c8`) until Josh's "done with 0.19.0" email. Everything
-below is filed for the next build. Numbers (1.2, 10.16, ...) are Josh's test-plan
-numbers; his session logs and raw logger data use the same numbers.
+**Testing of 0.19.0 is complete.** Josh's phase 3 email, "0.19 phase 3 testing, done
+with 0.19.0" (2026-11-07 21:25 Central), is the "done" email that ends the freeze on
+commit `5d251c8`. Everything below is the input to 0.20.0. Numbers (1.2, 10.16, ...)
+are Josh's test-plan numbers; his session logs and raw logger data use the same numbers.
 
 Sources:
 - Phase 1: Josh's email "0.19 phase 1 testing", 2026-11-03 00:06 Central, with
@@ -12,7 +13,12 @@ Sources:
   `Raw data for phase 2 report, 2026-11-07.zip` (rounds 11-22: Ser on f1 in
   Shackles 11-03 and 11-05; Sparkbang on f2 in Goblin Deez and Olbryn on f1 in
   Iron Gods 11-07). Phase 2 closed every reachable item left from earlier
-  versions. The new 0.19.0 features are still under test, so the freeze holds.
+  versions.
+- Phase 3: Josh's email "0.19 phase 3 testing, done with 0.19.0", 2026-11-07
+  21:25 Central, with `Raw data for phase 3 report, 2026-11-07.zip` (the new
+  0.19.0 features from rounds 11-20, plus rounds 23-32 on Olbryn in Iron Gods
+  11-07: full runs of all 80 of Ser's and all 155 of Olbryn's commands, the
+  stress round, and a reading of the Auto Buff module).
 
 Tobias ruled on the phase 1 decisions on 2026-11-04 (reply drafted, not yet sent);
 his rulings are noted in the table. Phase 2 decisions are still with him.
@@ -65,7 +71,24 @@ scrolls. 8.41 Greenchaw's copy is bugged; compendiums need a mass cleanup, keep
 reporting. 10.2 lower the gap however Josh wants, in steps. 10.24 Josh decides;
 drop the numbers if he thinks they can go. 8.7 disable advanced-macros in Iron
 Gods (oversight; not needed with the Quick Menu). f2 stays on Lastwall; Goblin
-Deez is finished and nothing from it carries forward.
+Deez is finished and nothing from it carries forward. Also ruled 2026-11-07: 10.3
+wand stacks report each wand separately (rename to tell apart); 10.4-10.8
+Sparkbang's sheet items are shelved (characters parked); f5 stays on 0.16.1
+(nobody there uses it).
+
+### From phase 3 (open, 2026-11-08)
+
+| # | Question | Where the code stands |
+|---|----------|-----------------------|
+| 8.36 Auto Buff | Josh's reading of Tobias's Auto Buff 1.3.0: a buff linked on an item's action switches on whenever the item is used (all nine of Olbryn's linked spells did; a trial link on his Wand of Fly worked through the Quick Menu with no Quick Menu change). Problem: Auto Buff's **name matching** is on and switches on every buff whose name *starts with* the item's name, so casting Invisibility also switches on Greater Invisibility (and with a target, puts Greater on the target while the link puts plain on the caster). Mirror Image carries a stale link to a buff not on the sheet. Asks: confirm the reading; decide whether wands, scrolls and custom items should each get a link; **skip name matching when an item has a link**. | Auto Buff module, not the Quick Menu. The Quick Menu never announces a buff that Auto Buff switched on (10.16, ruled). |
+| 8.46 | Should the Quick Menu wait on every command's result separately instead of only the latest? Today a new command drops the reader waiting on the previous card; with Dice So Nice holding a many-dice spell for seconds, Scorching Ray / Chain Lightning followed by a skill or save lost the spell's result 4 of 4 times. | `_announceOnce` in ActionExecutor starts with `this._pending?.off()`: one shared reader slot. Suggest a reader per command matched to its own card. |
+| 8.47 | Mirror Image on Olbryn fails whenever his token is selected: the spell's script draws images with Token Magic 0.7.6.3, which throws "SocketAction is not defined" and the whole cast fails ("Mirror Image failed." + error tones). With no token selected it casts. Fix the script or Token Magic, or remove the script. | Spell data on f1, not the Quick Menu. |
+| 10.17 | What replaces "Plus notes": (1) read rolled results that live in notes at every detail level in plain words ("8 images", "Spell penetration 36"), (2) drop "Plus notes", (3) leave the other three kinds of note (situational bonuses, standing defences, hand-applied rules) unspoken in the result line. Josh wants Tobias's view on how the situational ones should reach him. | Same root as 3.7, 8.30, 8.31, 8.35: `extractRollTotals` does not read effect notes. |
+| 10.26 | Once "o" exists, any other word after an item code must be refused with the error tones and a spoken line, never ignored (0 and P sit next to O). | Today trailing words are read only for `/fqm`, `/list`, `/find`; `/pcmw o` drinks the potion on self and drops the word. |
+| 10.27 | Drop the built-in S stop key now that every player picks a stop key; S still stops speech with the menu closed and focus on the page, and focus is not always where Josh thinks (2.18). | `isStopSpeechKey` in MenuKeys.js, `KeyS`; Tobias kept S on 2026-11-01 but inert while the menu is open. |
+| 10.28 | Should buff spells follow the 10.11 rule: plain command = cast on self and switch the buff on, "o" = cast on someone else, post the card, switch nothing on for the caster? And what is the default for Haste, which takes self and others at once? Auto Buff switches a linked spell's buff on for the caster every time, even a touch spell cast on an ally. | May belong in Auto Buff rather than the Quick Menu. |
+
+Also asked: a bag of holding or backpack with usable items on one of Josh's characters so containers (10.23, 8.27, drinking from inside a container) can be tested; Iron Gods can come off f1 whenever Tobias needs it; the 2026-11-12 Iron Gods game is unlikely, so the logged-game test (7.12) waits for the next real game on the next version.
 
 ## Bugs confirmed on 0.19.0
 
@@ -99,6 +122,19 @@ Each one checked against the 0.19.0 source on 2026-11-07; the code note is ours.
 - **8.42 A spell with no save is read with "Save DC".** Acid Splash: "33 to hit, 2 damage. Save DC 20."; Magic Missile "17 damage. Save DC 21." PF1 puts the caster's spell DC on every spell card as `message.system.save = {dc}` with no type. Code: `RollTotals.saveOf` returns `type: ''` and `saveName('')` gives "Save", so `renderAttackTotals` speaks it. Fix: speak a DC only when `save.type` is set. Lightning Bolt ("Ref DC 23") is right.
 - **8.43 False Life is read as healing** ("11 healing."). Its action is built as a heal with positive energy, so the Quick Menu calls it healing; nothing is applied. Fix: say temporary hit points for a spell that grants them; applying them is 8.36.
 
+### Phase 3 additions (rounds 23-32, Olbryn)
+
+- **1.1 Two codes moved without a word** at some version since 0.15.0: Faerie Fire `/1ffi` to `/1ff`, Scroll of Technomancy `/stec` to `/stx`. Everything else on Olbryn (155) and Ser (80) held. Same family as 1.15/8.40: speak every code that moves.
+- **2.18 Backslash says "Chat input" when focus never got there.** About twenty presses in round 29, each spoke, each next key still landed on the page; cost Josh a minute of hunting. Code: `focusChatInput` in `KeyboardHandler.js` ~274 calls `focus()` and speaks without checking `document.activeElement`. Fix: verify focus landed, say so if not, retry.
+- **2.19 Type-ahead joins letters meant as a fresh jump.** P-E-R found Perception, an S 450 ms later said "Nothing starts with p, e, r, s."; S-T then S at 833 ms likewise. Code: `KeyboardHandler.js` ~495 keeps `letterBuffer` for 1000 ms with no no-match fallback; `handleNumberInput` already restarts a digit that would overflow the list. Fix: when the joined prefix matches nothing, try the newest letter alone.
+- **3.4 note: weapon attacks never get `spellDetailLine`** (the attack path passes no item), so a weapon's hand-written notes are never mentioned at any detail level. Fine for range/duration; decide with 10.17.
+- **3.8 F9 does nothing from the chat box.** Six presses across two rounds; from a button outside the box every press cycled. Code: `handleAccessibilityKeys` (~219) returns when `isTypingTarget()` and the menu is closed, right for `[ ] - =` which type characters, wrong for F9 which types nothing. Fix: let F9 (any non-printing key) through from the chat box.
+- **4.6 A buff wand or scroll used on self switches nothing on.** Eight wands/scrolls (Fly, Invisibility, See Invisibility, Enlarge Person, Resist Energy, Haste, Overland Flight) said "Card posted." plus a count and no buff; Potion of Fly said "Fly on." Code: `buffNameFor` in `scripts/executor/BuffOn.js` matches only Potion/Elixir/Oil/Draught. Fix (follows 10.11): same lookup for wands and scrolls by the spell's name.
+- **6.1 on Olbryn too**: Scroll of Teleport shows quantity 1 with 0 on the sheet. Same `quantity || 1`.
+- **8.42 wider**: Magic Missile, Shocking Grasp, Scorching Ray and their Intensified/Quickened versions all say "Save DC" at both detail levels. Same fix: DC only when `save.type` is set.
+- **8.44 A result that waits on the dice is lost while the Foundry tab is hidden.** With the tab hidden, a rolling command spends its slot/charge and blips, but the card appears only when the tab is shown again and is never read: 26 of 155 in round 24's hands-off run, nine Magic Missiles in round 27 posted together six minutes later, none spoken. Cause: Dice So Nice animates before PF1 makes the card, Chrome stalls the animation in a hidden tab, and `_announceOnce`'s 20 s timeout (or the next command) has given up. Fix: read the card whenever it arrives, or say it is waiting on the dice; look at skipping the DSN animation when `document.hidden`.
+- **8.46 A command typed before a slow spell's card arrives loses the spell's result** (4 of 4: Scorching Ray then Knowledge Arcana; Chain Lightning then a Will save). Code: `_announceOnce` (`scripts/executor/ActionExecutor.js` 288) begins with `this._pending?.off()`, one shared slot. Fix: a reader per command matched to its own card (design question 8.46 above; same family as 8.44).
+
 ### Correction from Josh (6.11)
 
 A Chrome `end` with no `start` does not prove silence: a line ended in 0 ms with no start and Josh heard it. Only "Josh didn't hear it" counts as a lost line now. The 0.18.0 "probably skipped" Acrobatics 22 / Knowledge (Geography) 13 are unproven.
@@ -127,10 +163,26 @@ A Chrome `end` with no `start` does not prove silence: a line ended in 0 ms with
 - **8.12, 8.18, 8.21, 8.24** Up-cast offer (round 22, 3rd-level slots emptied): "Out of 3rd. Cast Lightning Bolt with a 4th?"; Y casts from a 4th and says so; N says "Cancelled." and spends nothing; Y after 30 s says "Offer expired."; another command during the offer says "Offer withdrawn."; an offer during a long report waits its turn; a wand's last charge says "That was the last one."; with PF1's quick-roll template on, an area wand answers at once with no template left waiting.
 - **Timing (7.8, for 10.2):** 419 menu key presses in rounds 11-22. Idle (263): line start a median of 10 ms after keydown, 90% within 271 ms (slow ones are number keys waiting ~505 ms for a second digit). Cutting a playing line (156): 153-157 ms, median 154, one at 654. No early cancel in any round except round 18's deliberate kill.
 
+### Phase 3 (new 0.19.0 features; Olbryn rounds 23-32)
+
+- **1.1 / 1.2** Codes held across 0.18.0 to 0.19.0 on Ser (80) and since 0.15.0 on Olbryn (155, two silent moves above); every shared skill/save/check code identical on Ser, Sparkbang and Olbryn (`/itm` on all three).
+- **1.12** Full runs: all 80 of Ser's and all 155 of Olbryn's commands by chat, hands-off in Self Roll; every skill/save/check/CL/concentration total equal to its card; no early cancel; round 31 reran the 26 that 8.44 had silenced and all spoke.
+- **2.1-2.3** Type-ahead: a letter jumps, P-E-R reaches Perception, fast letters cancel safely, a digit after letters is not mixed in.
+- **2.4, 2.16** Favorites: Shift+F adds (says "already favorited" the second time), Shift+R removes and names the next item, at every timing against a playing line; plain F and R only type ahead. Last favorite still broken (6.5).
+- **2.5, 2.7, 2.9, 2.13, 2.14** Shift chords pass through; S types ahead in the menu; Option stops a long result; Slash on an attack offers Normal/Full Attack and on a skill Take 10/Take 20 (Take 10 right); Backslash closes the menu into the chat box; VoiceOver navigation works with the menu open.
+- **2.20** S with the menu closed and focus on the page stops a line; in the chat box it does not (10.27 asks for it to go).
+- **3.1-3.5** F9 cycles full/auto/short, each spoken; short drops range/duration, full keeps them; full adds only the count and ordinals on a multi-shot; spells at full give damage, DC, range, area, duration, SR; "Plus notes" spoken at both levels as built (10.17).
+- **5.1, 5.2** Grit: Abilities lists Dead Shot, Grit, Regain Grit, Spend grit, Up Close and Deadly, Utility Shot; Grit reads "2 of 3 grit left." without spending; Spend grit spends one and says "1 of 3 left."; Combat has the Grit read.
+- **7.11** Stress round: ten commands as fast as typed, fast arrows and letters, Option during results: voice never died, nothing cancelled before start, Option stopped only the playing line, a queued Perception still played. Findings: 2.19 and 8.46.
+- **8.3** Items menu on Olbryn: all 39 consumables with quantities and charges plus two gear items (apart from 6.1).
+- **8.36 Auto Buff**: all nine linked spells switched their own buff on when cast (Shield +4 AC, Overland Flight fly 60); a trial link on Wand of Fly worked through the Quick Menu.
+
 ## Not yet tested
 
 - Waiting on Tobias: Scorching Ray's rays (8.32), spell-likes' daily uses (8.33), Maura's Wayfinder's use (8.34).
 - Waiting on a character with a container: Olbryn has none, so 8.27 (his containers in the menu) could not run.
 - Waiting on luck: the Spell Prism's d20 never came up 20 in six casts, so whether the nat-20 voice fires for it (8.35) is unknown.
-- Still under test: the new 0.19.0 features themselves (type-ahead, Shift jobs, F9 detail levels, pools in the menu, buff potions by ear). Josh will report when done.
-- Waiting on Tobias from phase 1, still: bullets for Sparkbang (8.8), wand stacks (total charges, emptier wand first), Signature Deed, TWF -4 single shot, Haste shot in the full attack, Pair O Deez 6/7 uses, shop from weightless coins.
+- Waiting on something Tobias adds: containers (10.23, 8.27, and drinking a potion from inside one by the menu) need a bag of holding or backpack with usable items on one of Josh's characters.
+- Waiting on a character none of Josh's is: 2.6's other half (a prepared caster) and 4.4 (a potion whose buff is on the sheet under a different name).
+- Not run: the logged real Iron Gods game (7.12); the 2026-11-12 game is unlikely, so it waits for the next real game on the next version. Ser's Magic Missile scrolls go back to full the next time Shackles is loaded.
+- Phase 1 sheet items for Sparkbang (10.4-10.8) are shelved by Tobias; 10.3 wand stacks ruled (separate).
