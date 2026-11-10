@@ -7,7 +7,7 @@ import { debugLog } from '../module.js';
 import { stripMarkup } from '../chat/StateSpeech.js';
 import { distinctSpellbooks } from './Spellbooks.js';
 import { isTriggerable, isUsefulFeature } from './ItemUse.js';
-import { mergeStacks, containerContents } from './MenuItems.js';
+import { mergeStacks, containerContents, quantityOf } from './MenuItems.js';
 import { poolCommandsFor } from '../chat/StateSpeech.js';
 
 export class CharacterDataExtractor {
@@ -444,7 +444,7 @@ export class CharacterDataExtractor {
         type: 'action',
         actionType: 'item',
         itemId: item.id,
-        quantity: item.system.quantity || 1,
+        quantity: quantityOf(item.system),
         uses: item.system.uses || null,
         originalItem: item
       };
@@ -522,7 +522,7 @@ export class CharacterDataExtractor {
         type: 'action',
         actionType: ammo ? 'ammo_read' : 'item',
         itemId: item.id ?? item._id,
-        quantity: item.system?.quantity || 1,
+        quantity: quantityOf(item.system),
         uses: item.system?.uses || null,
         originalItem: item,
       });

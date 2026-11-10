@@ -8,6 +8,11 @@
  * picks the stack with stock and counts them all); the menu did not.
  */
 
+/** A stack's quantity: 0 is 0, only a missing or non-numeric value is 1. */
+export function quantityOf(system) {
+  return Number.isFinite(Number(system?.quantity)) ? Number(system.quantity) : 1;
+}
+
 /**
  * One entry per name. The first entry keeps its place and gains the other
  * stacks' ids as `alternates` - the same field the chat resolver sets, so the

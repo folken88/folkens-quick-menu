@@ -3,7 +3,7 @@
  * Run: node test/menu-items.test.mjs
  */
 import assert from "node:assert/strict";
-import { mergeStacks, containerContents } from "../scripts/character/MenuItems.js";
+import { mergeStacks, containerContents, quantityOf } from "../scripts/character/MenuItems.js";
 import { usesLeftLine } from "../scripts/executor/UseOutcome.js";
 
 let pass = 0;
@@ -45,6 +45,18 @@ t("a use that spends nothing on blank uses is not 'the last one'", () => {
   assert.equal(usesLeftLine(shot), "");
   assert.equal(usesLeftLine({ system: { uses: { per: "charges", max: 3, value: 0 } } }), "That was the last one.");
   assert.equal(usesLeftLine({ system: { uses: { per: "charges", max: 3, value: 2 } } }), "2 of 3 left.");
+});
+
+t("quantity 0 is 0, missing is 1, a numeric string is a number", () => {
+  assert.equal(quantityOf({ quantity: 0 }), 0);
+  assert.equal(quantityOf({}), 1);
+  assert.equal(quantityOf(undefined), 1);
+  assert.equal(quantityOf({ quantity: "3" }), 3);
+});
+t("an empty stack merged with a full one counts one, not two", () => {
+  const a = { id: "item_e", label: "Potion of Cure Light Wounds", actionType: "item", itemId: "e", quantity: quantityOf({ quantity: 0 }) };
+  const b = { id: "item_f", label: "Potion of Cure Light Wounds", actionType: "item", itemId: "f", quantity: quantityOf({ quantity: 1 }) };
+  assert.equal(mergeStacks([a, b])[0].quantity, 1);
 });
 
 console.log(`${pass} assertions passed.`);

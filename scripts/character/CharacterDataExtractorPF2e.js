@@ -4,6 +4,7 @@
  */
 
 import { debugLog } from '../module.js';
+import { quantityOf } from './MenuItems.js';
 
 export class CharacterDataExtractorPF2e {
   
@@ -336,7 +337,7 @@ export class CharacterDataExtractorPF2e {
             label: item.name,
             actionType: 'submenu',
             item: item,
-            quantity: item.system?.quantity || 1,
+            quantity: quantityOf(item.system),
             // Add PF2e-specific data for rollItemMacro
             actorId: actor.id,
             itemId: item.id,
