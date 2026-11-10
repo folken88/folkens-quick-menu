@@ -22,19 +22,6 @@ import { rolledNotes } from '../chat/CardNotes.js';
 import { poolReadLine } from '../chat/StateSpeech.js';
 import { firstWithStock, stockLine, ammoReadLine } from '../character/Stock.js';
 
-/**
- * Actions slow enough that silence between the keypress and the result reads as
- * "nothing happened". Josh, 2026-10-09: Punch takes about 2.5 s, spells 1.2 to
- * 2.1 s; he heard nothing, pressed again, and got two attacks. Until 0.17.0
- * these spoke their name the instant they were accepted - and that name, with
- * interrupt on, cut off the previous command's result every time (Josh,
- * 2026-10-29). His rule now: when he uses something he hears the result, not
- * the name. The menu has already said the name while he arrowed to it, and the
- * falling tone says it went; a chat command gets the short "ack" blip instead,
- * which goes through the AudioContext and cancels nothing.
- */
-const ACKNOWLEDGED = new Set(['attack', 'strike', 'maneuver', 'spell', 'item', 'item_activate', 'item_consume']);
-
 export class ActionExecutor {
 
   /**
@@ -61,7 +48,12 @@ export class ActionExecutor {
       return;
     }
 
-    if (source === 'chat' && ACKNOWLEDGED.has(actionItem.actionType)) {
+    // Silence between a keypress and the result reads as "nothing happened"
+    // (Josh, 2026-10-09: he pressed Punch twice and got two attacks). A chat
+    // command gets the short "ack" blip, which goes through the AudioContext
+    // and cancels nothing - unlike speaking the name, which cut off the
+    // previous result (2026-10-29). Every chat command gets it (10.12).
+    if (source === 'chat') {
       this._earcon('ack');
     }
 

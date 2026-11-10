@@ -866,4 +866,17 @@ await t("one ally's failing update still switches the next and the report names 
   } finally { console.warn = warn; delete globalThis.canvas; }
 });
 
+await t("a chat command of any type plays the accept blip, a menu one does not (10.12)", async () => {
+  const actor = makeActor();
+  actor.rollSkill = async () => {};
+  const ex = new ActionExecutor();
+  const earcons = [];
+  ex._earcon = (k) => earcons.push(k);
+  await ex.execute({ actionType: "skill", skillKey: "per", label: "Perception" }, actor, { source: "chat" });
+  assert.ok(earcons.includes("ack"), JSON.stringify(earcons));
+  earcons.length = 0;
+  await ex.execute({ actionType: "skill", skillKey: "per", label: "Perception" }, actor, { source: "menu" });
+  assert.equal(earcons.includes("ack"), false);
+});
+
 console.log(`\n${pass} assertions passed.`);
