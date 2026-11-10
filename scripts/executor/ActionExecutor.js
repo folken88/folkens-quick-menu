@@ -116,10 +116,35 @@ export class ActionExecutor {
       case 'item_inspect':
         await this.executeItemInspect(actionItem, actor);
         break;
+      case 'submenu':
+        this.executeSubmenu(actionItem, actor);
+        break;
       default:
         console.warn('ActionExecutor: unknown action type:', actionItem.actionType);
         this._earcon('error');
     }
+  }
+
+  /**
+   * A chat code for a container (/lds) reads what it holds; a menu-only
+   * submenu is refused out loud instead of failing silently.
+   */
+  executeSubmenu(actionItem, actor) {
+    const fromId = String(actionItem.id ?? '').startsWith('container:')
+      ? String(actionItem.id).slice('container:'.length)
+      : null;
+    const boxId = fromId ?? actionItem.itemId;
+    const box = boxId ? actor.items.get(boxId) : null;
+    if (fromId || box?.type === 'container') {
+      const name = box?.name || actionItem.label || 'That';
+      const entries = game.folkenQuickMenu?.characterData?.getItemsByCategory(actor, `container:${boxId}`) ?? [];
+      const line = entries.length
+        ? `${name} holds: ${entries.map(e => `${e.label} ${e.quantity}`).join(', ')}.`
+        : `${name} is empty.`;
+      this._tts()?.speak(line, { interrupt: false, queue: true });
+      return;
+    }
+    this._fail(`${actionItem.label || 'That'} is a menu. Open the Quick Menu for it.`);
   }
 
   // ─── Helpers ──────────────────────────────────────────────

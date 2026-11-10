@@ -270,6 +270,9 @@ export class QuickMenuManager {
     } else if (selectedItem.type === 'action_category') {
       debugLog('Item is action category submenu, entering...');
       this.enterActionCategory(selectedItem);
+    } else if (selectedItem.type === 'info') {
+      // Something in a container that cannot be used: say what and how many.
+      game.folkenQuickMenu.tts.speak(`${selectedItem.label}, ${selectedItem.quantity}. Nothing to use.`, { interrupt: true });
     } else if (['skill', 'attack', 'spell', 'item', 'ability', 'save', 'stat', 'strike', 'pf2e_action'].includes(selectedItem.type)) {
       debugLog('Item is executable action, executing...');
       this.executeAction(selectedItem);
@@ -335,7 +338,19 @@ export class QuickMenuManager {
     
     // Get items for this category
     const items = game.folkenQuickMenu.characterData.getItemsByCategory(actor, categoryItem.id);
-    
+
+    // An empty category speaks and leaves the player where they were.
+    if (!items || items.length === 0) {
+      const previous = this.menuStack.pop();
+      if (previous) {
+        this.currentMenu = previous.menu;
+        this.selectedIndex = previous.selectedIndex;
+      }
+      game.folkenQuickMenu.tts.speak(`${categoryItem.label || 'That'}, empty.`, { interrupt: true, urgent: true });
+      this.render();
+      return;
+    }
+
     this.currentMenu = items;
     this.selectedIndex = 0;
     
@@ -377,8 +392,9 @@ export class QuickMenuManager {
   navigateBack({ prefix = '' } = {}) {
     if (!this.isOpen) return;
 
+    // Left at the top stays put; only Escape closes the menu.
     if (this.menuStack.length === 0) {
-      this.closeMenu();
+      this.announceCurrentSelection({ prefix: 'Top.' });
       return;
     }
 

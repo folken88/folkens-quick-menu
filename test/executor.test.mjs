@@ -906,4 +906,31 @@ await t("a chat command of any type plays the accept blip, a menu one does not (
   assert.equal(earcons.includes("ack"), false);
 });
 
+await t("a container's chat code reads what it holds (6.3)", async () => {
+  const actor = makeActor({ items: [{ id: "bag", type: "container", name: "Liar's Dice Set" }] });
+  const cd = game.folkenQuickMenu.characterData;
+  game.folkenQuickMenu.characterData = { getItemsByCategory: (a, cat) => {
+    assert.equal(cat, "container:bag");
+    return [{ label: "Dice Cup", quantity: 1 }, { label: "Bone Die", quantity: 5 }];
+  } };
+  try {
+    const ex = new ActionExecutor();
+    ex._earcon = () => {};
+    await ex.execute({ actionType: "submenu", id: "container:bag", itemId: "bag", label: "Liar's Dice Set" }, actor, { source: "chat" });
+    assert.equal(spoken.at(-1), "Liar's Dice Set holds: Dice Cup 1, Bone Die 5.", JSON.stringify(spoken));
+    game.folkenQuickMenu.characterData = { getItemsByCategory: () => [] };
+    await ex.execute({ actionType: "submenu", id: "container:bag", itemId: "bag", label: "Liar's Dice Set" }, actor, { source: "chat" });
+    assert.equal(spoken.at(-1), "Liar's Dice Set is empty.");
+  } finally { game.folkenQuickMenu.characterData = cd; }
+});
+
+await t("any other submenu is refused out loud, not silently (6.3)", async () => {
+  const ex = new ActionExecutor();
+  const earcons = [];
+  ex._earcon = (k) => earcons.push(k);
+  await ex.execute({ actionType: "submenu", id: "item_category_consumables", label: "Consumables" }, makeActor(), { source: "chat" });
+  assert.equal(spoken.at(-1), "Consumables is a menu. Open the Quick Menu for it.", JSON.stringify(spoken));
+  assert.ok(earcons.includes("error"));
+});
+
 console.log(`\n${pass} assertions passed.`);

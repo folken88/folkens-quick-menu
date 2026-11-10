@@ -426,9 +426,10 @@ export class CharacterDataExtractor {
 
     // Inside one container: its contents, each usable the way it would be
     // from the top level.
+    const actorItems = actor.items.contents ?? Array.from(actor.items ?? []);
     if (typeof category === 'string' && category.startsWith('container:')) {
       const box = actor.items.get(category.slice('container:'.length));
-      return mergeStacks(this._containerEntries(box)).sort((a, b) => a.label.localeCompare(b.label));
+      return mergeStacks(this._containerEntries(box, actorItems)).sort((a, b) => a.label.localeCompare(b.label));
     }
 
     const allItems = actor.items.filter(item =>
@@ -492,7 +493,7 @@ export class CharacterDataExtractor {
           // (2026-10-09), so a torch or a gem became one more thing to arrow
           // past.
           if (item.type === 'container') {
-            if (containerContents(item).length > 0) {
+            if (containerContents(item, actorItems).length > 0) {
               itemData.type = 'item_category';
               itemData.id = `container:${item.id}`;
               itemData.actionType = 'submenu';
@@ -510,19 +511,34 @@ export class CharacterDataExtractor {
   }
 
   /** The entries for what a container holds. */
-  _containerEntries(box) {
+  _containerEntries(box, actorItems = []) {
     const entries = [];
-    for (const item of containerContents(box)) {
+    for (const item of containerContents(box, actorItems)) {
       if (!item?.name) continue;
       const ammo = item.type === 'loot' && item.system?.subType === 'ammo';
-      if (!(ammo || item.type === 'consumable' || isTriggerable(item))) continue;
+      const itemId = item.id ?? item._id;
+      const quantity = quantityOf(item.system);
+      if (!(ammo || item.type === 'consumable' || isTriggerable(item))) {
+        // Not usable, but still in the box: say what it is and how many.
+        entries.push({
+          id: `item_${itemId}`,
+          label: item.name,
+          menuLabel: `${item.name}, ${quantity}`,
+          type: 'info',
+          actionType: 'item_info',
+          itemId,
+          quantity,
+          originalItem: item,
+        });
+        continue;
+      }
       entries.push({
-        id: `item_${item.id ?? item._id}`,
+        id: `item_${itemId}`,
         label: item.name,
         type: 'action',
         actionType: ammo ? 'ammo_read' : 'item',
-        itemId: item.id ?? item._id,
-        quantity: quantityOf(item.system),
+        itemId,
+        quantity,
         uses: item.system?.uses || null,
         originalItem: item,
       });

@@ -74,4 +74,22 @@ t("single-use potions still merge", () => {
   assert.equal(out[0].quantity, 3);
 });
 
+t("PF1 master format: contents are actor items flagged with the container id", () => {
+  const out = containerContents({ id: "bag" }, [
+    { id: "p", flags: { pf1: { container: "bag" } } },
+    { id: "x", flags: {} },
+    null,
+  ]);
+  assert.deepEqual(out.map(i => i.id), ["p"]);
+});
+t("system.items and items.contents formats still read without actorItems", () => {
+  assert.equal(containerContents({ id: "b", system: { items: { a: { id: "a" } } } }).length, 1);
+  assert.equal(containerContents({ id: "b", items: { contents: [{ id: "a" }, { id: "c" }] } }).length, 2);
+});
+t("both formats together dedupe by id", () => {
+  const box = { id: "bag", items: { contents: [{ id: "p" }] } };
+  const out = containerContents(box, [{ id: "p", flags: { pf1: { container: "bag" } } }, { id: "q", flags: { pf1: { container: "bag" } } }]);
+  assert.deepEqual(out.map(i => i.id), ["p", "q"]);
+});
+
 console.log(`${pass} assertions passed.`);

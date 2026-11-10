@@ -46,14 +46,29 @@ export function mergeStacks(entries) {
  * `system.contents`, which the menu read until 0.17.0, is null there, so no
  * container ever showed - Ser's Liar's Dice Set with its die and cup included.
  */
-export function containerContents(item) {
+export function containerContents(item, actorItems = []) {
+  let own = [];
   const col = item?.items;
   if (col) {
-    if (Array.isArray(col.contents)) return col.contents;
-    if (Array.isArray(col)) return col;
-    if (typeof col[Symbol.iterator] === 'function') return Array.from(col);
+    if (Array.isArray(col.contents)) own = col.contents;
+    else if (Array.isArray(col)) own = col;
+    else if (typeof col[Symbol.iterator] === 'function') own = Array.from(col);
   }
-  const raw = item?.system?.items;
-  if (raw && typeof raw === 'object') return Object.values(raw);
-  return [];
+  if (!own.length) {
+    const raw = item?.system?.items;
+    if (raw && typeof raw === 'object') own = Object.values(raw);
+  }
+  // PF1 master stores contents as ordinary actor items flagged with the box id.
+  const flagged = (actorItems ?? []).filter(i => item?.id != null && i?.flags?.pf1?.container === item.id);
+  const seen = new Set();
+  const out = [];
+  for (const i of [...own, ...flagged]) {
+    const id = i?.id ?? i?._id;
+    if (id != null) {
+      if (seen.has(id)) continue;
+      seen.add(id);
+    }
+    out.push(i);
+  }
+  return out;
 }
