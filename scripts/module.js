@@ -203,7 +203,7 @@ function registerSettings() {
   // TTS settings
   game.settings.register(MODULE_ID, 'menuNumbers', {
     name: 'Speak item numbers in the menu',
-    hint: "Say the item's number before its name, as 0.19 did. Off: letters jump straight to items.",
+    hint: "Say the item's number before its name, as 0.19 did, and wait for a second digit. Off: a digit jumps at once and letters find items by name.",
     scope: 'client',
     config: true,
     type: Boolean,

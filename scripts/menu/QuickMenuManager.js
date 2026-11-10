@@ -1086,7 +1086,7 @@ export class QuickMenuManager {
       // Numbers are spoken only when the player asks for them (menuNumbers).
       // Items also say how many are left, so a count never needs its own key.
       const numberText = getSetting('menuNumbers') ? `${displayNum}. ` : '';
-      const countText = selectedItem.actionType === 'item' ? entryCountText(selectedItem) : '';
+      const countText = selectedItem.actionType === 'item' && selectedItem.originalItem?.type === 'consumable' ? entryCountText(selectedItem) : '';
       const name = `${selectedItem.menuLabel ?? selectedItem.label}${countText ? `, ${countText}` : ''}`;
       const message = `${prefix ? prefix + ' ' : ''}${numberText}${name}`;
       debugLog('Announcing:', message);

@@ -102,10 +102,11 @@ export function containerContents(item, actorItems = []) {
  */
 export function entryCountText(entry) {
   const uses = entry?.uses;
-  if (!uses || uses.per === 'single') {
-    const quantity = entry?.quantity;
-    return typeof quantity === 'number' && Number.isFinite(quantity) ? `${quantity} left` : '';
+  // PF1 gives every item a uses object; a falsy per, or max 0, means not charged.
+  if (uses?.per && uses.per !== 'single' && Number.isFinite(uses.max) && uses.max > 0
+      && Number.isFinite(uses.value)) {
+    return `${uses.value} of ${uses.max}`;
   }
-  const { value, max } = uses;
-  return Number.isFinite(value) && Number.isFinite(max) ? `${value} of ${max}` : '';
+  const quantity = entry?.quantity;
+  return typeof quantity === 'number' && Number.isFinite(quantity) ? `${quantity} left` : '';
 }
