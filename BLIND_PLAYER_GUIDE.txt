@@ -34,7 +34,8 @@ KEY FEATURES:
 ============================
 
 ACTIVATION:
-- Press Backquote key (default) to open/close Quick Menu
+- Press Backquote key (default) to open Quick Menu. If it is already open,
+  it says the current item again. Escape is the only key that closes it.
 - Menu can be opened from anywhere in FoundryVTT
 - Requires a character to be assigned or token selected
 

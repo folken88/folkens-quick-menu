@@ -169,8 +169,8 @@ item rebuilds its code and speaks every move. Potions, wands and scrolls get
 spell-style codes: p, w or s plus the spell's letters (`/pcmw`, `/wclw`,
 `/sfly`). Two wands of one spell stay two commands; rename one to tell them
 apart. When you gain an item its code is spoken once: "Potion
-of Fly is slash p, f, l." If a code ever has to change - only your own alias can
-cause that - the voice says which and what it is now.
+of Fly is slash p, f, l." If a code ever has to change (your own alias, a rename, an
+identification, `/fqm reset`) the voice says which and what it is now.
 
 ### Where Aliases Are Stored
 
@@ -206,6 +206,9 @@ Quick Menu
   8. Stats           (ability checks, initiative)
 ```
 
+The numbers in this tree are layout only. They are not spoken unless *Speak
+item numbers in the menu* is on.
+
 ### Controls
 
 | Input | Action |
@@ -220,7 +223,7 @@ Quick Menu
 | `Shift+F` | Add to favorites (configurable) |
 | `Shift+R` | Remove from favorites (configurable) |
 | `Shift+P` | Prepare spell (+1) (configurable). Only for a character with a prepared spellbook |
-| `Shift+U` | Unprepare spell (-1) (configurable) |
+| `Shift+U` | Unprepare spell (-1) (configurable). Only for a character with a prepared spellbook |
 | `/` | Options: Take 10/20 on a skill, Normal/Full Attack on an attack. Anything else says "No options" and is never used |
 | `Shift`+anything else | Passed through |
 | `0-9` | Move to that position in the list. Numbers are off by default: a digit jumps at once and items are not read with their numbers. Turn on *Speak item numbers in the menu* to hear them and to combine digits (38 reaches item 38). Never uses an item |
@@ -270,30 +273,33 @@ These work anywhere in Foundry (whether or not the menu is open). They are suppr
   with the error tones and a spoken reason, and nothing is used. Haste used
   plainly also switches on for your owned allies within 15 feet and names the
   ones Foundry will not let it change.
-- **Result.** The name first, then the roll: "Rod, 7 fire damage. 2 of 3 left." The roll: "30 to hit, 11 damage", or "31 damage" for a Fireball.
+- **Result.** The name first, then what happened: "Rod, 7 fire damage. 2 of 3
+  left." Rolls read as "30 to hit, 11 damage", or "31 damage" for a Fireball.
   Ability damage and nonlethal say so: "1 Constitution damage", "2 nonlethal".
-  An attack that always hits says "hits", with no threat to confirm. A threat says so, with its
-  confirmation and what the damage becomes if it confirms: "41 to hit, threat,
-  confirms 44, 17 damage, 78 on a crit." A natural 20 is "natural 20, hits"; a
-  natural 1 is "natural 1, miss". A save the target faces is added when the card's save has a type: "Fort DC
-  15." Healing that is temporary hit points says "temporary hit points". Items with uses say what is left: "2 of 3 left."; something that gives a
-  point back says "Regained. 2 of 3." Ammunition is only ever read, never spent:
-  "17 arrows left." Plain `/r`, `/d` and `/h` rolls are read too. Rolled notes in a card are
-  read at every level ("8 images", "Spell penetration 36"); there is no
-  "Card posted." and no "Plus notes". Whenever a buff switches on - from a
-  potion, wand, scroll, spell or Auto Buff - it is said: "Shield on." At full
-  detail a spell adds its range, area, duration and whether spell resistance
-  applies; "see text" becomes the linked buff's duration or "see description".
-  A card that is slow to roll gets "Lightning Bolt, waiting on the dice." at 8
-  seconds and is still read when it lands; an item that never produces a card
-  says "no result" after 10 minutes.
+  An attack that always hits says "hits", with no threat to confirm. A threat
+  says so, with its confirmation and what the damage becomes if it confirms:
+  "41 to hit, threat, confirms 44, 17 damage, 78 on a crit." A natural 20 is
+  "natural 20, hits"; a natural 1 is "natural 1, miss". A save the target faces
+  is added when the card's save has a type: "Fort DC 15." Healing that is
+  temporary hit points says "temporary hit points". Items with uses say what
+  is left: "2 of 3 left."; something that gives a point back says "Regained. 2
+  of 3." Ammunition is only ever read, never spent: "17 arrows left." Plain
+  `/r`, `/d` and `/h` rolls are read too.
+  Rolled notes in a card are read at every level ("8 images", "Spell
+  penetration 36"); there is no "Card posted." and no "Plus notes".
+  Whenever a buff switches on - from a potion, wand, scroll, spell or Auto
+  Buff - it is said: "Shield on." At full detail a spell adds its range,
+  area, duration and whether spell resistance applies; "see text" becomes the
+  linked buff's duration or "see description".
+  Each command is read by its own reader, so one still rolling never loses
+  another's result. A card that is slow to roll gets "Lightning Bolt, waiting
+  on the dice." at 8 seconds and is still read when it lands; an item that
+  never produces a card says "no result" after 10 minutes.
 - **Failed.** Two pulses at 400 Hz - the Poker Dungeon's error sound, raised so
   it carries over a screen reader - then why, if there is a why: "None left.",
   "No charges.", "Not found. Type slash scan.", "No command." Anything that
   starts with a slash and is not a command, "/per/pod" included, gets this too.
-- **Stopped.** One short high blip when the stop key cuts the voice off. Each
-  command is read by its own reader, so one still rolling never loses another's
-  result.
+- **Stopped.** One short high blip when the stop key cuts the voice off.
 - **Voice down.** Three long falling slides at full volume, repeating every 20
   seconds until a line is heard again, and a whisper in chat: Chrome's speech
   engine has stopped making sound. Quit Chrome completely and reopen it.
