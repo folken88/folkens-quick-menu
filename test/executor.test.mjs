@@ -289,6 +289,16 @@ await t("a buff Auto Buff switches on during the use is said once, after the use
   assert.equal(spoken[1], "Haste on.");
 });
 
+await t("execute passes forOther through an item command to the use line", async () => {
+  const rod = { id: "r", name: "Rod", system: { uses: { per: "day", value: 2, max: 3 } } };
+  rod.use = async () => ({});
+  const ex = new ActionExecutor();
+  await ex.execute({ actionType: "item", itemId: "r", label: "Rod" }, makeActor({ items: [rod] }), { source: "chat", forOther: true });
+  ex._pending?.off();
+  assert.equal(spoken.length, 1, JSON.stringify(spoken));
+  assert.match(spoken[0], /for someone else\./);
+});
+
 await t("used for someone else, a buff switched on here is switched back off and not said", async () => {
   const items = [];
   const actor = buffActor(items);

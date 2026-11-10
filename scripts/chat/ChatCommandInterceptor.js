@@ -10,6 +10,7 @@ import { debugLog } from '../module.js';
 import { CollisionResolver } from './CollisionResolver.js';
 import { spellOut } from './AbbreviationGenerator.js';
 import { parseYesNo, parseTypedUpcast, parseSlotReportCommand, bookSlotLine } from '../spells/Upcast.js';
+import { parseItemArgs } from './ItemArgs.js';
 import { playEarcon } from '../tts/Earcons.js';
 import { plainRollLine } from './RollTotals.js';
 import { renderAC, renderCMD, renderActiveBuffs, renderInactiveBuffs } from './StateSpeech.js';
@@ -188,7 +189,14 @@ export class ChatCommandInterceptor {
         this._fail('No character assigned.');
         return false;
       }
-      this.executor.execute(result.actionItem, actor, { source: 'chat' });
+      // A word after the code: "o" is for someone else, anything else is
+      // refused aloud and nothing is used (10.26, 10.11).
+      const parsed = parseItemArgs(args, result.actionItem.actionType, result.actionItem.label);
+      if (parsed.mode === 'invalid') {
+        this._fail(parsed.reason);
+        return true;
+      }
+      this.executor.execute(result.actionItem, actor, { source: 'chat', forOther: parsed.mode === 'other' });
       return false;
     }
 

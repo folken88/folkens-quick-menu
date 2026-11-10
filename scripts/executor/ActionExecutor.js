@@ -28,9 +28,9 @@ export class ActionExecutor {
    * Execute an action item against an actor
    * @param {Object} actionItem - The action item with actionType and relevant keys
    * @param {Actor} actor - The Foundry actor to execute against
-   * @param {{source?: 'menu'|'chat'}} [context] where the command came from
+   * @param {{source?: 'menu'|'chat', forOther?: boolean}} [context] where the command came from; forOther uses an item for someone else
    */
-  async execute(actionItem, actor, { source = 'menu' } = {}) {
+  async execute(actionItem, actor, { source = 'menu', forOther = false } = {}) {
     debugLog('ActionExecutor: executing', actionItem.actionType, actionItem.label);
 
     // Any new command withdraws a pending up-cast offer. 0.14.0's documentation
@@ -69,7 +69,7 @@ export class ActionExecutor {
         await this.executeSpellCast(actionItem, actor);
         break;
       case 'item':
-        await this.executeItemUse(actionItem, actor);
+        await this.executeItemUse(actionItem, actor, { forOther });
         break;
       case 'save':
         await this.executeSaveRoll(actionItem, actor);
@@ -108,10 +108,10 @@ export class ActionExecutor {
         await this.executeItemUnequip(actionItem, actor);
         break;
       case 'item_activate':
-        await this.executeItemActivate(actionItem, actor);
+        await this.executeItemActivate(actionItem, actor, { forOther });
         break;
       case 'item_consume':
-        await this.executeItemConsume(actionItem, actor);
+        await this.executeItemConsume(actionItem, actor, { forOther });
         break;
       case 'item_inspect':
         await this.executeItemInspect(actionItem, actor);
@@ -786,7 +786,7 @@ export class ActionExecutor {
 
   // ─── Item ─────────────────────────────────────────────────
 
-  async executeItemUse(actionItem, actor) {
+  async executeItemUse(actionItem, actor, { forOther = false } = {}) {
     const item = this._pickItem(actor, actionItem);
     if (!item) { this._missing(); return; }
 
@@ -794,7 +794,7 @@ export class ActionExecutor {
       await this._executePF2eItemUse(item, actionItem, actor);
       return;
     }
-    await this._useItem(item, actor, actionItem);
+    await this._useItem(item, actor, actionItem, { forOther });
   }
 
   /**
@@ -1133,24 +1133,24 @@ export class ActionExecutor {
 
   // ─── Item Activate/Consume ────────────────────────────────
 
-  async executeItemActivate(actionItem, actor) {
+  async executeItemActivate(actionItem, actor, { forOther = false } = {}) {
     if (this._isPF2e()) {
       await this._executePF2eItemUse(null, actionItem, actor);
       return;
     }
     const item = this._pickItem(actor, actionItem);
     if (!item) { this._missing(); return; }
-    await this._useItem(item, actor, actionItem);
+    await this._useItem(item, actor, actionItem, { forOther });
   }
 
-  async executeItemConsume(actionItem, actor) {
+  async executeItemConsume(actionItem, actor, { forOther = false } = {}) {
     if (this._isPF2e()) {
       await this._executePF2eItemUse(null, actionItem, actor);
       return;
     }
     const item = this._pickItem(actor, actionItem);
     if (!item) { this._missing(); return; }
-    await this._useItem(item, actor, actionItem);
+    await this._useItem(item, actor, actionItem, { forOther });
   }
 
   // ─── Item Inspect ─────────────────────────────────────────
