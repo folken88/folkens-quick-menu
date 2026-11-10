@@ -606,7 +606,10 @@ export class QuickMenuManager {
     if (!this.isOpen || !this.currentMenu) return;
     
     const selectedItem = this.currentMenu[this.selectedIndex];
-    if (!selectedItem || selectedItem.type !== 'action') return;
+    if (!selectedItem || selectedItem.type !== 'action') {
+      game.folkenQuickMenu.tts.speak('Not a favorite entry.');
+      return;
+    }
     
     // Check if we're in the favorites menu
     // We're in favorites if the parent menu is root and selected index 0 (favorites)
@@ -685,7 +688,8 @@ export class QuickMenuManager {
     const existingFav = this.favorites.find(fav => 
       fav.actionType === selectedItem.actionType && 
       fav.skillKey === selectedItem.skillKey &&
-      fav.itemId === selectedItem.itemId
+      fav.itemId === selectedItem.itemId &&
+      fav.saveType === selectedItem.saveType
     );
     
     if (existingFav) {
@@ -966,7 +970,28 @@ export class QuickMenuManager {
       const stored = localStorage.getItem(key);
       
       if (stored) {
-        return JSON.parse(stored);
+        const parsed = JSON.parse(stored);
+        if (!Array.isArray(parsed)) throw new Error('favorites not a list');
+        let changed = false;
+        const migrated = [];
+        for (const fav of parsed) {
+          if (fav && fav.type === 'action') {
+            migrated.push(fav);
+            continue;
+          }
+          changed = true;
+          if (fav && fav.type === 'skill' && fav.id) {
+            migrated.push({
+              id: `fav_default_${fav.id}`,
+              label: fav.label,
+              type: 'action',
+              actionType: 'skill',
+              skillKey: fav.id
+            });
+          }
+        }
+        if (changed) localStorage.setItem(key, JSON.stringify(migrated));
+        return migrated;
       } else {
         // First time for this character - add default Perception favorite
         const defaultFavorites = this.createDefaultFavorites(actor);
@@ -1005,10 +1030,11 @@ export class QuickMenuManager {
     const perceptionSkill = actor.system?.skills?.per;
     if (perceptionSkill) {
       defaults.push({
-        type: 'skill',
-        id: 'per',
+        id: 'fav_default_per',
         label: 'Perception',
-        actionType: 'skill'
+        type: 'action',
+        actionType: 'skill',
+        skillKey: 'per'
       });
     }
     
