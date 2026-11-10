@@ -7,13 +7,21 @@
 export function alliesWithin(tokens, caster, feet, measure) {
   const side = caster?.document?.disposition;
   const hits = [];
+  const seen = new Set(caster?.actor?.id ? [caster.actor.id] : []);
   for (const token of tokens ?? []) {
     if (!token || token === caster) continue;
     if (token.document?.disposition !== side || !token.actor) continue;
     if (!(measure(caster, token) <= feet)) continue;
+    const id = token.actor.id;
+    if (id) { if (seen.has(id)) continue; seen.add(id); }
     hits.push({ token, actor: token.actor, owned: !!token.actor.isOwner });
   }
   return hits;
+}
+
+/** Names compare lowercase and trimmed. */
+export function sameName(a, b) {
+  return String(a ?? '').trim().toLowerCase() === String(b ?? '').trim().toLowerCase();
 }
 
 /** A spell that reaches several creatures at a distance: Haste, not Shield or Fly. */

@@ -15,7 +15,7 @@ import { useOutcome, usesLeftLine, LAST_ONE } from './UseOutcome.js';
 import { healingOf } from './Healing.js';
 import { switchBuffOn } from './BuffOn.js';
 import { BuffWatch } from './BuffWatch.js';
-import { alliesWithin, isGroupBuff, allyReport } from './Allies.js';
+import { alliesWithin, isGroupBuff, allyReport, sameName } from './Allies.js';
 import { composeUseLine } from './UseReport.js';
 import { spellDetailLine } from '../chat/SpellDetail.js';
 import { rolledNotes } from '../chat/CardNotes.js';
@@ -464,15 +464,18 @@ export class ActionExecutor {
         ? grid.measurePath([a.center, b.center]).distance
         : grid.measureDistance(a.center, b.center);
       const hits = alliesWithin(canvas.tokens?.placeables ?? [], casterToken, 15, measure);
-      const name = String(item.name ?? '').trim().toLowerCase();
-      for (const hit of hits) {
-        if (!hit.owned) continue;
+      await Promise.allSettled(hits.map(async (hit) => {
+        if (!hit.owned) return;
         const buffs = hit.actor.itemTypes?.buff ?? hit.actor.items?.filter?.((i) => i.type === 'buff') ?? [];
-        const buff = buffs.find((b) => String(b.name ?? '').trim().toLowerCase() === name);
-        if (!buff) continue;
-        await buff.update({ 'system.active': true });
-        hit.switched = true;
-      }
+        const buff = buffs.find((b) => sameName(b.name, item.name));
+        if (!buff) return;
+        try {
+          await buff.update({ 'system.active': true });
+          hit.switched = true;
+        } catch (error) {
+          console.warn('folken-games-quick-menu | ally buff failed:', error);
+        }
+      }));
       this._sayBuff(allyReport(hits, item.name));
     } catch (error) {
       console.warn('folken-games-quick-menu | allies buff failed:', error);
@@ -837,7 +840,12 @@ export class ActionExecutor {
         })).catch((error) => console.warn('folken-games-quick-menu | buff switch failed:', error));
       }
 
-      if (item.type === 'spell' && !forOther) await this._hasteAllies(item, actor);
+      // Not waited for: a slow ally update never holds up the use line. Its
+      // report goes through _sayBuff, which is held until after the use line.
+      if (item.type === 'spell' && !forOther) {
+        this._lastAllies = Promise.resolve().then(() => this._hasteAllies(item, actor))
+          .catch((error) => console.warn('folken-games-quick-menu | allies buff failed:', error));
+      }
 
       // Read AFTER the use, and across every stack with this name, so two
       // half-empty potion stacks are counted as one supply.

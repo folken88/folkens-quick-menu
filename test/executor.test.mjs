@@ -747,6 +747,7 @@ await t("a group spell switches on an owned ally's buff and names them after the
     const ex = new ActionExecutor();
     ex._timers = makeClock();
     await ex._useItem(spell, actor);
+    await ex._lastAllies;
     ex._pending?.off();
     assert.deepEqual(hasteBuff.updates, [{ "system.active": true }]);
     assert.equal(spoken.length, 2, JSON.stringify(spoken));
@@ -769,10 +770,37 @@ await t("a spell that is not a group buff leaves allies alone", async () => {
     const ex = new ActionExecutor();
     ex._timers = makeClock();
     await ex._useItem(spell, actor);
+    await ex._lastAllies;
     ex._pending?.off();
     assert.deepEqual(shieldBuff.updates, []);
     assert.equal(spoken.length, 1, JSON.stringify(spoken));
   } finally { delete globalThis.canvas; }
+});
+
+await t("one ally's failing update still switches the next and the report names only the second", async () => {
+  const bad = { name: "Haste", async update() { throw new Error("denied"); } };
+  const good = { name: "haste ", updates: [], async update(c) { this.updates.push(c); } };
+  const bob = allyToken("Bob", 1, 5, { buff: bad });
+  const carol = allyToken("Carol", 1, 10, { buff: good });
+  const carolAgain = allyToken("Carol", 1, 12, { buff: good });
+  bob.actor.id = "bob"; carol.actor.id = "carol"; carolAgain.actor.id = "carol";
+  const actor = makeActor();
+  const casterToken = allyToken("Caster", 1, 0);
+  actor.getActiveTokens = () => [casterToken];
+  stubCanvas([casterToken, bob, carol, carolAgain]);
+  const warn = console.warn; console.warn = () => {};
+  try {
+    const spell = { id: "h", name: "Haste", type: "spell",
+      system: { actions: { a: { range: { units: "close" }, target: { value: "one creature/level" } } } },
+      use: async () => ({}) };
+    const ex = new ActionExecutor();
+    ex._timers = makeClock();
+    await ex._useItem(spell, actor);
+    await ex._lastAllies;
+    ex._pending?.off();
+    assert.deepEqual(good.updates, [{ "system.active": true }]);
+    assert.equal(spoken.at(-1), "Haste on for Carol.", JSON.stringify(spoken));
+  } finally { console.warn = warn; delete globalThis.canvas; }
 });
 
 console.log(`\n${pass} assertions passed.`);
