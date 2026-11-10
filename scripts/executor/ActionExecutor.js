@@ -466,10 +466,16 @@ export class ActionExecutor {
    * Haste and its kind reach allies within 15 feet (10.28): each ally the player
    * owns who has a buff of the spell's name has it switched on; the rest are
    * named. Said after the use line. Never throws, and does nothing off the map.
+   *
+   * Only for a spell the caster's own sheet has a buff of the same name for.
+   * The range-and-target test alone also matches Magic Missile, Slow and Mass
+   * Cure Light Wounds, and named every ally in range as if they were buffed.
    */
   async _hasteAllies(item, actor) {
     try {
       if (!isGroupBuff(item) || !globalThis.canvas?.ready) return;
+      const ownBuffs = actor?.itemTypes?.buff ?? actor?.items?.filter?.((i) => i.type === 'buff') ?? [];
+      if (!ownBuffs.some((b) => sameName(b.name, item.name))) return;
       const casterToken = actor?.getActiveTokens?.()?.[0];
       if (!casterToken) return;
       const grid = canvas.grid;

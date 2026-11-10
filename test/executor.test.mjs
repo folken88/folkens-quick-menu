@@ -929,6 +929,7 @@ await t("a group spell switches on an owned ally's buff and names them after the
   const bob = allyToken("Bob", 1, 10, { buff: hasteBuff });
   const orc = allyToken("Orc", -1, 5, { owned: false });
   const actor = makeActor();
+  actor.itemTypes = { buff: [{ name: "Haste" }] };
   const casterToken = allyToken("Caster", 1, 0);
   actor.getActiveTokens = () => [casterToken];
   stubCanvas([casterToken, bob, orc]);
@@ -969,6 +970,31 @@ await t("a spell that is not a group buff leaves allies alone", async () => {
   } finally { delete globalThis.canvas; }
 });
 
+await t("Magic Missile with no buff on the caster says nothing about allies and changes none", async () => {
+  const mmBuff = { name: "Magic Missile", updates: [], async update(c) { this.updates.push(c); } };
+  const bob = allyToken("Bob", 1, 10, { buff: mmBuff });
+  const bolty = allyToken("Bolty", 1, 5, { owned: false });
+  const actor = makeActor();
+  actor.itemTypes = { buff: [] };
+  const casterToken = allyToken("Caster", 1, 0);
+  actor.getActiveTokens = () => [casterToken];
+  stubCanvas([casterToken, bob, bolty]);
+  try {
+    const spell = { id: "m", name: "Magic Missile", type: "spell",
+      system: { actions: { a: { range: { units: "medium" }, target: { value: "one creature/level" } } } },
+      use: async () => ({}) };
+    const ex = new ActionExecutor();
+    ex._timers = makeClock();
+    await ex._useItem(spell, actor);
+    await ex._lastAllies;
+    ex._pending?.off();
+    assert.deepEqual(mmBuff.updates, []);
+    assert.equal(spoken.length, 1, JSON.stringify(spoken));
+    assert.match(spoken[0], /^Magic Missile/);
+    assert.equal(spoken.some((x) => /Also in range|on for/.test(x)), false, JSON.stringify(spoken));
+  } finally { delete globalThis.canvas; }
+});
+
 await t("one ally's failing update still switches the next and the report names only the second", async () => {
   const bad = { name: "Haste", async update() { throw new Error("denied"); } };
   const good = { name: "haste ", updates: [], async update(c) { this.updates.push(c); } };
@@ -977,6 +1003,7 @@ await t("one ally's failing update still switches the next and the report names 
   const carolAgain = allyToken("Carol", 1, 12, { buff: good });
   bob.actor.id = "bob"; carol.actor.id = "carol"; carolAgain.actor.id = "carol";
   const actor = makeActor();
+  actor.itemTypes = { buff: [{ name: "Haste" }] };
   const casterToken = allyToken("Caster", 1, 0);
   actor.getActiveTokens = () => [casterToken];
   stubCanvas([casterToken, bob, carol, carolAgain]);
