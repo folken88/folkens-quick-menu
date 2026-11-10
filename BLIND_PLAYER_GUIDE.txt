@@ -21,7 +21,7 @@ The Folken Games Quick Menu is a TTS-based hierarchical character navigation sys
 
 KEY FEATURES:
 - Text-to-Speech announcements for all actions
-- Numbered items: type a number to move to it (digits combine, so 38 reaches item 38)
+- Letters jump to an item by name; numbers are an optional setting
 - Audio feedback with specific sound cues
 - Universal favorites system (favorite any item type)
 - Smart submenu execution (favorited submenus execute most common action)
@@ -41,8 +41,11 @@ ACTIVATION:
 NAVIGATION:
 - Arrow Up/Down: Navigate through menu items
 - Arrow Right/Enter: Enter submenu or execute action
-- Arrow Left/Escape: Go back to previous menu
-- Numbers: Type an item's number to move to it (never uses it)
+- Arrow Left: Go back one level. At the top it stays and says "Top."
+- Escape: Close the menu. It is the only key that closes it.
+- Letters: Type the start of a name to jump to it (never uses it)
+- Numbers: Off by default. A digit jumps to that position at once.
+  Turn on "Speak item numbers in the menu" to hear numbers and combine digits.
 - Mouse Wheel: Scroll up/down to navigate
 - Middle Mouse Click: Select current item
 
@@ -54,6 +57,7 @@ MODIFIER KEY COMMANDS:
 - Letters: type the start of a name to jump to it (P E R for Perception)
 - U: Unprepare current spell
 - /: Show item submenu
+- Control, alone: Stop the voice (the stop key you chose). The S key no longer stops it.
 
 AUDIO CUES:
 - "Boop" sound: Entering submenu or executing action
@@ -62,6 +66,8 @@ AUDIO CUES:
 - "Pop" sound: Item removed from favorites
 
 FAVORITES SYSTEM:
+- Slash on a favorite shows that item's own submenu
+- Removing the last favorite works and says so
 - Shift+F: Favorite any item (including submenus and lore skills)
 - Shift+R: Remove from favorites (works on any item type)
 - Favorited submenus execute most common action:
@@ -186,18 +192,23 @@ Items are organized by category:
 - Treasure: Valuables and loot
 
 QUANTITY DISPLAY:
-- Items with quantities show the number (e.g., "Heal Lesser, 2")
+- Landing on a potion, wand or scroll says how many you have
 - Quantities update in real-time as items are used
-- Only shows quantities greater than 1
+- A stack of 0 says 0
+- An empty category says its name, then "empty", and you stay put
+- A container lists everything inside it with quantities
 
 6. ACCESSIBILITY FEATURES
 =========================
 
 LETTER AND NUMBER NAVIGATION:
-- Every item is read with its number: "3. Perception"
+- Items are read by name only. Numbers are off unless you turn on
+  "Speak item numbers in the menu".
 - Type letters to jump: P E R moves to Perception; the same letter again moves
   to the next item starting with it. A second of silence starts a new word.
-- Type the number to move to it; digits combine, so 3 then 8 reaches item 38
+- Type a digit to move to that position at once. With numbers on, digits
+  combine, so 3 then 8 reaches item 38.
+- If letters you typed together match nothing, the newest letter is tried alone
 - Neither ever uses the item; Enter or Right does
 - The menu's jobs are on Shift: Shift+F favorite, Shift+R remove, Shift+P
   prepare, Shift+U unprepare. All four are settings.
@@ -251,10 +262,20 @@ Menu not opening:
 - Verify the activation key (default: Backquote)
 - Try refreshing the page
 
+WHAT A RESULT SOUNDS LIKE:
+- The item's name comes first: "Rod, 7 fire damage. 2 of 3 left."
+- Rolled notes on a card are read: "8 images", "Spell penetration 36"
+- "Card posted" and "Plus notes" no longer exist
+- Every buff that switches on is said: "Haste on."
+- A slow card says "waiting on the dice" after 8 seconds, and is still read
+- Put o after an item or spell code to use it for someone else: the card goes
+  to chat and nothing is applied to you. Any other word is refused aloud.
+- Potions, wands and scrolls have codes like /pcmw, /wclw and /sfly
+
 PERFORMANCE TIPS:
 - Close unused applications for better TTS performance
 - Adjust TTS speed if announcements are too fast/slow
-- Type an item's number for faster menu access
+- Type the first letters of a name for faster menu access
 - Favorite frequently used items for quick access
 
 SUPPORT:
@@ -266,7 +287,7 @@ SUPPORT:
 ======================
 
 ACTIVATION: Backquote key
-NAVIGATION: Arrow keys, item numbers
+NAVIGATION: Arrow keys, letters (numbers optional)
 AUDIO: Boop (submenu), Bong (end/error), Bajinger (favorite), Pop (unfavorite)
 
 SLASH COMMANDS (27 total):

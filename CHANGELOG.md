@@ -2,6 +2,115 @@
 
 All notable changes to the FolkenGames Quick Menu module will be documented in this file.
 
+## [0.20.0] - 2026-11-10
+
+Josh's three 0.19.0 test phases, and Tobias's rulings of 2026-11-01, 11-04,
+11-07 and 11-09. Numbers in brackets are Josh's test numbers.
+
+### Added
+- **A result starts with the name of what you used.** The use line replaces
+  "Card posted.": "Rod, 7 fire damage. 2 of 3 left." Name and what happened,
+  then range and duration when the detail level gives them, count last
+  (10.16).
+- **Rolled notes in a card are read.** "8 images", "Spell penetration 36",
+  Dispel Magic's check, a duration rolled in the notes: the note's words and
+  its result, at every detail level. "Plus notes" is gone (10.17).
+- **Spells that need a wait say so.** A card still rolling after 8 seconds
+  gets "Lightning Bolt, waiting on the dice." once; an item with no card at
+  all after 10 minutes says "no result". A card that arrives late is still
+  read when it lands (8.44).
+- **Every buff that switches on is announced**: "Haste on." Whether we did it
+  or Auto Buff did, and for wands and scrolls of a buff spell as well as
+  potions; `/bf` stays the status check (8.36, 4.6).
+- **`o` uses something for someone else.** After an item or spell code, `o`
+  (or `other`) posts the card to chat only and reverts any buff it switched
+  on. A plain command uses it on you. Potions, wands, scrolls, spells and
+  custom items follow the same rule (10.11, 10.28).
+- **Any other word after a code is refused aloud.** The error tones and a
+  spoken reason, and nothing is used (10.26).
+- **Haste switches on for your allies.** The caster and every owned allied
+  token within 15 feet get the buff; allies Foundry will not let us change
+  are named so you can tell the GM. `o` leaves the caster out (10.28).
+- **Potions, wands and scrolls have spell-style codes.** A p, w or s, then
+  the spell's four letters or initials: `/pcmw`, `/wclw`, `/sfly`. The
+  changeover is announced once (10.21).
+- **`/d` and `/h` results are read**, including PF1's own Damage and Healing
+  cards (6.7).
+- **The accept blip plays for every chat command** that nothing else
+  confirms, so every command ends in a confirmation or a failure (10.12).
+- **A container lists everything inside it**, read-only with quantities, in
+  both PF1 storage formats (11.11 and master). `/lds` speaks a container's
+  contents instead of "unknown action type" (6.3).
+- **Empty categories speak.** Entering an empty Items category says
+  "<category>, empty." and stays (8.37).
+- **A setting, "Speak item numbers in the menu"**, brings the 0.19 numbered
+  reading back for anyone who wants it (10.24).
+- **Landing on a consumable speaks its count at once**, before any buff
+  lookup, so the first potion of a session is not four seconds late (6.2,
+  4.3).
+- **Spell-likes are named.** A spell in two spellbooks says which: "Detect
+  Magic, spell-like" (8.28).
+- **Numpad minus and plus change the volume** alongside Minus and Equal
+  (7.5).
+- **F9 works from the chat box**, as every non-printing key does (3.8).
+- **Backslash checks it worked.** If focus does not really reach the chat box
+  the voice says so and tries again (2.18).
+
+### Changed
+- **One reader per command.** Each command waits for its own card instead of
+  sharing a slot, so a skill typed while Scorching Ray is rolling no longer
+  loses the rays (8.46).
+- **Menu numbers are off by default.** Items are read by name only; a digit
+  jumps to that position at once, with no half-second wait for a second digit
+  (10.24).
+- **Left at the top of the menu stays put.** "Top." Only Escape closes the
+  menu (2.17).
+- **The speech gap is 100 ms, down from 150**, and a line Chrome has not
+  started is never cancelled, in every path (10.2, 6.10).
+- **Core codes beat aliases.** Skills, saves and checks come from fixed system
+  keys, never labels, so every character shares them. Old clash aliases are
+  cleared when the core takes over, and each move is spoken once (1.2).
+- **`/fqm reset` restores each item's generated code** and speaks every code
+  that moved back. It no longer advises `/scan` when nothing needs it, and an
+  alias's code is never remembered as an item's own (1.9, 1.15).
+- **A rename or identification rebuilds the commands** and speaks every code
+  that moves, so nothing moves silently (8.40, 1.1).
+- **Wands never merge.** Two wands of one spell stay two commands; rename
+  them to tell them apart. Only single-use stacks merge (10.3).
+- **Favorites are built like the entries they came from**, so Slash on a
+  favorite offers its Slash menu (6.5).
+- **Letter type-ahead falls back.** When joined letters match nothing, the
+  newest letter is tried alone (2.19).
+- **Duplicate keypresses within 15 ms count as one**, up from 10 (2.12).
+- **Prepare and unprepare keys exist only for a character with a prepared
+  spellbook** (2.6).
+- **A "see text" range or duration** names a linked buff's real duration when
+  there is one, else says "see description"; per-level durations read "1
+  minute per level" (3.6).
+
+### Fixed
+- **No "threat" on an always-hit**, and no confirm to wait for (6.9).
+- **A save DC is spoken only when the card's save has a type** (8.42).
+- **A spell that heals temporary hit points says so**: "temporary hit points",
+  not "healing" (8.43).
+- **A stack of 0 is 0**, not 1, everywhere stacks are read (6.1).
+- **Removing the last favorite works** and speaks (6.5).
+- **A late card that rolled nothing says nothing more.**
+- **A spell cast whose report throws after PF1 accepted it** still counts as
+  used.
+
+### Removed
+- **"Card posted."** The use line says the item's name instead (10.16).
+- **"Plus notes."** Rolled notes are read; other notes stay out of the result
+  line (10.17).
+- **The built-in S stop key.** Your chosen stop key is the only one. S is a
+  letter now, with the menu open or closed (10.27).
+
+### Notes
+- Still open: how situational notes reach Josh on demand, and a Sounds
+  sub-panel in the settings. Speech gap steps of 50 and 20 ms wait for Josh's
+  tests of 100.
+
 ## [0.19.0] - 2026-11-01
 
 Tobias's rulings of 2026-11-01 on the questions Josh had open.

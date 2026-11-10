@@ -3,7 +3,7 @@
 A unified accessibility module for FoundryVTT designed for blind and visually impaired players. Provides two parallel interfaces to the same dynamic action system:
 
 1. **Chat Commands** — Type `/per` to roll Perception, `/scan` to discover all your abilities, `/list spells` to browse commands by category.
-2. **iPod-Style Quick Menu** — Press backtick to open a TTS-driven hierarchical menu navigated with arrow keys and numbers.
+2. **iPod-Style Quick Menu** — Press backtick to open a TTS-driven hierarchical menu navigated with arrow keys and letters.
 
 Both interfaces share a common engine that dynamically discovers your character's skills, spells, attacks, items, and abilities. No static macros to maintain, no collisions that silently break things. A planned third interface — **push-to-talk voice** — will route spoken words ("perception", "balrog", "status") through the same engine.
 
@@ -143,7 +143,7 @@ module's own meta-commands gets an `x` appended (`/statx`, not `/stat`).
 
 ```
 /fqm rename sa2 sila   → Rename /sa2 to /sila
-/fqm reset             → Clear all custom aliases and re-scan
+/fqm reset             → Clear all custom aliases, restore each item's own code and speak every code that moved
 /fqm help              → Show all available meta-commands
 ```
 
@@ -162,7 +162,13 @@ Codes are assigned in tiers, and nothing assigned earlier ever moves:
 
 Every generated code is remembered on the character by name and type, so a
 rebuild, a reload or a restocked potion gets the same answer. Your own `/fqm
-rename` beats everything. When you gain an item its code is spoken once: "Potion
+rename` beats everything except the fixed core: a skill, save or check
+code can never be taken by an alias, and an old alias that clashed is cleared
+when the core takes over, each move spoken once. Renaming or identifying an
+item rebuilds its code and speaks every move. Potions, wands and scrolls get
+spell-style codes: p, w or s plus the spell's letters (`/pcmw`, `/wclw`,
+`/sfly`). Two wands of one spell stay two commands; rename one to tell them
+apart. When you gain an item its code is spoken once: "Potion
 of Fly is slash p, f, l." If a code ever has to change - only your own alias can
 cause that - the voice says which and what it is now.
 
@@ -181,9 +187,9 @@ To clear manually: `await game.user.character.unsetFlag('folken-games-quick-menu
 ### Usage
 
 1. **Press `` ` ``** (backtick) to open the Quick Menu
-2. **Navigate** with arrow keys or numbers 1-9
+2. **Navigate** with arrow keys, or type letters to jump to a name (numbers are an optional setting)
 3. **Select** with Enter or Right arrow
-4. **Go back** with Escape or Left arrow
+4. **Go back** with Left arrow; Left at the top stays put ("Top.") and only Escape closes the menu
 5. **Listen** for TTS announcements
 
 ### Menu Structure
@@ -208,18 +214,25 @@ Quick Menu
 | `Up/Down` | Navigate |
 | `Page Up/Down` | Jump 10 items |
 | `Right/Enter` | Select / enter submenu |
-| `Left` / `Backspace` | Back one level |
-| `Escape` | Close the whole menu, in one press |
-| `A-Z` | Type-ahead: letters typed within a second jump to the first item starting with them ("per" → Perception); the same letter again goes to the next match. Never uses an item |
+| `Left` / `Backspace` | Back one level. At the top level it stays put and says "Top." |
+| `Escape` | Close the whole menu, in one press. The only key that closes it |
+| `A-Z` | Type-ahead: letters typed within a second jump to the first item starting with them ("per" → Perception); the same letter again goes to the next match. If joined letters match nothing, the newest letter is tried alone. Never uses an item |
 | `Shift+F` | Add to favorites (configurable) |
 | `Shift+R` | Remove from favorites (configurable) |
-| `Shift+P` | Prepare spell (+1) (configurable) |
+| `Shift+P` | Prepare spell (+1) (configurable). Only for a character with a prepared spellbook |
 | `Shift+U` | Unprepare spell (-1) (configurable) |
 | `/` | Options: Take 10/20 on a skill, Normal/Full Attack on an attack. Anything else says "No options" and is never used |
 | `Shift`+anything else | Passed through |
-| `0-9` | Move to that position in the list. Digits combine, so 38 reaches item 38. Never uses an item |
+| `0-9` | Move to that position in the list. Numbers are off by default: a digit jumps at once and items are not read with their numbers. Turn on *Speak item numbers in the menu* to hear them and to combine digits (38 reaches item 38). Never uses an item |
 | `Scroll wheel` | Navigate |
 
+
+**What the menu says.** Items are read by name. Landing on a consumable speaks its
+count at once. An empty Items category says "<category>, empty." and stays. A
+container lists everything inside it, read-only, with quantities (`/lds` in chat
+speaks the same); both PF1 container formats work. A spell that appears in two
+spellbooks says which ("Detect Magic, spell-like"). Slash on a favorite offers
+its own Slash menu, and removing the last favorite works and speaks.
 
 **Keys the module claims.** The module only ever consumes keys it actually uses,
 and every one of them is a setting, because Foundry core owns many of the obvious
@@ -240,43 +253,53 @@ These work anywhere in Foundry (whether or not the menu is open). They are suppr
 | Key | Action |
 |-----|--------|
 | `,` / `.` | Reading speed slower / faster (announced, persisted); configurable |
-| `-` / `=` | Voice volume down / up (announced, persisted); configurable |
-| `Control`, alone | Stop the voice. Works everywhere, including the chat box - the screen-reader convention. Ctrl+anything else is left alone |
-| `S` | Stop the voice, while it is talking, you are not typing and the menu is closed (as in the Poker Dungeon). With the menu open S is a letter |
-| `\` (Backslash) | Jump focus to the chat prompt (fixes v14 announcing it as "new line"), closing the menu first if it is open; configurable |
-| `F9` | Cycle Spoken Detail: auto, short, full - announced; configurable |
+| `-` / `=` or numpad `-` / `+` | Voice volume down / up (announced, persisted); configurable |
+| `Control`, alone | Stop the voice (the default stop key; it is a setting). Works everywhere, including the chat box - the screen-reader convention. Ctrl+anything else is left alone. The built-in S stop key is gone: S is always a letter |
+| `\` (Backslash) | Jump focus to the chat prompt (fixes v14 announcing it as "new line"), closing the menu first if it is open; configurable. If focus does not really reach the chat box the voice says so and retries |
+| `F9` | Cycle Spoken Detail: auto, short, full - announced; configurable. Works from the chat box too |
 
 ### What you hear
 
-- **Accepted.** From the menu, the menu closes at once with a falling tone. A
-  chat command for an attack, maneuver, spell or item gets one short high blip,
-  because PF1 can take two seconds or more to answer. The name is not spoken:
-  when you use something you hear the result, not the name (Josh's rule).
-- **Result.** The roll: "30 to hit, 11 damage", or "31 damage" for a Fireball.
+- **Accepted.** From the menu, the menu closes at once with a falling tone.
+  Every chat command that nothing else confirms gets one short high blip,
+  because PF1 can take two seconds or more to answer. The name is not spoken
+  at that point; the result says it (Josh's rule).
+- **Someone else.** Put `o` (or `other`) after an item or spell code and it is
+  used for someone else: the card goes to chat, nothing is applied to you, and
+  any buff it switched on is reverted. Any other word after a code is refused
+  with the error tones and a spoken reason, and nothing is used. Haste used
+  plainly also switches on for your owned allies within 15 feet and names the
+  ones Foundry will not let it change.
+- **Result.** The name first, then the roll: "Rod, 7 fire damage. 2 of 3 left." The roll: "30 to hit, 11 damage", or "31 damage" for a Fireball.
   Ability damage and nonlethal say so: "1 Constitution damage", "2 nonlethal".
-  An attack that always hits says "hits". A threat says so, with its
+  An attack that always hits says "hits", with no threat to confirm. A threat says so, with its
   confirmation and what the damage becomes if it confirms: "41 to hit, threat,
   confirms 44, 17 damage, 78 on a crit." A natural 20 is "natural 20, hits"; a
-  natural 1 is "natural 1, miss". A save the target faces is added: "Fort DC
-  15." Items with uses say what is left: "2 of 3 left."; something that gives a
+  natural 1 is "natural 1, miss". A save the target faces is added when the card's save has a type: "Fort DC
+  15." Healing that is temporary hit points says "temporary hit points". Items with uses say what is left: "2 of 3 left."; something that gives a
   point back says "Regained. 2 of 3." Ammunition is only ever read, never spent:
-  "17 arrows left." A card with nothing to roll says "Card posted." Plain
-  `/r`, `/d` and `/h` rolls are read too. A buff potion switches its buff on
-  and says so: "Shield on." - the sheet's buff, or one imported from the PF1
-  compendium. At full detail a spell adds its range, area, duration and
-  whether spell resistance applies; at any level "Plus notes" means there are
-  hand-written notes on the card.
+  "17 arrows left." Plain `/r`, `/d` and `/h` rolls are read too. Rolled notes in a card are
+  read at every level ("8 images", "Spell penetration 36"); there is no
+  "Card posted." and no "Plus notes". Whenever a buff switches on - from a
+  potion, wand, scroll, spell or Auto Buff - it is said: "Shield on." At full
+  detail a spell adds its range, area, duration and whether spell resistance
+  applies; "see text" becomes the linked buff's duration or "see description".
+  A card that is slow to roll gets "Lightning Bolt, waiting on the dice." at 8
+  seconds and is still read when it lands; an item that never produces a card
+  says "no result" after 10 minutes.
 - **Failed.** Two pulses at 400 Hz - the Poker Dungeon's error sound, raised so
   it carries over a screen reader - then why, if there is a why: "None left.",
   "No charges.", "Not found. Type slash scan.", "No command." Anything that
   starts with a slash and is not a command, "/per/pod" included, gets this too.
-- **Stopped.** One short high blip when the stop key cuts the voice off.
+- **Stopped.** One short high blip when the stop key cuts the voice off. Each
+  command is read by its own reader, so one still rolling never loses another's
+  result.
 - **Voice down.** Three long falling slides at full volume, repeating every 20
   seconds until a line is heard again, and a whisper in chat: Chrome's speech
   engine has stopped making sound. Quit Chrome completely and reopen it.
 
-Nothing cuts a result off except menu navigation and the stop key. Every result
-waits its turn and is spoken once the voice is silent, in order. The stop key
+Nothing cuts a result off except menu navigation and the stop key. Lines are
+100 ms apart. Every result waits its turn and is spoken once the voice is silent, in order. The stop key
 stops only the line playing now; whatever is waiting still plays.
 
 A line is never cut off before Chrome has started speaking it. Josh measured
