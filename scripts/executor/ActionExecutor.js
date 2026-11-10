@@ -15,6 +15,7 @@ import { useOutcome, usesLeftLine, LAST_ONE } from './UseOutcome.js';
 import { healingOf } from './Healing.js';
 import { switchBuffOn } from './BuffOn.js';
 import { BuffWatch } from './BuffWatch.js';
+import { alliesWithin, isGroupBuff, allyReport } from './Allies.js';
 import { composeUseLine } from './UseReport.js';
 import { spellDetailLine } from '../chat/SpellDetail.js';
 import { rolledNotes } from '../chat/CardNotes.js';
@@ -448,6 +449,36 @@ export class ActionExecutor {
     for (const line of held) this._sayBuff(line);
   }
 
+  /**
+   * Haste and its kind reach allies within 15 feet (10.28): each ally the player
+   * owns who has a buff of the spell's name has it switched on; the rest are
+   * named. Said after the use line. Never throws, and does nothing off the map.
+   */
+  async _hasteAllies(item, actor) {
+    try {
+      if (!isGroupBuff(item) || !globalThis.canvas?.ready) return;
+      const casterToken = actor?.getActiveTokens?.()?.[0];
+      if (!casterToken) return;
+      const grid = canvas.grid;
+      const measure = (a, b) => grid.measurePath
+        ? grid.measurePath([a.center, b.center]).distance
+        : grid.measureDistance(a.center, b.center);
+      const hits = alliesWithin(canvas.tokens?.placeables ?? [], casterToken, 15, measure);
+      const name = String(item.name ?? '').trim().toLowerCase();
+      for (const hit of hits) {
+        if (!hit.owned) continue;
+        const buffs = hit.actor.itemTypes?.buff ?? hit.actor.items?.filter?.((i) => i.type === 'buff') ?? [];
+        const buff = buffs.find((b) => String(b.name ?? '').trim().toLowerCase() === name);
+        if (!buff) continue;
+        await buff.update({ 'system.active': true });
+        hit.switched = true;
+      }
+      this._sayBuff(allyReport(hits, item.name));
+    } catch (error) {
+      console.warn('folken-games-quick-menu | allies buff failed:', error);
+    }
+  }
+
   /** How long the use line waits for the card (10.16); tests replace it. */
   _sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
@@ -805,6 +836,8 @@ export class ActionExecutor {
             ? game.items.fromCompendium(doc, { clearFolder: true }) : doc.toObject(),
         })).catch((error) => console.warn('folken-games-quick-menu | buff switch failed:', error));
       }
+
+      if (item.type === 'spell' && !forOther) await this._hasteAllies(item, actor);
 
       // Read AFTER the use, and across every stack with this name, so two
       // half-empty potion stacks are counted as one supply.

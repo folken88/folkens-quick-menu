@@ -718,4 +718,61 @@ await t("a skill does not drop a spell's reader", async () => {
   assert.equal(ex._readers.size, 2);
 });
 
+// --- Haste reaches allies within 15 feet (10.28) ---
+
+function allyToken(name, disposition, feet, { owned = true, buff = null } = {}) {
+  const actor = { name, isOwner: owned, itemTypes: { buff: buff ? [buff] : [] } };
+  return { document: { disposition }, actor, feet, center: { feet } };
+}
+function stubCanvas(tokens) {
+  globalThis.canvas = {
+    ready: true,
+    tokens: { placeables: tokens },
+    grid: { measurePath: ([a, b]) => ({ distance: Math.abs(b.feet - a.feet) }) },
+  };
+}
+
+await t("a group spell switches on an owned ally's buff and names them after the use line", async () => {
+  const hasteBuff = { name: "Haste", updates: [], async update(c) { this.updates.push(c); } };
+  const bob = allyToken("Bob", 1, 10, { buff: hasteBuff });
+  const orc = allyToken("Orc", -1, 5, { owned: false });
+  const actor = makeActor();
+  const casterToken = allyToken("Caster", 1, 0);
+  actor.getActiveTokens = () => [casterToken];
+  stubCanvas([casterToken, bob, orc]);
+  try {
+    const spell = { id: "h", name: "Haste", type: "spell",
+      system: { actions: { a: { range: { units: "close" }, target: { value: "one creature/level" } } } },
+      use: async () => ({}) };
+    const ex = new ActionExecutor();
+    ex._timers = makeClock();
+    await ex._useItem(spell, actor);
+    ex._pending?.off();
+    assert.deepEqual(hasteBuff.updates, [{ "system.active": true }]);
+    assert.equal(spoken.length, 2, JSON.stringify(spoken));
+    assert.match(spoken[0], /^Haste/);
+    assert.equal(spoken[1], "Haste on for Bob.");
+  } finally { delete globalThis.canvas; }
+});
+
+await t("a spell that is not a group buff leaves allies alone", async () => {
+  const shieldBuff = { name: "Shield", updates: [], async update(c) { this.updates.push(c); } };
+  const bob = allyToken("Bob", 1, 10, { buff: shieldBuff });
+  const actor = makeActor();
+  const casterToken = allyToken("Caster", 1, 0);
+  actor.getActiveTokens = () => [casterToken];
+  stubCanvas([casterToken, bob]);
+  try {
+    const spell = { id: "s", name: "Shield", type: "spell",
+      system: { actions: { a: { range: { units: "personal" }, target: { value: "you" } } } },
+      use: async () => ({}) };
+    const ex = new ActionExecutor();
+    ex._timers = makeClock();
+    await ex._useItem(spell, actor);
+    ex._pending?.off();
+    assert.deepEqual(shieldBuff.updates, []);
+    assert.equal(spoken.length, 1, JSON.stringify(spoken));
+  } finally { delete globalThis.canvas; }
+});
+
 console.log(`\n${pass} assertions passed.`);
