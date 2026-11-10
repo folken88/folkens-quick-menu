@@ -130,8 +130,13 @@ t("the same key within ten milliseconds is one press", () => {
   assert.equal(isDuplicateKeydown(first, { code: "Backquote", timeStamp: 1426.274 }), true);
 });
 
+t("doubles up to 15 ms apart are one press, 16 ms is two", () => {
+  assert.equal(isDuplicateKeydown({ code: "Slash", timeStamp: 100 }, { code: "Slash", timeStamp: 114 }), true);
+  assert.equal(isDuplicateKeydown({ code: "Slash", timeStamp: 100 }, { code: "Slash", timeStamp: 116 }), false);
+});
+
 t("a genuine second press is not suppressed", () => {
-  assert.equal(isDuplicateKeydown({ code: "Backquote", timeStamp: 1 }, { code: "Backquote", timeStamp: 12 }), false);
+  assert.equal(isDuplicateKeydown({ code: "Backquote", timeStamp: 1 }, { code: "Backquote", timeStamp: 17 }), false);
   assert.equal(isDuplicateKeydown({ code: "Backquote", timeStamp: 1 }, { code: "Backquote", timeStamp: 3000 }), false);
   assert.equal(isDuplicateKeydown({ code: "Backquote", timeStamp: 3000 }, { code: "Backquote", timeStamp: 3000 }), true);
 });

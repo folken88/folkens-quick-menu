@@ -414,7 +414,7 @@ export class QuickMenuManager {
    * counts too, so "ret" finds "Potion of Expeditious Retreat". Never executes.
    */
   navigateToPrefix(prefix, { next = false } = {}) {
-    if (!this.isOpen || !this.currentMenu?.length || !prefix) return;
+    if (!this.isOpen || !this.currentMenu?.length || !prefix) return false;
     const norm = (s) => String(s ?? '').toLowerCase().replace(/^[^a-z0-9]+/, '');
     const shown = (item) => norm(item.menuLabel ?? item.label);
     const n = this.currentMenu.length;
@@ -430,11 +430,12 @@ export class QuickMenuManager {
     if (found === -1) found = find(label => label.split(/[\s,(]+/).some(w => w.startsWith(prefix)));
     if (found === -1) {
       game.folkenQuickMenu?.tts?.speak(`Nothing starts with ${spellOut(prefix)}.`, { interrupt: true });
-      return;
+      return false;
     }
     this.selectedIndex = found;
     this.announceCurrentSelection();
     this.render();
+    return true;
   }
 
   /**

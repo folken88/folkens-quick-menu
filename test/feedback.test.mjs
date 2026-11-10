@@ -11,7 +11,7 @@ import { useOutcome, usesLeftLine, PF1_USE_REFUSALS } from "../scripts/executor/
 import { parseTypedUpcast, slotReportLine, parseSlotReportCommand } from "../scripts/spells/Upcast.js";
 import { spellOut, generateAbbreviation } from "../scripts/chat/AbbreviationGenerator.js";
 import { extractRollTotals, renderAttackTotals } from "../scripts/chat/RollTotals.js";
-import { loneControl, isStopSpeechKey, STOP_GRACE_MS, loneModifier, isChosenStopKey } from "../scripts/input/MenuKeys.js";
+import { loneControl, loneModifier, isChosenStopKey } from "../scripts/input/MenuKeys.js";
 import { hasRollingAction, isUsefulFeature } from "../scripts/character/ItemUse.js";
 import { LAST_ONE } from "../scripts/executor/UseOutcome.js";
 import { bookSlotLine } from "../scripts/spells/Upcast.js";
@@ -220,18 +220,6 @@ t("Shift+Control is not a lone Control", () => {
   assert.equal(s.stop, false);
 });
 
-t("S stops the voice only while it is talking", () => {
-  const s = { code: "KeyS" };
-  assert.equal(isStopSpeechKey(s, { speaking: true }), true);
-  assert.equal(isStopSpeechKey(s, { speaking: false, msSinceSpeech: 60000 }), false);
-});
-
-t("S just after the voice stops is still caught, so it cannot move a token", () =>
-  assert.equal(isStopSpeechKey({ code: "KeyS" }, { speaking: false, msSinceSpeech: STOP_GRACE_MS - 1 }), true));
-
-t("S while typing is a letter", () =>
-  assert.equal(isStopSpeechKey({ code: "KeyS" }, { speaking: true, typing: true }), false));
-
 // --- 0.16.0: Ser's sheet, raw data exactly as stored in Shackles on f1 ---
 
 const sneakAttack = { type: "feat", system: { subType: "classFeat", uses: { value: 0, per: "" },
@@ -351,10 +339,5 @@ t("a pool with no maximum gets no command", () =>
 
 t("an empty pool still answers", () =>
   assert.equal(poolReadLine("ki", 0, 8), "0 of 8 ki left."));
-
-t("Ctrl+S and other keys are not the stop key", () => {
-  assert.equal(isStopSpeechKey({ code: "KeyS", ctrlKey: true }, { speaking: true }), false);
-  assert.equal(isStopSpeechKey({ code: "KeyD" }, { speaking: true }), false);
-});
 
 console.log(`\n${pass} assertions passed.`);

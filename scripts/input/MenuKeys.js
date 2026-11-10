@@ -76,9 +76,9 @@ export function menuClaimsKey(event, jobKeys = Object.values(DEFAULT_JOB_KEYS)) 
  * apart - all trusted, none a repeat, each with its own timeStamp - and the
  * menu acted on both: one speed key press stepped the speed twice. They come
  * with the first key after switching back into Chrome. Nobody presses a key
- * twice in ten milliseconds, so the same code inside that window is one press.
+ * twice in fifteen milliseconds, so the same code inside that window is one press.
  */
-export const DUPLICATE_WINDOW_MS = 10;
+export const DUPLICATE_WINDOW_MS = 15;
 
 export function isDuplicateKeydown(last, event) {
   if (!last || !event) return false;
@@ -91,22 +91,14 @@ export function isDuplicateKeydown(last, event) {
 /**
  * Stopping speech, the way screen readers do it.
  *
- * Josh, 2026-10-09, asked for a key that cuts the voice off. Two ways in:
+ * Josh, 2026-10-09, asked for a key that cuts the voice off. Ways in:
  *
  *  - Control pressed and released on its own. That is the convention JAWS,
  *    NVDA and VoiceOver all share, and it works from inside the chat box,
  *    where every other single key is a letter he is typing. It acts on the
  *    release, and only if no other key went down in between, so Ctrl+C, Ctrl+V
  *    and every other chord are left alone.
- *
- *  - S, as in the Poker Dungeon - but only when he is not typing, and only
- *    while the voice is talking or has just stopped. S is also Foundry's
- *    "pan down", and with a token selected it MOVES the token. The grace
- *    window is there so an S pressed just as a sentence ends stops nothing,
- *    rather than walking his character a square without telling him.
  */
-export const STOP_GRACE_MS = 1500;
-
 /** Modifier keys that can serve as a stop key when pressed on their own. */
 export const LONE_MODIFIERS = Object.freeze({
   Control: 'ctrlKey', Alt: 'altKey', Shift: 'shiftKey', Meta: 'metaKey',
@@ -149,12 +141,4 @@ export function isChosenStopKey(event, chosen) {
   if (!event || !chosen || LONE_MODIFIERS[chosen]) return false;
   if (event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return false;
   return event.code === chosen;
-}
-
-/** Should this keydown be taken as "stop talking"? */
-export function isStopSpeechKey(event, { typing = false, speaking = false, msSinceSpeech = Infinity } = {}) {
-  if (!event || event.code !== 'KeyS') return false;
-  if (event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return false;
-  if (typing) return false;
-  return speaking || msSinceSpeech < STOP_GRACE_MS;
 }

@@ -4,7 +4,7 @@
  */
 
 import { debugLog, getSetting } from '../module.js';
-import { menuClaimsKey, isDuplicateKeydown, loneModifier, isStopSpeechKey, isChosenStopKey, LONE_MODIFIERS,
+import { menuClaimsKey, isDuplicateKeydown, loneModifier, isChosenStopKey, LONE_MODIFIERS,
          typeAheadLetter, DEFAULT_JOB_KEYS } from './MenuKeys.js';
 import { playEarcon } from '../tts/Earcons.js';
 
@@ -95,22 +95,6 @@ export class KeyboardHandler {
 
     // The player's own stop key, when it is not a modifier (F8, Pause...).
     if (isChosenStopKey(event, this._stopKey())) {
-      event.preventDefault();
-      event.stopPropagation();
-      event.stopImmediatePropagation();
-      this._rememberConsumed(event);
-      this.stopSpeech();
-      return;
-    }
-
-    // S stops the voice while it is talking, as in the Poker Dungeon - with
-    // the menu closed. Open, S is a letter: it jumps to Skills.
-    const tts = game.folkenQuickMenu?.tts;
-    if (tts && !game.folkenQuickMenu?.menuManager?.isOpen && isStopSpeechKey(event, {
-      typing: this.isTypingTarget(),
-      speaking: tts.isSpeaking,
-      msSinceSpeech: Date.now() - (tts.lastAliveTs || 0),
-    })) {
       event.preventDefault();
       event.stopPropagation();
       event.stopImmediatePropagation();
@@ -216,6 +200,19 @@ export class KeyboardHandler {
     // exception is an open menu: it was opened from the chat box, so focus is
     // still there, and Josh found the speed keys dead exactly when he wanted
     // them (2026-10-09). With the menu open nothing is being typed.
+    // The detail key is not a typing key: F9 types nothing, and Josh lives in
+    // the chat box, so it must work from there (2.19).
+    const detailCode = getSetting('detailKey') || 'F9';
+    if (event.code === detailCode) {
+      const detailTts = game.folkenQuickMenu?.tts;
+      if (!detailTts) return false;
+      event.preventDefault();
+      event.stopPropagation();
+      this._rememberConsumed(event);
+      detailTts.cycleDetail();
+      return true;
+    }
+
     if (this.isTypingTarget() && !game.folkenQuickMenu?.menuManager?.isOpen) return false;
 
     // Jump to the chat prompt (v14 leaves it unnamed / "new line" to screen readers)
@@ -239,9 +236,10 @@ export class KeyboardHandler {
       [getSetting('ttsFasterKey')  || 'Period', () => tts.nudgeRate(+0.1)],
       [getSetting('ttsQuieterKey') || 'Minus',  () => tts.nudgeVolume(-0.1)],
       [getSetting('ttsLouderKey')  || 'Equal',  () => tts.nudgeVolume(+0.1)],
-      // Spoken detail, cycled on the fly. Josh, 2026-10-30: VoiceOver has
-      // verbosity levels he can change as he goes; he wants the same here.
-      [getSetting('detailKey')     || 'F9',     () => tts.cycleDetail()],
+      // The numpad minus and plus are volume too, whatever the configured keys.
+      ['NumpadSubtract',                        () => tts.nudgeVolume(-0.1)],
+      ['NumpadAdd',                             () => tts.nudgeVolume(+0.1)],
+      // Spoken detail (F9) is handled above, before the typing check.
     ];
     for (const [code, run] of actions) {
       if (event.code === code) {
@@ -276,7 +274,18 @@ export class KeyboardHandler {
     const editable = input.querySelector?.('[contenteditable="true"], .ProseMirror') || input;
     try { editable.focus?.(); } catch (_) {}
     try { input.focus?.(); } catch (_) {}
-    tts?.speak(closedMenu ? 'Menu closed. Chat input' : 'Chat input', { interrupt: true, urgent: true });
+    // Say so only when focus really landed (10.27); a silent miss left Josh
+    // typing into nothing.
+    const landed = () => document.activeElement === input || !!input.contains?.(document.activeElement);
+    const succeed = () => tts?.speak(closedMenu ? 'Menu closed. Chat input' : 'Chat input', { interrupt: true, urgent: true });
+    if (landed()) { succeed(); return; }
+    setTimeout(() => {
+      try { editable.focus?.(); } catch (_) {}
+      try { input.focus?.(); } catch (_) {}
+      if (landed()) { succeed(); return; }
+      try { playEarcon('error', { volume: tts?.liveVolume ?? 1 }); } catch (_) {}
+      tts?.speak('Could not reach the chat box.', { interrupt: true, urgent: true });
+    }, 50);
   }
 
   /**
@@ -490,7 +499,12 @@ export class KeyboardHandler {
       menuManager?.navigateToPrefix(letter, { next: true });
     } else {
       this.letterBuffer = buffer + letter;
-      menuManager?.navigateToPrefix(this.letterBuffer);
+      const moved = menuManager?.navigateToPrefix(this.letterBuffer);
+      // A letter that finishes no prefix starts a new one (2.12/2.18 fallback).
+      if (moved === false && buffer.length >= 1) {
+        this.letterBuffer = letter;
+        menuManager?.navigateToPrefix(letter);
+      }
     }
     this.letterTimeout = setTimeout(() => { this.letterBuffer = ''; this.letterTimeout = null; }, 1000);
   }
