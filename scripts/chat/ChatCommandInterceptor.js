@@ -194,7 +194,7 @@ export class ChatCommandInterceptor {
       const parsed = parseItemArgs(args, result.actionItem.actionType, result.actionItem.label);
       if (parsed.mode === 'invalid') {
         this._fail(parsed.reason);
-        return true;
+        return false;
       }
       this.executor.execute(result.actionItem, actor, { source: 'chat', forOther: parsed.mode === 'other' });
       return false;
