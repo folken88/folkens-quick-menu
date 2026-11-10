@@ -9,7 +9,7 @@ import { isOwnMessage } from '../chat/RollTotals.js';
 import { cardItemId } from '../chat/CardNotes.js';
 import { armAnnouncement } from './Announcer.js';
 import { canOfferUpcast, findUpcastLevel, planUpcast, slotsAt, ordinal,
-         upcastPrompt, upcastConfirmation, noSlotsMessage } from '../spells/Upcast.js';
+         upcastPrompt, upcastConfirmation, noSlotsMessage, spellCountLine } from '../spells/Upcast.js';
 import { playEarcon } from '../tts/Earcons.js';
 import { useOutcome, usesLeftLine, LAST_ONE } from './UseOutcome.js';
 import { healingOf } from './Healing.js';
@@ -66,7 +66,7 @@ export class ActionExecutor {
         await this.executeAttackRoll(actionItem, actor);
         break;
       case 'spell':
-        await this.executeSpellCast(actionItem, actor);
+        await this.executeSpellCast(actionItem, actor, { forOther });
         break;
       case 'item':
         await this.executeItemUse(actionItem, actor, { forOther });
@@ -576,7 +576,7 @@ export class ActionExecutor {
 
   // ─── Spell ────────────────────────────────────────────────
 
-  async executeSpellCast(actionItem, actor) {
+  async executeSpellCast(actionItem, actor, { forOther = false } = {}) {
     const spell = actor.items.get(actionItem.itemId);
     if (!spell) { this._missing(); return; }
 
@@ -592,7 +592,7 @@ export class ActionExecutor {
     // the rules as written. Ask before spending anything.
     if (book?.spontaneous && level > 0 && slotsAt(book, level) <= 0) {
       if (canOfferUpcast(book, level)) {
-        this._offerUpcast(spell, actor, level, findUpcastLevel(book, level));
+        this._offerUpcast(spell, actor, level, findUpcastLevel(book, level), { forOther });
       } else {
         this._fail(noSlotsMessage(level));
       }
@@ -608,28 +608,40 @@ export class ActionExecutor {
       if (!(uses > 0)) { this._fail('None left.'); return; }
     }
 
-    await this._cast(spell);
+    await this._cast(spell, actor, actionItem, { forOther });
   }
 
   /**
    * Cast through PF1 and report the truth. Returns whether it went through.
    *
-   * There used to be a "Disintegrate, cast" line after this, spoken whatever
-   * PF1 actually did - including when it refused. The name is now spoken the
-   * moment the command is accepted, and only a failure is spoken after.
+   * A spell is reported like any item (10.16): one use line, name first, then
+   * the result, detail, notes and what is left - "Lightning Bolt, 40
+   * electricity damage. 2 3rd left." - with the BuffWatch, Haste's allies and
+   * "for someone else" (10.28). A refusal or a throw says only that.
+   *
+   * @param {number} [slotLevel] the slot an up-cast spent; the count reads it
    */
-  async _cast(spell) {
-    const hookId = this._hookSpellResult(spell);
-    try {
-      const outcome = useOutcome(await this._pf1Use(spell));
-      if (!outcome.ok) { hookId.off(); this._fail(outcome.reason); return false; }
-      return true;
-    } catch (error) {
-      console.error('Error casting spell:', error);
-      hookId.off();
-      this._fail(`${spell.name} failed.`);
-      return false;
+  async _cast(spell, actor, actionItem = null, { forOther = false, slotLevel = null } = {}) {
+    const countLine = () => this._spellCountLine(spell, slotLevel);
+    return this._useItem(spell, actor, actionItem, { forOther, countLine });
+  }
+
+  /**
+   * What is left after a cast, from the live sheet: slots at the level spent
+   * for a spontaneous book, PF1's own count of casts for a prepared or
+   * spell-like one, nothing for a cantrip.
+   */
+  _spellCountLine(spell, slotLevel = null) {
+    const book = spell.spellbook;
+    const own = spell.system?.level ?? 0;
+    const level = slotLevel ?? own;
+    if (book?.spontaneous) {
+      return spellCountLine({ spontaneous: true, level: own > 0 ? level : 0, slotsLeft: slotsAt(book, level) });
     }
+    const usesLeft = typeof spell.getSpellUses === 'function'
+      ? spell.getSpellUses()
+      : (spell.system?.preparation?.value ?? 0);
+    return spellCountLine({ spontaneous: false, level: own, usesLeft });
   }
 
   /**
@@ -662,10 +674,11 @@ export class ActionExecutor {
    * Ask, and remember what we asked, so a Y or N in chat can answer it.
    * The offer expires, and any other command withdraws it.
    */
-  _offerUpcast(spell, actor, level, upcastLevel) {
+  _offerUpcast(spell, actor, level, upcastLevel, { forOther = false } = {}) {
     this.cancelUpcast();
 
-    this.pendingUpcast = { spellId: spell.id, actorId: actor.id, level, upcastLevel, spellName: spell.name };
+    // forOther is kept so a Y casts it for someone else, as asked (10.28).
+    this.pendingUpcast = { spellId: spell.id, actorId: actor.id, level, upcastLevel, spellName: spell.name, forOther };
     this.pendingUpcast.timer = setTimeout(() => this._expireUpcast(), 30000);
 
     // Queued, not interrupting: the spell's name was spoken the moment the
@@ -735,14 +748,14 @@ export class ActionExecutor {
     const actor = game.actors.get(pending.actorId);
     const spell = actor?.items.get(pending.spellId);
     if (!spell) { this._missing(); return; }
-    await this._castWithSlot(spell, actor, pending.level, pending.upcastLevel);
+    await this._castWithSlot(spell, actor, pending.level, pending.upcastLevel, { forOther: !!pending.forOther });
   }
 
   /**
    * The typed up-cast: /6cl7 casts Chain Lightning from a 7th-level slot, with
    * no prompt, whether or not 6th-level slots remain. Josh, 2026-10-09.
    */
-  async castFromSlot(spell, actor, slotLevel) {
+  async castFromSlot(spell, actor, slotLevel, { forOther = false } = {}) {
     this.cancelUpcast();
     if (!spell) { this._missing(); return; }
     const book = spell.spellbook;
@@ -756,7 +769,7 @@ export class ActionExecutor {
     if (slotsAt(book, slotLevel) <= 0) { this._fail(`No ${ordinal(slotLevel)} slots left.`); return; }
 
     this._earcon('ack');
-    await this._castWithSlot(spell, actor, level, slotLevel);
+    await this._castWithSlot(spell, actor, level, slotLevel, { forOther });
   }
 
   /**
@@ -771,7 +784,7 @@ export class ActionExecutor {
    * failure path "restored" the changed numbers - a failed up-cast would have
    * left a free slot at the spell's level and one fewer above it.
    */
-  async _castWithSlot(spell, actor, level, slotLevel) {
+  async _castWithSlot(spell, actor, level, slotLevel, { forOther = false } = {}) {
     const bookKey = spell.system?.spellbook || 'primary';
     const book = spell.spellbook;
     if (slotsAt(book, slotLevel) <= 0) { this._fail(noSlotsMessage(level)); return; }
@@ -788,7 +801,7 @@ export class ActionExecutor {
       return;
     }
 
-    const cast = await this._cast(spell);
+    const cast = await this._cast(spell, actor, null, { forOther, slotLevel });
     if (!cast) {
       try {
         await actor.update({
@@ -806,6 +819,7 @@ export class ActionExecutor {
       try { await actor.update({ [path]: expected }); } catch (_) {}
     }
 
+    // A short second line after the use line, so he knows which slot he spent.
     this._tts()?.speak(upcastConfirmation(spell.name, slotLevel), { interrupt: false, queue: true });
   }
 
@@ -830,8 +844,12 @@ export class ActionExecutor {
    * rather than throwing, so it is checked. On success he hears one use line,
    * name first: "Rod, 7 fire damage. 2 of 3 left." (10.16). A card slower than
    * 1.5 s gets the name and count now and its result when it comes.
+   *
+   * countLine replaces the stack count (spells have no stacks): a string, or a
+   * function read after the use resolves, so it sees the slot PF1 just spent.
+   * Returns whether the use went through.
    */
-  async _useItem(item, actor, actionItem = null, { forOther = false } = {}) {
+  async _useItem(item, actor, actionItem = null, { forOther = false, countLine = null } = {}) {
     // The reader does nothing by itself: the use line below decides who speaks
     // the card, so its result is heard once (10.16).
     let lateCard = null;
@@ -843,7 +861,7 @@ export class ActionExecutor {
     this._holdBuffLines();
     try {
       const outcome = useOutcome(await this._pf1Use(item));
-      if (!outcome.ok) { reader.off(); watch.close(); this._fail(outcome.reason); return; }
+      if (!outcome.ok) { reader.off(); watch.close(); this._fail(outcome.reason); return false; }
 
       // A buff potion, wand or scroll switches its buff on - the sheet's, or
       // one imported from the compendium. The watch hears it and says it.
@@ -866,14 +884,18 @@ export class ActionExecutor {
 
       // Read AFTER the use, and across every stack with this name, so two
       // half-empty potion stacks are counted as one supply.
-      const stacks = this._stacks(actor, item, actionItem);
       let count = '';
-      if (!stacks.length) count = LAST_ONE;
+      if (typeof countLine === 'function') count = countLine() || '';
+      else if (typeof countLine === 'string') count = countLine;
       else {
-        count = (stacks.length > 1 ? stockLine(stacks) : usesLeftLine(stacks[0])) || '';
-        // A negative charge cost gives a point back. Josh, 2026-11-01: Regain
-        // Grit said "2 of 3 left.", the same words as spending one.
-        if (count && this._chargeCost(item) < 0) count = `Regained. ${count.replace(/ left\.$/, '.')}`;
+        const stacks = this._stacks(actor, item, actionItem);
+        if (!stacks.length) count = LAST_ONE;
+        else {
+          count = (stacks.length > 1 ? stockLine(stacks) : usesLeftLine(stacks[0])) || '';
+          // A negative charge cost gives a point back. Josh, 2026-11-01: Regain
+          // Grit said "2 of 3 left.", the same words as spending one.
+          if (count && this._chargeCost(item) < 0) count = `Regained. ${count.replace(/ left\.$/, '.')}`;
+        }
       }
 
       // Most cards are up within a moment of the use; wait that long so the
@@ -898,15 +920,17 @@ export class ActionExecutor {
       if (msg) {
         reader.off();
         speak(lineFor(msg));
-        return;
+        return true;
       }
       speak(lineFor(null));
       lateCard = (message) => speak(lineFor(message, { late: true }));
+      return true;
     } catch (error) {
       console.error('Item use error:', error);
       reader.off();
       watch.close();
       this._fail(`${item.name} failed.`);
+      return false;
     } finally {
       this._releaseBuffLines();
     }

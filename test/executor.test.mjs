@@ -387,13 +387,14 @@ await t("templates are skipped so area spells do not wait on the map", async () 
 
 // --- spells ---
 
-await t("a successful cast says nothing itself - the result comes from the card", async () => {
+await t("a successful cast with no card yet says its name and slots left (10.16)", async () => {
+  // Before 10.16 a cast said nothing and left it all to the card.
   const book = spontaneousBook({ 6: 2 });
   const spell = { id: "d", name: "Disintegrate", system: { level: 6, spellbook: "primary" }, spellbook: book, use: async () => ({}) };
   const ex = new ActionExecutor();
   await ex.execute({ actionType: "spell", itemId: "d", label: "Disintegrate" }, makeActor({ items: [spell], books: { primary: book } }));
   ex._pending?.off();
-  assert.deepEqual(spoken, []);
+  assert.deepEqual(spoken, ["Disintegrate. 2 6th left."]);
 });
 
 await t("a prepared spell with no casts left is refused before PF1 is asked", async () => {
@@ -403,6 +404,91 @@ await t("a prepared spell with no casts left is refused before PF1 is asked", as
   await new ActionExecutor().execute({ actionType: "spell", itemId: "f", label: "Fireball" }, makeActor({ items: [spell] }));
   assert.equal(asked, false);
   assert.equal(spoken.at(-1), "None left.");
+});
+
+// --- spells report through the use line (10.16, 10.28) ---
+
+/** A spontaneous 3rd: PF1 spends the slot and posts the card during use(). */
+function lightningBolt({ slots = 3, card = { result: "40 electricity damage." } } = {}) {
+  const book = spontaneousBook({ 3: slots, 4: 1 });
+  const spell = { id: "lb", name: "Lightning Bolt", type: "spell", system: { level: 3, spellbook: "primary" }, spellbook: book,
+    use: async () => {
+      book.spells.spell3.value -= 1;
+      if (card) postCard({ system: { item: "Actor.a1.Item.lb" }, ...card });
+      return {};
+    } };
+  return { book, spell, actor: makeActor({ items: [spell], books: { primary: book } }) };
+}
+
+await t("a spell cast with its card in time is one line: name, result, slots left", async () => {
+  const { spell, actor } = lightningBolt();
+  const ex = new ActionExecutor();
+  await ex.execute({ actionType: "spell", itemId: "lb", label: "Lightning Bolt" }, actor);
+  assert.deepEqual(spoken, ["Lightning Bolt, 40 electricity damage. 2 3rd left."]);
+  assert.equal(ex.hasPendingReader, false, "the reader was left armed");
+});
+
+await t("the last slot says so", async () => {
+  const { actor } = lightningBolt({ slots: 1 });
+  await new ActionExecutor().execute({ actionType: "spell", itemId: "lb", label: "Lightning Bolt" }, actor);
+  assert.deepEqual(spoken, ["Lightning Bolt, 40 electricity damage. That was the last one."]);
+});
+
+await t("a spell cast for someone else says so after the name", async () => {
+  const { actor } = lightningBolt();
+  await new ActionExecutor().execute({ actionType: "spell", itemId: "lb", label: "Lightning Bolt" }, actor, { forOther: true });
+  assert.deepEqual(spoken, ["Lightning Bolt, 40 electricity damage, for someone else. 2 3rd left."]);
+});
+
+await t("a prepared spell counts its uses left", async () => {
+  let uses = 2;
+  const book = { spontaneous: false, inUse: true, spells: {} };
+  const spell = { id: "f", name: "Fireball", type: "spell", system: { level: 3 }, spellbook: book,
+    getSpellUses: () => uses, use: async () => { uses -= 1; return {}; } };
+  const ex = new ActionExecutor();
+  await ex.execute({ actionType: "spell", itemId: "f", label: "Fireball" }, makeActor({ items: [spell] }));
+  ex._pending?.off();
+  assert.deepEqual(spoken, ["Fireball. 1 left."]);
+});
+
+await t("a cantrip's line ends with no count", async () => {
+  const book = spontaneousBook({ 0: 99 });
+  const spell = { id: "a", name: "Acid Splash", type: "spell", system: { level: 0, spellbook: "primary" }, spellbook: book,
+    use: async () => { postCard({ system: { item: "Actor.a1.Item.a" }, result: "3 acid damage." }); return {}; } };
+  await new ActionExecutor().execute({ actionType: "spell", itemId: "a", label: "Acid Splash" }, makeActor({ items: [spell], books: { primary: book } }));
+  assert.deepEqual(spoken, ["Acid Splash, 3 acid damage."]);
+});
+
+await t("a refused spell says only the refusal", async () => {
+  const book = spontaneousBook({ 3: 2 });
+  const spell = { id: "x", name: "Lightning Bolt", type: "spell", system: { level: 3, spellbook: "primary" }, spellbook: book, use: async () => 2 };
+  await new ActionExecutor().execute({ actionType: "spell", itemId: "x", label: "Lightning Bolt" }, makeActor({ items: [spell], books: { primary: book } }));
+  assert.deepEqual(spoken, ["Disabled."]);
+});
+
+await t("/3lb4 speaks the use line, then the up-cast confirmation", async () => {
+  const { book, spell, actor } = lightningBolt();
+  const ex = new ActionExecutor();
+  ex._earcon = () => {};
+  await ex.castFromSlot(spell, actor, 4);
+  assert.equal(book.spells.spell3.value, 3, "the 3rd was spent instead of the 4th");
+  assert.equal(book.spells.spell4.value, 0);
+  assert.deepEqual(spoken, ["Lightning Bolt, 40 electricity damage. That was the last one.",
+    "Lightning Bolt, cast with a 4th slot."]);
+});
+
+await t("a Y to an up-cast offer made for someone else keeps it", async () => {
+  const { book, spell, actor } = lightningBolt({ slots: 0 });
+  book.spells.spell4.value = 2;
+  const ex = new ActionExecutor();
+  await ex.execute({ actionType: "spell", itemId: "lb", label: "Lightning Bolt" }, actor, { forOther: true });
+  assert.equal(ex.pendingUpcast?.forOther, true);
+  spoken.length = 0;
+  const actors = game.actors;
+  game.actors = { get: () => actor };
+  try { await ex.confirmUpcast(); } finally { game.actors = actors; }
+  assert.deepEqual(spoken, ["Lightning Bolt, 40 electricity damage, for someone else. 1 4th left.",
+    "Lightning Bolt, cast with a 4th slot."]);
 });
 
 // --- up-casting ---
@@ -637,7 +723,9 @@ function hearReadouts() {
   return heard;
 }
 
-const rayCard = (total) => ({ system: { item: "Actor.a1.Item.d" }, rolls: [{ total }] });
+// A spell's card is read by its use line (10.16): a late one as "Disintegrate, 51 damage."
+const rayCard = (total) => ({ system: { item: "Actor.a1.Item.d" }, rolls: [{ total }], result: `${total} damage.` });
+const CAST = "Disintegrate. 2 6th left.";
 
 await t("a skill typed while a spell rolls keeps both readers, each reads its own card (8.46)", async () => {
   const heard = hearReadouts();
@@ -654,9 +742,9 @@ await t("a skill typed while a spell rolls keeps both readers, each reads its ow
     assert.ok(ex._itemReaderFor("d"), "the spell's reader is not an item reader");
 
     postCard({ rolls: [{ total: 32 }] }); // Arcana's card: no item
-    const ray = rayCard(51);
-    postCard(ray);                         // the slow spell's card
-    assert.deepEqual(heard, [["roll", 32], ["card", ray]]);
+    postCard(rayCard(51));                 // the slow spell's card
+    assert.deepEqual(heard, [["roll", 32]]);
+    assert.deepEqual(spoken, [CAST, "Disintegrate, 51 damage."]);
     assert.equal(ex.hasPendingReader, false);
   } finally { heard.restore(); }
 });
@@ -671,11 +759,11 @@ await t("a generic reader leaves a card some item reader is waiting for", async 
     const ex = new ActionExecutor();
     await ex.execute({ actionType: "spell", itemId: "d", label: "Disintegrate" }, actor);
     await ex.execute({ actionType: "skill", skillKey: "kar", label: "Arcana" }, actor);
-    const ray = rayCard(51);
-    postCard(ray); // the spell's card lands first
-    assert.deepEqual(heard, [["card", ray]], "the skill's reader took the spell's card");
+    postCard(rayCard(51)); // the spell's card lands first
+    assert.deepEqual(heard, [], "the skill's reader took the spell's card");
+    assert.deepEqual(spoken, [CAST, "Disintegrate, 51 damage."]);
     postCard({ rolls: [{ total: 32 }] });
-    assert.deepEqual(heard, [["card", ray], ["roll", 32]]);
+    assert.deepEqual(heard, [["roll", 32]]);
   } finally { heard.restore(); }
 });
 
@@ -688,10 +776,9 @@ await t("two casts of one spell get a card each, not the first card twice", asyn
     const ex = new ActionExecutor();
     await ex.execute({ actionType: "spell", itemId: "d", label: "Disintegrate" }, actor);
     await ex.execute({ actionType: "spell", itemId: "d", label: "Disintegrate" }, actor);
-    const first = rayCard(40), second = rayCard(22);
-    postCard(first);
-    postCard(second);
-    assert.deepEqual(heard, [["card", first], ["card", second]]);
+    postCard(rayCard(40));
+    postCard(rayCard(22));
+    assert.deepEqual(spoken, [CAST, CAST, "Disintegrate, 40 damage.", "Disintegrate, 22 damage."]);
     assert.equal(ex.hasPendingReader, false);
   } finally { heard.restore(); }
 });
@@ -746,15 +833,14 @@ await t("a slow spell says once, at 8 s, that it is waiting, and its card is sti
     const ex = new ActionExecutor();
     ex._timers = makeClock();
     await ex.execute({ actionType: "spell", itemId: "d", label: "Disintegrate" }, disintegrate());
-    ex._timers.advance(7000); // inside Josh's 3.4-6.2 s dice window: quiet
-    assert.deepEqual(spoken, []);
+    ex._timers.advance(7000); // inside Josh's 3.4-6.2 s dice window: only the use line
+    assert.deepEqual(spoken, [CAST]);
     ex._timers.advance(1000);
-    assert.deepEqual(spoken, ["Disintegrate, waiting on the dice."]);
+    assert.deepEqual(spoken, [CAST, "Disintegrate, waiting on the dice."]);
     ex._timers.advance(60000);
-    const ray = rayCard(51);
-    postCard(ray);
-    assert.deepEqual(heard, [["card", ray]]);
-    assert.deepEqual(spoken, ["Disintegrate, waiting on the dice."]);
+    postCard(rayCard(51));
+    assert.deepEqual(heard, []);
+    assert.deepEqual(spoken, [CAST, "Disintegrate, waiting on the dice.", "Disintegrate, 51 damage."]);
   } finally { heard.restore(); }
 });
 
@@ -765,14 +851,14 @@ await t("a spell whose card never comes says no result, once, after ten minutes"
     ex._timers = makeClock();
     await ex.execute({ actionType: "spell", itemId: "d", label: "Disintegrate" }, disintegrate());
     ex._timers.advance(599999);
-    assert.deepEqual(spoken, ["Disintegrate, waiting on the dice."]);
+    assert.deepEqual(spoken, [CAST, "Disintegrate, waiting on the dice."]);
     ex._timers.advance(1);
-    assert.deepEqual(spoken, ["Disintegrate, waiting on the dice.", "Disintegrate, no result."]);
+    assert.deepEqual(spoken, [CAST, "Disintegrate, waiting on the dice.", "Disintegrate, no result."]);
     assert.equal(ex.hasPendingReader, false);
     ex._timers.advance(600000);
     postCard(rayCard(51));
     assert.deepEqual(heard, []);
-    assert.equal(spoken.length, 2);
+    assert.equal(spoken.length, 3);
   } finally { heard.restore(); }
 });
 

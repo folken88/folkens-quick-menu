@@ -11,6 +11,7 @@ import assert from "node:assert/strict";
 import {
   slotsAt, findUpcastLevel, canOfferUpcast, ordinal,
   upcastPrompt, upcastConfirmation, noSlotsMessage, parseYesNo, planUpcast,
+  spellCountLine,
 } from "../scripts/spells/Upcast.js";
 
 let pass = 0;
@@ -132,6 +133,34 @@ t("anything else is not an answer and must fall through to chat", () => {
   for (const other of ["", "maybe", "yep", "nope", "ya", "6dis", "1", null, undefined]) {
     assert.equal(parseYesNo(other), null, String(other));
   }
+});
+
+
+// --- the count on a spell's use line (10.16) ---
+
+t("a spontaneous cast counts the slots left at its level", () => {
+  assert.equal(spellCountLine({ spontaneous: true, level: 3, slotsLeft: 2 }), "2 3rd left.");
+  assert.equal(spellCountLine({ spontaneous: true, level: 1, slotsLeft: 1 }), "1 1st left.");
+});
+
+t("the last spontaneous slot says so", () =>
+  assert.equal(spellCountLine({ spontaneous: true, level: 6, slotsLeft: 0 }), "That was the last one."));
+
+t("a prepared or spell-like cast counts the uses left", () => {
+  assert.equal(spellCountLine({ spontaneous: false, level: 3, usesLeft: 2 }), "2 left.");
+  assert.equal(spellCountLine({ spontaneous: false, level: 2, usesLeft: 0 }), "That was the last one.");
+});
+
+t("cantrips have no count", () => {
+  assert.equal(spellCountLine({ spontaneous: true, level: 0, slotsLeft: 99 }), "");
+  assert.equal(spellCountLine({ spontaneous: false, level: 0, usesLeft: 3 }), "");
+});
+
+t("an at-will or unreadable count says nothing rather than a wrong number", () => {
+  assert.equal(spellCountLine({ spontaneous: false, level: 2, usesLeft: Infinity }), "");
+  assert.equal(spellCountLine({ spontaneous: false, level: 2, usesLeft: undefined }), "");
+  assert.equal(spellCountLine({ spontaneous: true, level: 2, slotsLeft: NaN }), "");
+  assert.equal(spellCountLine(), "");
 });
 
 console.log(`\n${pass} assertions passed.`);

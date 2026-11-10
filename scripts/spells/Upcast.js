@@ -16,6 +16,8 @@
  * Pure, so the slot arithmetic and the wording can be tested without Foundry.
  */
 
+import { LAST_ONE } from '../executor/UseOutcome.js';
+
 /** PF1 spell levels. */
 export const MAX_SPELL_LEVEL = 9;
 
@@ -199,4 +201,25 @@ export function bookSlotLine({ label = '', showLabel = false, spellLike = false,
   }
   const line = slotReportLine({ level, spontaneous, left, total });
   return showLabel && label ? `${label}: ${line}` : line;
+}
+
+/**
+ * The count at the end of a spell's use line (10.16), read AFTER the cast:
+ * "2 3rd left." for a spontaneous book, "2 left." for a prepared or spell-like
+ * one, and "That was the last one." at zero. Cantrips are at will and an
+ * at-will or unreadable count has no number worth saying, so those are ''.
+ *
+ * @param {object}  info
+ * @param {boolean} info.spontaneous
+ * @param {number}  info.level      the slot level spent (the spell's own unless up-cast)
+ * @param {number} [info.slotsLeft] spontaneous: slots left at that level
+ * @param {number} [info.usesLeft]  prepared or spell-like: casts left
+ */
+export function spellCountLine({ spontaneous = false, level = 0, slotsLeft, usesLeft } = {}) {
+  const lvl = Number(level);
+  if (!(lvl > 0)) return '';
+  const n = spontaneous ? slotsLeft : usesLeft;
+  if (typeof n !== 'number' || !Number.isFinite(n)) return '';
+  if (n <= 0) return LAST_ONE;
+  return spontaneous ? `${n} ${ordinal(lvl)} left.` : `${n} left.`;
 }
