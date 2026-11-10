@@ -773,22 +773,26 @@ export class ActionExecutor {
       const healing = this._isHealing(item);
       const terse = tts?.terse ?? true;
       const detail = spellDetailLine(item, { terse });
-      const speak = (line) => this._tts()?.speak(line, { interrupt: false, queue: true });
-      const fromCard = (message) => ({
-        result: this._tts()?.resultLine?.(message, { healing }) ?? '',
-        notes: rolledNotes(message?.content ?? ''),
-      });
+      const speak = (line) => { if (line) this._tts()?.speak(line, { interrupt: false, queue: true }); };
+      // One place builds the line. The first carries detail and count, with
+      // or without a card; a late card adds only what it rolled, and nothing
+      // when it rolled nothing (the use line already confirmed the use).
+      const lineFor = (message, { late = false } = {}) => {
+        const result = message ? (this._tts()?.resultLine?.(message, { healing }) ?? '') : '';
+        const notes = message ? rolledNotes(message.content ?? '') : [];
+        if (late) return (result || notes.length) ? composeUseLine({ name: item.name, result, notes }) : '';
+        return composeUseLine({ name: item.name, result, notes, detail, count, forOther });
+      };
       let msg = await Promise.race([reader.done, this._sleep(1500)]);
       // A card that landed as the wait ended has already finished the reader.
       if (!msg && !reader.isPending()) msg = await reader.done;
       if (msg) {
         reader.off();
-        speak(composeUseLine({ name: item.name, ...fromCard(msg), detail, count, forOther }));
+        speak(lineFor(msg));
         return;
       }
-      speak(composeUseLine({ name: item.name, detail, count, forOther }));
-      // Late card: the name and its result only; detail and count were said.
-      lateCard = (message) => speak(composeUseLine({ name: item.name, ...fromCard(message) }));
+      speak(lineFor(null));
+      lateCard = (message) => speak(lineFor(message, { late: true }));
     } catch (error) {
       console.error('Item use error:', error);
       reader.off();

@@ -178,6 +178,28 @@ await t("a late card speaks name and result only, after the use line", async () 
   assert.equal(spoken.length, 2);
 });
 
+await t("a late card with no result and no notes says nothing more", async () => {
+  const rod = { id: "r", name: "Rod", system: { uses: { per: "day", value: 2, max: 3 } } };
+  rod.use = async () => ({});
+  const ex = new ActionExecutor();
+  ex._timers = makeClock();
+  await ex.execute({ actionType: "item", itemId: "r", label: "Rod" }, makeActor({ items: [rod] }));
+  postCard(rodCard());
+  assert.deepEqual(spoken, ["Rod. 2 of 3 left."]);
+  assert.equal(ex.hasPendingReader, false, "the late card did not end the reader");
+});
+
+await t("a late card with only rolled notes reads them after the name", async () => {
+  const rod = { id: "r", name: "Rod", system: { uses: { per: "day", value: 2, max: 3 } } };
+  rod.use = async () => ({});
+  const ex = new ActionExecutor();
+  ex._timers = makeClock();
+  await ex.execute({ actionType: "item", itemId: "r", label: "Rod" }, makeActor({ items: [rod] }));
+  postCard(rodCard({ content: '<span class="tag"><a class="inline-roll">Caster Level Check 14</a></span>' }));
+  assert.equal(spoken.length, 2);
+  assert.match(spoken[1], /^Rod\. .*Caster Level Check 14.*\.$/);
+});
+
 await t("a card that lands as the wait ends is still read once, in the line", async () => {
   const rod = { id: "r", name: "Rod", system: { uses: { per: "day", value: 2, max: 3 } } };
   rod.use = async () => ({});
