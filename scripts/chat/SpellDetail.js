@@ -23,6 +23,8 @@ const RANGE_UNITS = {
   ft: 'feet', mi: 'miles', m: 'meters', km: 'kilometers',
 };
 
+const RANGE_SINGULAR = { ft: 'foot', mi: 'mile', m: 'meter', km: 'kilometer' };
+
 const DURATION_UNITS = {
   round: 'round', minute: 'minute', hour: 'hour', day: 'day', month: 'month', year: 'year',
 };
@@ -39,11 +41,11 @@ function formulaWords(value) {
 
 /** "@cl" or "10 * @cl" with a unit is said per level: "10 minutes per level". */
 const PER_LEVEL = /^\s*(?:(\d+)\s*\*\s*)?@cl(?:\s*\*\s*(\d+))?\s*$/;
-function perLevel(value, word) {
+function perLevel(value, one, many = `${one}s`) {
   const m = PER_LEVEL.exec(strip(value));
-  if (!m) return '';
+  if (!m || (m[1] && m[2])) return '';
   const n = Number(m[1] ?? m[2] ?? 1);
-  return `${n} ${word}${n === 1 ? '' : 's'} per level`;
+  return `${n} ${n === 1 ? one : many} per level`;
 }
 
 /** PF1 writes "see text" where the real rule is in the description. */
@@ -56,7 +58,7 @@ export function rangeText(range) {
   if (units === 'spec') return isSeeText(range.value) ? 'see description' : formulaWords(range.value);
   const word = RANGE_UNITS[units] ?? units;
   if (['close', 'medium', 'long', 'personal', 'touch'].includes(units)) return word;
-  const each = perLevel(range.value, word);
+  const each = RANGE_SINGULAR[units] ? perLevel(range.value, RANGE_SINGULAR[units], word) : perLevel(range.value, word);
   if (each) return each;
   const value = formulaWords(range.value);
   return value ? `${value} ${word}` : word;

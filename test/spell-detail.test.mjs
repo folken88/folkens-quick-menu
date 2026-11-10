@@ -53,6 +53,12 @@ t("@cl durations are said per level", () => {
   assert.equal(durationText({ value: "@cl", units: "round" }), "1 round per level");
 });
 t("range says see description for see text", () => assert.equal(rangeText({ value: "see text", units: "spec" }), "see description"));
+t("range per level uses the right unit word", () => {
+t("two multipliers fall back to the formula words, not a wrong per-level count", () =>
+  assert.equal(durationText({ value: "2 * @cl * 3", units: "minute" }), "2 times caster level times 3 minutes"));
+  assert.equal(rangeText({ value: "10 * @cl", units: "ft" }), "10 feet per level");
+  assert.equal(rangeText({ value: "@cl", units: "mi" }), "1 mile per level");
+});
 
 t("notes are found on the live action, the raw action or the item", () => {
   assert.equal(hasNotes({ defaultAction: { effectNotes: ["x"] } }), true);
