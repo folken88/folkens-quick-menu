@@ -6,6 +6,7 @@
  * Run: node test/executor.test.mjs
  */
 import assert from "node:assert/strict";
+import { spellOut } from "../scripts/chat/AbbreviationGenerator.js";
 
 // --- a stub Foundry, just enough for the executor ---
 const spoken = [];
@@ -527,6 +528,28 @@ await t("a pool read keeps its name when the pool's own feature abbreviates the 
   assert.equal(res.resolve("grit").actionItem.actionType, "pool_read");
   assert.equal(res.resolve("gritu").actionItem.id, "item_grit");
   assert.equal(res.collisionCount, 0);
+});
+
+await t("reset speaks each command that moved back, once (1.15)", async () => {
+  const { AbbreviationResolver } = await import("../scripts/chat/AbbreviationResolver.js");
+  const res = new AbbreviationResolver();
+  res._getAllActionItems = () => [
+    { id: "item_k", label: "Scroll of Knock", type: "action", actionType: "item", itemId: "k",
+      originalItem: { type: "consumable", _stats: { createdTime: 1 } } },
+    { id: "skill_per", label: "Perception", type: "action", actionType: "skill", skillKey: "per" },
+  ];
+  const flags = { chatAliases: { item_k: "skn" } };
+  const actor = { id: "k1", name: "Kay", isOwner: true,
+    getFlag: (_m, k) => flags[k], setFlag: async (_m, k, v) => { flags[k] = v; },
+    unsetFlag: async (_m, k) => { delete flags[k]; } };
+  await res.buildForActor(actor);
+  assert.equal(res.resolve("skn").actionItem.id, "item_k");
+  spoken.length = 0;
+  await res.clearAliases(actor);
+  const now = res.reverseMap.get("item_k");
+  assert.notEqual(now, "skn");
+  const line = `Scroll of Knock is now slash ${spellOut(now)}.`;
+  assert.equal(spoken.filter(x => x === line).length, 1, JSON.stringify(spoken));
 });
 
 // --- one reader per command (8.46), late cards still read (8.44) ---

@@ -4,7 +4,7 @@
  */
 
 import { LEGACY_ALIASES, spellOut } from './AbbreviationGenerator.js';
-import { assignCodes } from './CommandTiers.js';
+import { assignCodes, stableKey } from './CommandTiers.js';
 import { debugLog } from '../module.js';
 
 const MODULE_ID = 'folken-games-quick-menu';
@@ -85,11 +85,7 @@ export class AbbreviationResolver {
     // A remembered code can only be lost to the player's own alias. Say so,
     // out loud: Josh, 2026-11-01, "if a command ever does have to change, the
     // voice says which one and what it is now, before I need it."
-    if (moved.length) {
-      const tts = game.folkenQuickMenu?.tts;
-      for (const m of moved.slice(0, 5)) tts?.speak(`${m.label} is now slash ${spellOut(m.to)}.`);
-      if (moved.length > 5) tts?.speak(`${moved.length - 5} more commands changed. Type slash f q m list.`);
-    }
+    this._speakMoved(moved);
 
     // 5. Legacy aliases. Saves moved to three letters and Intimidate moved off
     //    "int", so the forms a player already learned keep working as long as
@@ -105,6 +101,8 @@ export class AbbreviationResolver {
 
     this.isBuilt = true;
     debugLog(`AbbreviationResolver: ${this.abbreviationMap.size} abbreviations, ${this.collisions.size} collisions`);
+
+    return moved;
   }
 
   /**
@@ -195,8 +193,27 @@ export class AbbreviationResolver {
    * @param {Actor} actor
    */
   async clearAliases(actor) {
+    // What the player hears now, so reset can say which commands moved back.
+    const before = this.currentActorId === actor.id ? new Map(this.reverseMap) : new Map();
     await actor.unsetFlag(MODULE_ID, FLAG_KEY);
-    await this.buildForActor(actor);
+    const spokenMoves = (await this.buildForActor(actor)) ?? [];
+    const already = new Set(spokenMoves.map(m => m.key));
+    const changed = [];
+    for (const [id, to] of this.reverseMap) {
+      const from = before.get(id);
+      const item = this.abbreviationMap.get(to);
+      const key = stableKey(item);
+      if (from && from !== to && !already.has(key)) changed.push({ key, label: item.label, from, to });
+    }
+    this._speakMoved(changed);
+  }
+
+  /** Say which commands changed: the first five, then a count. */
+  _speakMoved(moved) {
+    if (!moved?.length) return;
+    const tts = game.folkenQuickMenu?.tts;
+    for (const m of moved.slice(0, 5)) tts?.speak(`${m.label} is now slash ${spellOut(m.to)}.`);
+    if (moved.length > 5) tts?.speak(`${moved.length - 5} more commands changed. Type slash f q m list.`);
   }
 
   /**
