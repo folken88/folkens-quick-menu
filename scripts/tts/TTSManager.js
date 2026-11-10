@@ -8,6 +8,7 @@ import { stripMarkup, expandForSpeech } from '../chat/StateSpeech.js';
 import { pickVoice, voiceChoices } from './VoiceChoice.js';
 import { extractRollTotals, renderAttackTotals, describeShape, shouldBeTerse } from '../chat/RollTotals.js';
 import { spellDetailLine } from '../chat/SpellDetail.js';
+import { rolledNotes } from '../chat/CardNotes.js';
 import { SpeechQueue } from './SpeechQueue.js';
 import { playEarcon } from './Earcons.js';
 
@@ -598,9 +599,11 @@ export class TTSManager {
 
     const line = renderAttackTotals(totals, { terse, healing });
     // For a spell or item: range, area, duration and SR at full detail, and
-    // "Plus notes" whenever there are notes on it (Josh, 2026-10-30).
+    // and then the rolled results from the card's own note tags.
     const detail = item ? spellDetailLine(item, { terse }) : '';
-    const withDetail = (text) => detail ? `${text} ${detail}` : text;
+    const notes = rolledNotes(chatMessage.content ?? '');
+    const notesText = notes.length ? ' ' + notes.join('. ') + '.' : '';
+    const withDetail = (text) => (detail ? `${text} ${detail}` : text) + notesText;
 
     if (line) {
       debugLog('attack total read from', totals.source);
@@ -616,7 +619,7 @@ export class TTSManager {
 
     console.warn('folken-games-quick-menu | no roll total found on this card:',
       describeShape(chatMessage));
-    this.speak('Rolled. Result is in chat.', { interrupt: false, queue: true });
+    this.speak('Rolled. Result is in chat.' + notesText, { interrupt: false, queue: true });
   }
 
   /**

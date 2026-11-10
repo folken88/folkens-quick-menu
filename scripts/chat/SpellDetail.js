@@ -78,8 +78,8 @@ export function hasNotes(item) {
 /**
  * @param {object} item   the spell or item that was used
  * @param {object} [opts]
- * @param {boolean} [opts.terse]  short detail: only "Plus notes" survives
- * @returns {string} "Range close. Area 20 foot burst. Duration instantaneous. Spell resistance applies. Plus notes." or ""
+ * @param {boolean} [opts.terse]  short detail: nothing
+ * @returns {string} "Range close. Area 20 foot burst. Duration instantaneous. Spell resistance applies." or ""
  */
 export function spellDetailLine(item, { terse = true } = {}) {
   if (!item) return '';
@@ -96,6 +96,5 @@ export function spellDetailLine(item, { terse = true } = {}) {
     if (duration) parts.push(`Duration ${duration}`);
     if (item.system?.sr === true) parts.push('Spell resistance applies');
   }
-  if (hasNotes(item)) parts.push('Plus notes');
   return parts.length ? parts.join('. ') + '.' : '';
 }

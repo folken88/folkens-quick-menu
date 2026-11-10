@@ -26,10 +26,10 @@ t("short detail says nothing about a spell without notes", () => {
   assert.equal(spellDetailLine(fireball, { terse: true }), "");
 });
 
-t("notes are announced at every level, so he knows there is something to read", () => {
-  assert.equal(spellDetailLine(haste, { terse: true }), "Plus notes.");
+t("notes are no longer announced as \"Plus notes\"; their rolled results are read from the card", () => {
+  assert.equal(spellDetailLine(haste, { terse: true }), "");
   assert.equal(spellDetailLine(haste, { terse: false }),
-    "Range close. Duration caster level rounds. Spell resistance applies. Plus notes.");
+    "Range close. Duration caster level rounds. Spell resistance applies.");
 });
 
 t("range and duration units read as words", () => {
