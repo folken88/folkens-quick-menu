@@ -14,7 +14,7 @@ import { AbbreviationResolver } from './chat/AbbreviationResolver.js';
 import { ChatCommandInterceptor } from './chat/ChatCommandInterceptor.js';
 import { spellOut } from './chat/AbbreviationGenerator.js';
 import { buildApi } from './agent/AgentApi.js';
-import { itemChangeNeedsRebuild } from './chat/RebuildTriggers.js';
+import { itemChangeNeedsRebuild, renameAnnouncement } from './chat/RebuildTriggers.js';
 
 // Module constants
 const MODULE_ID = 'folken-games-quick-menu';
@@ -147,13 +147,33 @@ Hooks.once('ready', async function() {
   });
 
   // A rename or an identification moves codes. buildForActor speaks every
-  // code that moved, so nothing moves silently (8.40, 1.1).
+  // remembered code that moved, but a renamed item is a new name, so its own
+  // change is never in that list: compare its code before and after and say
+  // it here, so nothing moves silently (8.40: /ggp to /gree, 1.1).
   Hooks.on('updateItem', async (item, changed) => {
-    const resolver = game.folkenQuickMenu.abbreviationResolver;
-    if (item.parent?.id !== resolver.currentActorId) return;
-    if (!itemChangeNeedsRebuild(changed)) return;
-    try { await resolver.buildForActor(item.parent); } catch (error) {
-      console.warn(`${MODULE_ID} | rebuild after item update failed:`, error);
+    try {
+      const resolver = game.folkenQuickMenu.abbreviationResolver;
+      if (item.parent?.id !== resolver.currentActorId) return;
+      if (!itemChangeNeedsRebuild(changed)) return;
+      const before = resolver.codeForItemId(item.id);
+      let moved = [];
+      try { moved = (await resolver.buildForActor(item.parent)) ?? []; } catch (error) {
+        console.warn(`${MODULE_ID} | rebuild after item update failed:`, error);
+      }
+      const after = resolver.codeForItemId(item.id);
+      const line = renameAnnouncement({
+        name: item.name, before, after,
+        alreadySpoken: moved.some(m => m.to === after),
+      });
+      if (!line) return;
+      ChatMessage.create({
+        whisper: [game.user.id],
+        content: `<em>${item.name}</em> is now <strong>/${after}</strong>.`,
+        speaker: { alias: 'Quick Menu' }
+      });
+      game.folkenQuickMenu.tts?.speak(line);
+    } catch (error) {
+      console.warn(`${MODULE_ID} | announcing a renamed item failed:`, error);
     }
   });
 
