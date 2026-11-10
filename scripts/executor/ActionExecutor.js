@@ -410,14 +410,10 @@ export class ActionExecutor {
   /**
    * Spells and items. Their cards carry rolls the same way attacks do, so they
    * use the same reader - the plain one only looks at message.rolls, which is
-   * why spell damage was never read out. Quiet when the card has no roll at
-   * all: Shield or Mage Armor have nothing to report beyond the name already
-   * spoken when the cast was accepted.
+   * why spell damage was never read out. The handler is the use line's: it
+   * decides what of the card is spoken (10.16).
    */
-  _hookSpellResult(item = null, handler = null) {
-    const healing = this._isHealing(item);
-    handler ??= (message) =>
-      this._tts()?.announceAttackResult(message, { quietIfNone: true, healing, item });
+  _hookSpellResult(item, handler) {
     return item?.id ? this._armItemReader(item, handler) : this._announceOnce(handler);
   }
 
@@ -602,10 +598,7 @@ export class ActionExecutor {
     // Prepared books, spell-like books and at-will spells: ask PF1 how many
     // casts remain, rather than second-guessing its preparation data.
     if (!book?.spontaneous && level > 0) {
-      const uses = typeof spell.getSpellUses === 'function'
-        ? spell.getSpellUses()
-        : (spell.system?.preparation?.value || 0);
-      if (!(uses > 0)) { this._fail('None left.'); return; }
+      if (!(this._spellUsesLeft(spell) > 0)) { this._fail('None left.'); return; }
     }
 
     await this._cast(spell, actor, actionItem, { forOther });
@@ -638,10 +631,14 @@ export class ActionExecutor {
     if (book?.spontaneous) {
       return spellCountLine({ spontaneous: true, level: own > 0 ? level : 0, slotsLeft: slotsAt(book, level) });
     }
-    const usesLeft = typeof spell.getSpellUses === 'function'
+    return spellCountLine({ spontaneous: false, level: own, usesLeft: this._spellUsesLeft(spell) });
+  }
+
+  /** PF1's own count of casts left for a prepared, spell-like or at-will spell. */
+  _spellUsesLeft(spell) {
+    return typeof spell.getSpellUses === 'function'
       ? spell.getSpellUses()
-      : (spell.system?.preparation?.value ?? 0);
-    return spellCountLine({ spontaneous: false, level: own, usesLeft });
+      : (spell.system?.preparation?.value || 0);
   }
 
   /**
@@ -847,7 +844,9 @@ export class ActionExecutor {
    *
    * countLine replaces the stack count (spells have no stacks): a string, or a
    * function read after the use resolves, so it sees the slot PF1 just spent.
-   * Returns whether the use went through.
+   * Returns whether the use went through: once PF1 has accepted it, it is a
+   * success whatever the report does after, so an up-cast never refunds the
+   * slots of a spell that was cast.
    */
   async _useItem(item, actor, actionItem = null, { forOther = false, countLine = null } = {}) {
     // The reader does nothing by itself: the use line below decides who speaks
@@ -859,9 +858,11 @@ export class ActionExecutor {
     // left to expire on success, so Auto Buff's later updates are still heard.
     const watch = this._buffWatch(actor).open({ revert: forOther });
     this._holdBuffLines();
+    let used = false;
     try {
       const outcome = useOutcome(await this._pf1Use(item));
       if (!outcome.ok) { reader.off(); watch.close(); this._fail(outcome.reason); return false; }
+      used = true;
 
       // A buff potion, wand or scroll switches its buff on - the sheet's, or
       // one imported from the compendium. The watch hears it and says it.
@@ -928,6 +929,12 @@ export class ActionExecutor {
     } catch (error) {
       console.error('Item use error:', error);
       reader.off();
+      // PF1 already used it: say so, never "failed", and leave the buff
+      // window to run as on any success.
+      if (used) {
+        this._tts()?.speak(`${item.name}, used; no result.`, { interrupt: false, queue: true });
+        return true;
+      }
       watch.close();
       this._fail(`${item.name} failed.`);
       return false;

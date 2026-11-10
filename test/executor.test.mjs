@@ -477,6 +477,22 @@ await t("/3lb4 speaks the use line, then the up-cast confirmation", async () => 
     "Lightning Bolt, cast with a 4th slot."]);
 });
 
+await t("a report that throws after PF1 cast the spell keeps the slots spent and is never silent", async () => {
+  const { book, spell, actor } = lightningBolt();
+  const tts = game.folkenQuickMenu.tts;
+  const resultLine = tts.resultLine;
+  tts.resultLine = () => { throw new Error("card render broke"); };
+  const error = console.error; console.error = () => {};
+  try {
+    const ex = new ActionExecutor();
+    ex._earcon = () => {};
+    await ex.castFromSlot(spell, actor, 4);
+    assert.equal(book.spells.spell3.value, 3, "the lent 3rd was not spent back");
+    assert.equal(book.spells.spell4.value, 0, "the 4th was refunded for a spell PF1 cast");
+    assert.deepEqual(spoken, ["Lightning Bolt, used; no result.", "Lightning Bolt, cast with a 4th slot."]);
+  } finally { tts.resultLine = resultLine; console.error = error; }
+});
+
 await t("a Y to an up-cast offer made for someone else keeps it", async () => {
   const { book, spell, actor } = lightningBolt({ slots: 0 });
   book.spells.spell4.value = 2;

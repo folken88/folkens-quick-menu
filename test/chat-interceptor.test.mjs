@@ -11,11 +11,14 @@ globalThis.Hooks = { once() {}, on() { return 1; }, off() {} };
 globalThis.ChatMessage = { create() {} };
 globalThis.foundry = { utils: { getProperty: (o, p) => p.split(".").reduce((x, k) => x?.[k], o) } };
 const executor = { execute: (...a) => { calls.push(a); }, hasPendingReader: false,
+  castFromSlot: (...a) => { calls.push(["castFromSlot", ...a]); },
   withdrawUpcast: () => false, hasPendingUpcast: false, recentlyExpiredUpcast: false };
-const actor = { id: "a", name: "Ser" };
+const chainLightning = { id: "c", name: "Chain Lightning" };
+const actor = { id: "a", name: "Ser", items: { get: (id) => (id === "c" ? chainLightning : null) } };
 const items = {
   pcmw: { actionType: "item", itemId: "p", label: "Potion of Cure Moderate Wounds" },
   per: { actionType: "skill", skillId: "per", label: "Perception" },
+  "6cl": { actionType: "spell", itemId: "c", label: "Chain Lightning" },
 };
 globalThis.game = {
   user: { id: "me" },
@@ -67,6 +70,23 @@ t("no word uses it for yourself", () => {
 t("a skill takes no options, o included", () => {
   assert.equal(send("/per o"), false);
   assert.deepEqual(spoken, ["Perception takes no options."]);
+  assert.equal(calls.length, 0);
+});
+
+t("a typed up-cast with o casts it for someone else", () => {
+  assert.equal(send("/6cl7 o"), false);
+  assert.deepEqual(calls, [["castFromSlot", chainLightning, actor, 7, { forOther: true }]]);
+  assert.deepEqual(spoken, []);
+});
+
+t("a typed up-cast with no word casts it for yourself", () => {
+  assert.equal(send("/6cl7"), false);
+  assert.deepEqual(calls, [["castFromSlot", chainLightning, actor, 7, { forOther: false }]]);
+});
+
+t("a typed up-cast with any other word is refused aloud and nothing is cast", () => {
+  assert.equal(send("/6cl7 x"), false);
+  assert.deepEqual(spoken, ["x? Not an option. Say o for someone else."]);
   assert.equal(calls.length, 0);
 });
 

@@ -212,8 +212,11 @@ export class ChatCommandInterceptor {
       if (base.found && base.actionItem?.actionType === 'spell') {
         const actor = game.folkenQuickMenu?.menuManager?.getCurrentActor();
         if (!actor) { this._fail('No character assigned.'); return false; }
+        // The word after it is honoured as for any spell (10.26, 10.28).
+        const parsed = parseItemArgs(args, 'spell', base.actionItem.label);
+        if (parsed.mode === 'invalid') { this._fail(parsed.reason); return false; }
         const spell = actor.items.get(base.actionItem.itemId);
-        this.executor.castFromSlot(spell, actor, typed.slot);
+        this.executor.castFromSlot(spell, actor, typed.slot, { forOther: parsed.mode === 'other' });
         return false;
       }
     }
