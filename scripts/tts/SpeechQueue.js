@@ -64,7 +64,7 @@ export class SpeechQueue {
     speakNow,
     timers = DEFAULT_TIMERS,
     now = () => Date.now(),
-    gapMs = 150,
+    gapMs = 100,
     pollMs = 250,
     settleMs = 500,
     cancelMarginMs = 20,
@@ -232,7 +232,13 @@ export class SpeechQueue {
     this.current = null;
     this.lastEndTs = this.now();
     if (this.stuckStreak === 1) {
-      try { this.engine.cancel(); } catch (_) {}
+      if (cur?.started) {
+        try { this.engine.cancel(); } catch (_) {}
+      } else if (typeof this.engine.resume === 'function') {
+        // Never cancel a line Chrome has not started: that is what kills the
+        // voice. Nudge a paused engine instead and let the retry go out.
+        try { this.engine.resume(); } catch (_) {}
+      }
       if (cur && !cur.started && !cur.retried) {
         cur.retried = true;
         this.items.unshift(cur);

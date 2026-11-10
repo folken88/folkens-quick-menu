@@ -39,8 +39,9 @@ function makeClock() {
 function makeEngine() {
   return {
     speaking: false, pending: false,
-    spoken: [], cancels: 0, current: null,
+    spoken: [], cancels: 0, resumes: 0, current: null,
     cancel() { this.cancels++; this.speaking = false; this.pending = false; const c = this.current; this.current = null; c?.handlers.onerror?.({ error: "interrupted" }); },
+    resume() { this.resumes++; },
     // What our speakNow does: hand the line over and the engine starts talking.
     accept(entry, handlers) { this.spoken.push(entry.text); this.speaking = true; this.current = { entry, handlers }; },
     start() { this.current?.handlers.onstart?.(); },
@@ -65,7 +66,7 @@ function setup(opts = {}) {
 
 // --- finding 1: a line handed over while Chrome talks is never heard ---
 
-t("a line that arrives while the engine is talking waits for silence plus 150 ms", () => {
+t("a line that arrives while the engine is talking waits for silence plus 100 ms", () => {
   const { clock, engine, q } = setup();
   q.enqueue("Punch. 34 to hit, 16 damage.");
   engine.start();
@@ -74,8 +75,8 @@ t("a line that arrives while the engine is talking waits for silence plus 150 ms
   clock.tick(3000);
   assert.deepEqual(engine.spoken, ["Punch. 34 to hit, 16 damage."], "still waiting while Punch plays");
   engine.finish();
-  clock.tick(100);
-  assert.equal(engine.spoken.length, 1, "150 ms of silence first");
+  clock.tick(50);
+  assert.equal(engine.spoken.length, 1, "100 ms of silence first");
   clock.tick(60);
   assert.deepEqual(engine.spoken, ["Punch. 34 to hit, 16 damage.", "23"]);
 });
@@ -245,21 +246,23 @@ t("the stop key on another module's speech cancels it; on silence it does nothin
   assert.equal(engine.cancels, 1);
 });
 
-t("a line that never starts gets one cancel and one retry; a second failure means the voice is down", () => {
+t("a line that never starts gets one retry without a cancel; a second failure means the voice is down", () => {
   const { clock, engine, q, alarms } = setup();
   clock.tick(5000);
   q.enqueue("23");
   engine.speaking = true;                 // Chrome claims to be speaking, nothing comes out
   clock.tick(7900);
-  assert.equal(engine.cancels, 0, "not yet stuck");
+  assert.equal(engine.resumes, 0, "not yet stuck");
   clock.tick(200);
-  assert.equal(engine.cancels, 1, "one cancel per stuck stretch");
+  assert.equal(engine.cancels, 0, "never cancel a line Chrome has not started");
+  assert.equal(engine.resumes, 1, "a nudge instead");
   assert.equal(alarms.length, 0);
-  clock.tick(200);                        // the usual 150 ms of silence after a cancel
-  assert.deepEqual(engine.spoken, ["23", "23"], "the retry, handed over once the cancel cleared the engine");
+  engine.speaking = false; engine.current = null;   // the nudge worked: the engine let go
+  clock.tick(200);
+  assert.deepEqual(engine.spoken, ["23", "23"], "the retry, handed over once the engine is quiet");
   engine.speaking = true;                 // and that one never starts either
   clock.tick(8200);
-  assert.equal(engine.cancels, 1, "no second cancel: it did not help");
+  assert.equal(engine.cancels, 0, "still no cancel");
   assert.equal(alarms.length, 1, "the alarm");
   assert.equal(q.dead, true);
   q.enqueue("next command");
@@ -270,21 +273,46 @@ t("a line that never starts gets one cancel and one retry; a second failure mean
   assert.equal(q.voiceDownAnnounced, false);
 });
 
-t("an engine that claims to be busy for 8 s with our lines waiting is treated as stuck", () => {
-  // Nothing of ours in Chrome's hands, so the old watchdog was the only way out;
-  // now the queue does it itself, once, and then declares the voice down.
+t("an engine that claims to be busy for 8 s with our lines waiting is nudged, then the voice is declared down", () => {
+  // Nothing of ours in Chrome's hands: nothing to cancel, so the engine is
+  // nudged once; a second stretch of the same declares the voice down.
   const { clock, engine, q, alarms } = setup();
   engine.speaking = true;
   q.enqueue("ours");
   clock.tick(7900);
-  assert.equal(engine.cancels, 0, "patience first: it may be another module talking");
+  assert.equal(engine.resumes, 0, "patience first: it may be another module talking");
   clock.tick(400);
-  assert.equal(engine.cancels, 1);
-  assert.deepEqual(engine.spoken, ["ours"], "the cancel cleared it and our line went out");
-  engine.speaking = true;                 // but it never starts
+  assert.equal(engine.cancels, 0);
+  assert.equal(engine.resumes, 1);
+  assert.deepEqual(engine.spoken, [], "the engine is still busy");
   clock.tick(8300);
-  assert.equal(engine.cancels, 1);
+  assert.equal(engine.cancels, 0);
   assert.equal(alarms.length, 1);
+  assert.deepEqual(engine.spoken, ["ours"], "once down, lines go out so a start can be noticed");
+});
+
+t("a stuck line Chrome never started is retried without a cancel (6.10)", () => {
+  const { clock, engine, q } = setup();
+  q.enqueue("No command.");
+  clock.tick(8000);                       // stuckMs, the line never started
+  assert.equal(engine.cancels, 0);
+  assert.equal(engine.resumes, 1);
+  assert.equal(q.items[0]?.text ?? q.current?.text, "No command.");
+  assert.equal(q.items[0]?.retried, true);
+  assert.equal(q.dead, false);
+});
+
+t("a line that HAD started and then goes stuck still gets one cancel on the first strike", () => {
+  const { engine, q } = setup();
+  q.enqueue("long report");
+  engine.start();
+  q.noteReset();
+  assert.equal(engine.cancels, 1);
+  assert.equal(engine.resumes, 0);
+});
+
+t("the gap between lines is 100 ms", () => {
+  assert.equal(new SpeechQueue({ engine: makeEngine() }).gapMs, 100);
 });
 
 // --- the watchdog: a wedged engine, and a dead one ---
