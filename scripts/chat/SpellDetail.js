@@ -37,27 +37,51 @@ function formulaWords(value) {
     .trim();
 }
 
+/** "@cl" or "10 * @cl" with a unit is said per level: "10 minutes per level". */
+const PER_LEVEL = /^\s*(?:(\d+)\s*\*\s*)?@cl(?:\s*\*\s*(\d+))?\s*$/;
+function perLevel(value, word) {
+  const m = PER_LEVEL.exec(strip(value));
+  if (!m) return '';
+  const n = Number(m[1] ?? m[2] ?? 1);
+  return `${n} ${word}${n === 1 ? '' : 's'} per level`;
+}
+
+/** PF1 writes "see text" where the real rule is in the description. */
+const isSeeText = (value) => { const v = strip(value); return !v || /see text/i.test(v); };
+
 export function rangeText(range) {
   if (!range || typeof range !== 'object') return '';
   const units = String(range.units ?? '').toLowerCase();
   if (!units) return '';
-  if (units === 'spec') return formulaWords(range.value);
+  if (units === 'spec') return isSeeText(range.value) ? 'see description' : formulaWords(range.value);
   const word = RANGE_UNITS[units] ?? units;
   if (['close', 'medium', 'long', 'personal', 'touch'].includes(units)) return word;
+  const each = perLevel(range.value, word);
+  if (each) return each;
   const value = formulaWords(range.value);
   return value ? `${value} ${word}` : word;
 }
 
-export function durationText(duration) {
+export function durationText(duration, { buff = null } = {}) {
   if (!duration || typeof duration !== 'object') return '';
   const units = String(duration.units ?? '').toLowerCase();
   if (!units) return '';
   if (units === 'inst') return 'instantaneous';
   if (units === 'perm') return 'permanent';
   if (units === 'turn') return 'until your next turn';
-  if (units === 'spec') return formulaWords(duration.value);
-  const value = formulaWords(duration.value);
+  if (units === 'spec') {
+    if (!isSeeText(duration.value)) return formulaWords(duration.value);
+    const real = buff?.system?.duration;
+    const realUnits = String(real?.units ?? '').toLowerCase();
+    if (real && realUnits && realUnits !== 'spec' && Number.isFinite(Number(real.value)) && real.value !== '' && real.value !== null) {
+      return durationText(real);
+    }
+    return 'see description';
+  }
   const word = DURATION_UNITS[units] ?? units;
+  const each = perLevel(duration.value, word);
+  if (each) return each;
+  const value = formulaWords(duration.value);
   if (!value) return word;
   const plural = /^\d+$/.test(value) && Number(value) === 1 ? word : `${word}s`;
   return `${value} ${plural}`;
@@ -79,9 +103,10 @@ export function hasNotes(item) {
  * @param {object} item   the spell or item that was used
  * @param {object} [opts]
  * @param {boolean} [opts.terse]  short detail: nothing
+ * @param {object} [opts.buff]  the spell's linked buff item; its duration replaces "see text"
  * @returns {string} "Range close. Area 20 foot burst. Duration instantaneous. Spell resistance applies." or ""
  */
-export function spellDetailLine(item, { terse = true } = {}) {
+export function spellDetailLine(item, { terse = true, buff = null } = {}) {
   if (!item) return '';
   const action = item.defaultAction ?? item.actions?.contents?.[0] ?? null;
   const raw = item.system?.actions?.[0] ?? {};
@@ -92,7 +117,7 @@ export function spellDetailLine(item, { terse = true } = {}) {
     if (range) parts.push(`Range ${range}`);
     const area = strip(field('area') ?? raw.spellArea ?? item.system?.spellArea);
     if (area) parts.push(`Area ${area}`);
-    const duration = durationText(field('duration'));
+    const duration = durationText(field('duration'), { buff });
     if (duration) parts.push(`Duration ${duration}`);
     if (item.system?.sr === true) parts.push('Spell resistance applies');
   }

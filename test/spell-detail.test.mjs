@@ -29,7 +29,7 @@ t("short detail says nothing about a spell without notes", () => {
 t("notes are no longer announced as \"Plus notes\"; their rolled results are read from the card", () => {
   assert.equal(spellDetailLine(haste, { terse: true }), "");
   assert.equal(spellDetailLine(haste, { terse: false }),
-    "Range close. Duration caster level rounds. Spell resistance applies.");
+    "Range close. Duration 1 round per level. Spell resistance applies.");
 });
 
 t("range and duration units read as words", () => {
@@ -38,10 +38,21 @@ t("range and duration units read as words", () => {
   assert.equal(rangeText({ value: "1 mile per level", units: "spec" }), "1 mile per level");
   assert.equal(durationText({ value: "1", units: "minute" }), "1 minute");
   assert.equal(durationText({ value: "10", units: "minute" }), "10 minutes");
-  assert.equal(durationText({ value: "@cl * 10", units: "minute" }), "caster level times 10 minutes");
+  assert.equal(durationText({ value: "@cl + 2", units: "minute" }), "caster level + 2 minutes");
   assert.equal(durationText({ value: "", units: "perm" }), "permanent");
   assert.equal(durationText({ value: "", units: "turn" }), "until your next turn");
 });
+
+t("see text becomes see description", () => assert.equal(durationText({ value: "see text", units: "spec" }), "see description"));
+t("a linked buff's real duration beats see text", () =>
+  assert.equal(durationText({ value: "see text", units: "spec" }, { buff: { system: { duration: { value: 10, units: "minute" } } } }), "10 minutes"));
+t("@cl durations are said per level", () => {
+  assert.equal(durationText({ value: "@cl", units: "minute" }), "1 minute per level");
+  assert.equal(durationText({ value: "10 * @cl", units: "minute" }), "10 minutes per level");
+  assert.equal(durationText({ value: "@cl * 10", units: "minute" }), "10 minutes per level");
+  assert.equal(durationText({ value: "@cl", units: "round" }), "1 round per level");
+});
+t("range says see description for see text", () => assert.equal(rangeText({ value: "see text", units: "spec" }), "see description"));
 
 t("notes are found on the live action, the raw action or the item", () => {
   assert.equal(hasNotes({ defaultAction: { effectNotes: ["x"] } }), true);
