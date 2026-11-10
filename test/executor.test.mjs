@@ -678,6 +678,20 @@ await t("reset speaks each command that moved back, once (1.15)", async () => {
   assert.deepEqual(spoken, [`Scroll of Knock is now slash ${spellOut(now)}.`]);
 });
 
+await t("reset after a 0.19 alias saved as the code moves back to the natural code and says so", async () => {
+  const res = await newResolver([consumableItem("k", "Scroll of Knock"), coreSkill("Perception", "per")]);
+  const actor = stubActor({ chatAliases: { item_k: "skn" }, assignedCodes: { "item::scroll of knock": "skn" } });
+  spoken.length = 0;
+  await res.buildForActor(actor);
+  assert.equal(res.resolve("skn").actionItem.id, "item_k");
+  assert.deepEqual(spoken, [], JSON.stringify(spoken));
+  await res.clearAliases(actor);
+  const now = res.reverseMap.get("item_k");
+  assert.notEqual(now, "skn");
+  assert.equal(res.resolve("skn").found, false);
+  assert.deepEqual(spoken, [`Scroll of Knock is now slash ${spellOut(now)}.`]);
+});
+
 await t("a move the rebuild itself reports and the reset diff finds is spoken once", async () => {
   const res = await newResolver([consumableItem("k", "Scroll of Knock"), coreSkill("Perception", "per")]);
   const actor = stubActor({ chatAliases: { item_k: "abc" } });

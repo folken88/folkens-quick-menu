@@ -138,6 +138,19 @@ t("a remembered code is never the alias, so reset moves back and says so (1.9)",
   assert.equal(codeOf(reset, "item_k"), aliased.assigned[stableKey(items[0])]);
 });
 
+t("a 0.19 alias saved as the item's own code is not kept, so reset gives the natural code back", () => {
+  const items = [consumable("k", "Scroll of Knock", 1), skill("Perception", "per")];
+  const natural = codeOf(assignCodes(items), "item_k");
+  assert.notEqual(natural, "skn");
+  const aliased = assignCodes(items, { saved: { "item::scroll of knock": "skn" }, aliases: { item_k: "skn" } });
+  assert.equal(codeOf(aliased, "item_k"), "skn", "the alias still works");
+  assert.equal(aliased.assigned["item::scroll of knock"], natural);
+  assert.deepEqual(aliased.moved, [], "the player still has /skn: nothing to announce yet");
+  const reset = assignCodes(items, { saved: aliased.assigned });
+  assert.equal(codeOf(reset, "item_k"), natural);
+  assert.equal(reset.map.has("skn"), false);
+});
+
 t("the core is assigned before aliases: an alias equal to a final core code is dropped", () => {
   const items = [skill("Intimidate", "int"), stat("Intelligence", "int"), consumable("k", "Scroll of Knock", 1)];
   const r = assignCodes(items, { aliases: { item_k: "itm" } });

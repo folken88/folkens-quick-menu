@@ -134,14 +134,22 @@ export function assignCodes(items, { aliases = {}, saved = {} } = {}) {
     // An alias is the player's, not a remembered code: keep the code the item
     // would have had, so /fqm reset restores it - but only if nobody else holds
     // it now. Otherwise record nothing and let a reset hand out a fresh one.
-    const own = clean(saved[stableKey(item)]) || clean(generateAbbreviation(item.label, item));
+    // 0.19 saved the alias itself as the item's code; a remembered code equal
+    // to the alias is that, not the item's own, so it is never kept or reset
+    // would hand the alias straight back.
+    const remembered = clean(saved[stableKey(item)]);
+    const isAlias = remembered === clean(aliases[item.id]) || remembered === reverse.get(item.id);
+    const own = (isAlias ? '' : remembered) || clean(generateAbbreviation(item.label, item));
     const holder = own ? map.get(own) : null;
     if (own && (!holder || holder === item)) assigned[stableKey(item)] = own;
   }
+  // An aliased item answers to its alias, so what it would reset to is not a
+  // move the player hears.
+  const aliasedKeys = new Set(ordered.filter(i => aliasPlaced.has(i.id)).map(stableKey));
   const moved = [];
   for (const [key, from] of Object.entries(saved)) {
     const to = assigned[key];
-    if (to && to !== clean(from)) {
+    if (to && to !== clean(from) && !aliasedKeys.has(key)) {
       const item = ordered.find(i => stableKey(i) === key);
       moved.push({ key, label: item?.label ?? key, from: clean(from), to });
     }
