@@ -3,7 +3,7 @@
  * Handles auto-generation, collision detection, player alias persistence.
  */
 
-import { LEGACY_ALIASES, spellOut, consumableKind } from './AbbreviationGenerator.js';
+import { LEGACY_ALIASES, spellOut, consumableKind, CODED_CONSUMABLE_KINDS } from './AbbreviationGenerator.js';
 import { assignCodes, stableKey } from './CommandTiers.js';
 import { debugLog } from '../module.js';
 
@@ -14,7 +14,6 @@ const ASSIGNED_KEY = 'assignedCodes';
 /** Which code rule the remembered codes were made under. 2 = p/w/s consumables (10.21). */
 const CODE_RULE_KEY = 'codeRule';
 const CODE_RULE = 2;
-const CHANGEOVER_KINDS = new Set(['potion', 'elixir', 'oil', 'draught', 'wand', 'scroll']);
 
 export class AbbreviationResolver {
   constructor() {
@@ -60,7 +59,7 @@ export class AbbreviationResolver {
     if (rule < CODE_RULE) {
       for (const item of allActions) {
         const key = stableKey(item);
-        if (!CHANGEOVER_KINDS.has(consumableKind(item)) || !saved[key]) continue;
+        if (!CODED_CONSUMABLE_KINDS.has(consumableKind(item)) || !saved[key]) continue;
         forgotten.push({ key, label: item.label, from: saved[key] });
         delete saved[key];
       }

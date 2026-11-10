@@ -333,6 +333,9 @@ const CONSUMABLE_PREFIX = {
   potion: 'p', elixir: 'p', oil: 'p', draught: 'p', wand: 'w', scroll: 's'
 };
 
+/** The six consumable kinds that take p/w/s codes. */
+export const CODED_CONSUMABLE_KINDS = new Set(Object.keys(CONSUMABLE_PREFIX));
+
 /**
  * The PF1 consumable kind of an action item (potion, wand, scroll, ...), or
  * null for anything that is not a consumable.
@@ -360,7 +363,9 @@ export function consumableAbbreviation(name, subType, extra = 0) {
   if (!prefix) return null;
   const text = String(name || '');
   const at = text.toLowerCase().indexOf(' of ');
-  const body = at >= 0 ? text.slice(at + 4) : text;
+  const body = (at >= 0 ? text.slice(at + 4) : text)
+    .replace(/['’]/g, '')
+    .replace(/\s*\([^)]*\)\s*$/, '');
   const words = body.split(/[^A-Za-z0-9]+/)
     .filter(w => w && !['of', 'the', 'a'].includes(w.toLowerCase()));
   if (!words.length) return null;

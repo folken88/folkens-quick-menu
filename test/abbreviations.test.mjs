@@ -200,4 +200,38 @@ t("a subskill hint is sanitised as well", () =>
   assert.match(generateAbbreviation("Profession (Sailor-ish)",
     { skillKey: "pro.subSkills.pro1", abbrevHint: "Sail-or" }), /^[a-z0-9]+$/));
 
+// --- 10.21: potions, wands and scrolls read like spells, without the level ---
+t("consumable codes: p/w/s prefix, then the spell-style body", () => {
+  assert.equal(consumableAbbreviation("Potion of Cure Moderate Wounds", "potion"), "pcmw");
+  assert.equal(consumableAbbreviation("Wand of Cure Light Wounds", "wand"), "wclw");
+  assert.equal(consumableAbbreviation("Scroll of Fly", "scroll"), "sfly");
+  assert.equal(consumableAbbreviation("Potion of Displacement", "potion"), "pdisp");
+  assert.equal(consumableAbbreviation("Potion of Displacement", "potion", 1), "pdispl");
+  assert.equal(consumableAbbreviation("Elixir of Hiding", "elixir"), "phidi");
+});
+
+t("consumable codes: apostrophes and a trailing parenthesis do not count as words", () => {
+  assert.equal(consumableAbbreviation("Potion of Bear's Endurance", "potion"), "pbe");
+  assert.equal(consumableAbbreviation("Potion of Bear’s Endurance", "potion"), "pbe");
+  assert.equal(consumableAbbreviation("Wand of Cure Light Wounds (CL 5)", "wand"), "wclw");
+});
+
+t("consumable codes: any other kind is null, so the old rule applies", () => {
+  assert.equal(consumableAbbreviation("Potion of Fly", "food"), null);
+  assert.equal(consumableAbbreviation("Potion of Fly", undefined), null);
+});
+
+t("consumableKind reads subType or consumableType, consumables only", () => {
+  assert.equal(consumableKind({ originalItem: { type: "consumable", system: { subType: "wand" } } }), "wand");
+  assert.equal(consumableKind({ originalItem: { type: "consumable", system: { consumableType: "scroll" } } }), "scroll");
+  assert.equal(consumableKind({ originalItem: { type: "weapon", system: { subType: "wand" } } }), null);
+  assert.equal(consumableKind(null), null);
+});
+
+t("generateAbbreviation uses the consumable rule for the six kinds only", () => {
+  const mk = (subType) => ({ originalItem: { type: "consumable", system: { subType } } });
+  assert.equal(generateAbbreviation("Potion of Displacement", mk("potion")), "pdisp");
+  assert.equal(generateAbbreviation("Potion of Displacement", mk("food")), "pd");
+});
+
 console.log(`\n${pass} assertions passed.`);
