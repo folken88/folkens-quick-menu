@@ -55,8 +55,8 @@ MODIFIER KEY COMMANDS:
 - Shift+F: Favorite current item
 - Shift+R: Remove from favorites
 - Shift+P / Shift+U: Prepare / unprepare current spell
-- Letters: type the start of a name to jump to it (P E R for Perception)
-- U: Unprepare current spell
+- Letters: type the start of a name to jump to it (P E R for Perception).
+  Plain P and U type ahead too; prepare and unprepare are Shift+P and Shift+U.
 - /: Show item submenu
 - Control, alone: Stop the voice (the stop key you chose). The S key no longer stops it.
 
