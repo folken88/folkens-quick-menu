@@ -82,11 +82,20 @@ export function assignCodes(items, { aliases = {}, saved = {} } = {}) {
     || String(a.label ?? '').localeCompare(String(b.label ?? ''))
     || String(a.id ?? '').localeCompare(String(b.id ?? '')));
 
-  // A. The player's own aliases win over everything except the core: an alias
-  //    never lands on a core item, and never takes a core item's natural code.
-  //    Those are dropped and reported so the caller can clear them and say so.
-  const coreCodes = new Set(ordered.filter(i => tierOf(i) === 1)
-    .map(i => clean(generateAbbreviation(i.label, i))).filter(Boolean));
+  // A. The fixed core first, explicit codes (pool reads, /cmb, /clc2) first.
+  //    Nothing a player types can move it.
+  const core = ordered.filter(i => tierOf(i) === 1)
+    .sort((a, b) => (b.forceAbbrev ? 1 : 0) - (a.forceAbbrev ? 1 : 0));
+  for (const item of core) {
+    const natural = clean(generateAbbreviation(item.label, item));
+    if (!natural) continue;
+    take(isFree(natural) ? natural : extendUntilFree(item, natural, map), item);
+  }
+
+  // B. The player's own aliases win over everything except the core: one on a
+  //    core item, or equal to a code the core holds, is dropped and reported so
+  //    the caller can clear it and say so.
+  const coreCodes = new Set(core.map(i => reverse.get(i.id)).filter(Boolean));
   const dropped = [];
   const aliasPlaced = new Set();
   for (const item of ordered) {
@@ -98,15 +107,6 @@ export function assignCodes(items, { aliases = {}, saved = {} } = {}) {
     }
     take(isFree(alias) ? alias : extendUntilFree(item, alias, map), item);
     aliasPlaced.add(item.id);
-  }
-
-  // B. The fixed core, explicit codes (pool reads, /cmb, /clc2) first.
-  const core = ordered.filter(i => tierOf(i) === 1 && !reverse.has(i.id))
-    .sort((a, b) => (b.forceAbbrev ? 1 : 0) - (a.forceAbbrev ? 1 : 0));
-  for (const item of core) {
-    const natural = clean(generateAbbreviation(item.label, item));
-    if (!natural) continue;
-    take(isFree(natural) ? natural : extendUntilFree(item, natural, map), item);
   }
 
   // C. Remembered codes, where still free.
@@ -129,11 +129,13 @@ export function assignCodes(items, { aliases = {}, saved = {} } = {}) {
   const assigned = {};
   for (const item of ordered) {
     if (tierOf(item) <= 1 || !reverse.has(item.id)) continue;
+    if (!aliasPlaced.has(item.id)) { assigned[stableKey(item)] = reverse.get(item.id); continue; }
     // An alias is the player's, not a remembered code: keep the code the item
-    // would have had, so /fqm reset restores it.
-    assigned[stableKey(item)] = aliasPlaced.has(item.id)
-      ? (clean(saved[stableKey(item)]) || clean(generateAbbreviation(item.label, item)))
-      : reverse.get(item.id);
+    // would have had, so /fqm reset restores it - but only if nobody else holds
+    // it now. Otherwise record nothing and let a reset hand out a fresh one.
+    const own = clean(saved[stableKey(item)]) || clean(generateAbbreviation(item.label, item));
+    const holder = own ? map.get(own) : null;
+    if (own && (!holder || holder === item)) assigned[stableKey(item)] = own;
   }
   const moved = [];
   for (const [key, from] of Object.entries(saved)) {

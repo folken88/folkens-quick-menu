@@ -138,6 +138,26 @@ t("a remembered code is never the alias, so reset moves back and says so (1.9)",
   assert.equal(codeOf(reset, "item_k"), aliased.assigned[stableKey(items[0])]);
 });
 
+t("the core is assigned before aliases: an alias equal to a final core code is dropped", () => {
+  const items = [skill("Intimidate", "int"), stat("Intelligence", "int"), consumable("k", "Scroll of Knock", 1)];
+  const r = assignCodes(items, { aliases: { item_k: "itm" } });
+  assert.equal(codeOf(r, "skill_int"), "itm");
+  assert.equal(r.map.get("itm").label, "Intimidate");
+  assert.deepEqual(r.dropped, [{ key: "item_k", alias: "itm", label: "Scroll of Knock" }]);
+  assert.notEqual(codeOf(r, "item_k"), "itm");
+});
+
+t("an aliased item whose natural code is held records nothing; reset moves only it", () => {
+  const items = [skill("Perception", "per"), consumable("ret", "Potion of Expeditious Retreat", 1)];
+  const aliased = assignCodes(items, { aliases: { item_ret: "xyz" } });
+  assert.equal(codeOf(aliased, "item_ret"), "xyz");
+  assert.equal(aliased.assigned[stableKey(items[1])], undefined, "natural code per is Perception's");
+  const reset = assignCodes(items, { saved: aliased.assigned });
+  assert.equal(codeOf(reset, "skill_per"), "per", "the holder never moves");
+  assert.equal(codeOf(reset, "item_ret"), "pere", "a fresh code, not the alias");
+  assert.equal(reset.fresh.length, 1);
+});
+
 t("tiers and keys", () => {
   assert.equal(tierOf(skill("Perception", "per")), 1);
   assert.equal(tierOf(feature("f", "Dead Shot", 1)), 2);

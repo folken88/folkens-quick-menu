@@ -516,40 +516,80 @@ await t("a cure potion is recognised as healing; a sword is not", async () => {
   assert.equal(ex._isHealing(null), false);
 });
 
-await t("a pool read keeps its name when the pool's own feature abbreviates the same (Bolty's Grit)", async () => {
+/** A stub actor whose flags live in memory, like Foundry's. */
+function stubActor(flags = {}) {
+  return { id: "k1", name: "Kay", isOwner: true, flags,
+    getFlag: (_m, k) => flags[k], setFlag: async (_m, k, v) => { flags[k] = v; },
+    unsetFlag: async (_m, k) => { delete flags[k]; } };
+}
+const consumableItem = (id, label, created = 1) => ({ id: `item_${id}`, label, type: "action", actionType: "item",
+  itemId: id, originalItem: { type: "consumable", _stats: { createdTime: created } } });
+const coreSkill = (label, key) => ({ id: `skill_${key}`, label, type: "action", actionType: "skill", skillKey: key });
+async function newResolver(items) {
   const { AbbreviationResolver } = await import("../scripts/chat/AbbreviationResolver.js");
   const res = new AbbreviationResolver();
-  res._getAllActionItems = () => [
+  res._getAllActionItems = () => items;
+  return res;
+}
+
+await t("a pool read keeps its name when the pool's own feature abbreviates the same (Bolty's Grit)", async () => {
+  const res = await newResolver([
     { id: "item_grit", label: "Grit", type: "action", actionType: "item", itemId: "g" },
     { id: "pool_g", label: "Grit, left", type: "action", actionType: "pool_read", forceAbbrev: "grit", itemId: "g" },
     { id: "item_dead", label: "Deadeye", type: "action", actionType: "item", itemId: "d" },
-  ];
-  await res.buildForActor({ id: "b", name: "Bolty", getFlag: () => ({}) });
+  ]);
+  await res.buildForActor(stubActor());
   assert.equal(res.resolve("grit").actionItem.actionType, "pool_read");
   assert.equal(res.resolve("gritu").actionItem.id, "item_grit");
   assert.equal(res.collisionCount, 0);
 });
 
+await t("an alias on a core item is cleared from the flag and spoken (1.2)", async () => {
+  const res = await newResolver([coreSkill("Intimidate", "int"), consumableItem("k", "Scroll of Knock")]);
+  const actor = stubActor({ chatAliases: { skill_int: "xyz", item_k: "skn" } });
+  spoken.length = 0;
+  await res.buildForActor(actor);
+  assert.deepEqual(actor.flags.chatAliases, { item_k: "skn" });
+  assert.deepEqual(spoken, [`Alias ${spellOut("xyz")} cleared. Intimidate is slash ${spellOut("itm")}.`]);
+  assert.equal(res.resolve("itm").actionItem.id, "skill_int");
+});
+
 await t("reset speaks each command that moved back, once (1.15)", async () => {
-  const { AbbreviationResolver } = await import("../scripts/chat/AbbreviationResolver.js");
-  const res = new AbbreviationResolver();
-  res._getAllActionItems = () => [
-    { id: "item_k", label: "Scroll of Knock", type: "action", actionType: "item", itemId: "k",
-      originalItem: { type: "consumable", _stats: { createdTime: 1 } } },
-    { id: "skill_per", label: "Perception", type: "action", actionType: "skill", skillKey: "per" },
-  ];
-  const flags = { chatAliases: { item_k: "skn" } };
-  const actor = { id: "k1", name: "Kay", isOwner: true,
-    getFlag: (_m, k) => flags[k], setFlag: async (_m, k, v) => { flags[k] = v; },
-    unsetFlag: async (_m, k) => { delete flags[k]; } };
+  const res = await newResolver([consumableItem("k", "Scroll of Knock"), coreSkill("Perception", "per")]);
+  const actor = stubActor({ chatAliases: { item_k: "skn" } });
   await res.buildForActor(actor);
   assert.equal(res.resolve("skn").actionItem.id, "item_k");
   spoken.length = 0;
   await res.clearAliases(actor);
   const now = res.reverseMap.get("item_k");
   assert.notEqual(now, "skn");
-  const line = `Scroll of Knock is now slash ${spellOut(now)}.`;
-  assert.equal(spoken.filter(x => x === line).length, 1, JSON.stringify(spoken));
+  assert.deepEqual(spoken, [`Scroll of Knock is now slash ${spellOut(now)}.`]);
+});
+
+await t("a move the rebuild itself reports and the reset diff finds is spoken once", async () => {
+  const res = await newResolver([consumableItem("k", "Scroll of Knock"), coreSkill("Perception", "per")]);
+  const actor = stubActor({ chatAliases: { item_k: "abc" } });
+  await res.buildForActor(actor);
+  // The remembered code is one the core now holds, so the rebuild moves it too.
+  actor.flags.assignedCodes = { "item::scroll of knock": "per" };
+  spoken.length = 0;
+  await res.clearAliases(actor);
+  const now = res.reverseMap.get("item_k");
+  assert.equal(spoken.filter(x => x.startsWith("Scroll of Knock")).length, 1, JSON.stringify(spoken));
+  assert.equal(spoken[0], `Scroll of Knock is now slash ${spellOut(now)}.`);
+});
+
+await t("more than five moves on reset: five lines, then a count", async () => {
+  const names = ["Alpha", "Bravo", "Cobalt", "Delta", "Ember", "Fjord", "Garnet"];
+  const res = await newResolver(names.map((n, i) => consumableItem(n.toLowerCase(), `Potion of ${n}`, i + 1)));
+  const aliases = Object.fromEntries(names.map((n, i) => [`item_${n.toLowerCase()}`, `zq${i}`]));
+  const actor = stubActor({ chatAliases: aliases });
+  await res.buildForActor(actor);
+  spoken.length = 0;
+  await res.clearAliases(actor);
+  assert.equal(spoken.length, 6, JSON.stringify(spoken));
+  assert.equal(spoken.filter(x => / is now slash /.test(x)).length, 5);
+  assert.equal(spoken[5], "2 more commands changed. Type slash f q m list.");
 });
 
 // --- one reader per command (8.46), late cards still read (8.44) ---
