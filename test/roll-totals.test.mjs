@@ -11,7 +11,7 @@
  * Run: node test/roll-totals.test.mjs
  */
 import assert from "node:assert/strict";
-import { extractRollTotals, renderAttackTotals, describeShape, isOwnMessage, shouldBeTerse } from "../scripts/chat/RollTotals.js";
+import { extractRollTotals, renderAttackTotals, describeShape, isOwnMessage, shouldBeTerse, plainRollLine } from "../scripts/chat/RollTotals.js";
 
 let pass = 0;
 const t = (name, fn) => { fn(); pass++; console.log("  ok -", name); };
@@ -308,6 +308,21 @@ t("a card whose save has a DC but no type speaks no DC (8.42)", () => {
 t("a typed save still speaks its DC", () => {
   const r = extractRollTotals({ system: { rolls: { attacks: [{ attack: null, damage: [dmg(40, ["electricity"])] }] }, save: { dc: 23, type: "ref" } } });
   assert.equal(renderAttackTotals(r), "40 damage. Ref DC 23.");
+});
+
+t("/d is read: Damage and the total (6.7)", () =>
+  assert.equal(plainRollLine({ author: "me", flavor: "Damage", rolls: [JSON.stringify({ total: 4 })] }, "me"), "Damage 4."));
+t("/h is read: Healing and the total, tags stripped, any case", () =>
+  assert.equal(plainRollLine({ author: "me", flavor: "<b>healing</b>", rolls: [{ total: 7 }] }, "me"), "Healing 7."));
+t("the word can come from the content when there is no flavor", () =>
+  assert.equal(plainRollLine({ author: "me", content: "<p>Damage</p>", rolls: [{ total: 9 }] }, "me"), "Damage 9."));
+t("an item card is not a plain roll line", () =>
+  assert.equal(plainRollLine({ author: "me", flavor: "Damage", system: { item: "Actor.x.Item.y" }, rolls: [{ total: 4 }] }, "me"), null));
+t("another user's roll is not read", () =>
+  assert.equal(plainRollLine({ author: "you", flavor: "Damage", rolls: [{ total: 4 }] }, "me"), null));
+t("other flavors and rollless messages are not read", () => {
+  assert.equal(plainRollLine({ author: "me", flavor: "Perception", rolls: [{ total: 4 }] }, "me"), null);
+  assert.equal(plainRollLine({ author: "me", flavor: "Damage", rolls: [] }, "me"), null);
 });
 
 console.log(`\n${pass} assertions passed.`);

@@ -11,6 +11,7 @@ import { CollisionResolver } from './CollisionResolver.js';
 import { spellOut } from './AbbreviationGenerator.js';
 import { parseYesNo, parseTypedUpcast, parseSlotReportCommand, bookSlotLine } from '../spells/Upcast.js';
 import { playEarcon } from '../tts/Earcons.js';
+import { plainRollLine } from './RollTotals.js';
 import { renderAC, renderCMD, renderActiveBuffs, renderInactiveBuffs } from './StateSpeech.js';
 
 const MODULE_ID = 'folken-games-quick-menu';
@@ -37,6 +38,14 @@ export class ChatCommandInterceptor {
   register() {
     Hooks.on('chatMessage', (chatLog, message, chatData) => {
       return this._handleChatMessage(chatLog, message, chatData);
+    });
+    // /d and /h post a plain card nobody else reads. When an executor reader
+    // is armed it owns the next card, so this stays out of its way (6.7).
+    Hooks.on('createChatMessage', (m) => {
+      const executor = this.executor ?? game.folkenQuickMenu?.actionExecutor;
+      if (executor?.hasPendingReader) return;
+      const line = plainRollLine(m, game.user?.id);
+      if (line) game.folkenQuickMenu?.tts?.speak(line, { interrupt: false, queue: true });
     });
     debugLog('ChatCommandInterceptor: registered chatMessage hook');
   }

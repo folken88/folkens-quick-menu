@@ -337,3 +337,25 @@ export function isOwnMessage(message, userId) {
   if (typeof author !== 'string') return false;
   return author === userId;
 }
+
+/**
+ * What /d and /h say. PF1's plain damage and heal commands post a card with a
+ * flavor of "Damage" or "Healing" and one roll, and nothing else reads it, so
+ * Josh heard silence (6.7). Own messages only, and never an item card: those
+ * are announced by the executor with their full detail.
+ *
+ * @returns {string|null} "Damage 4." / "Healing 7.", or null if not a plain roll
+ */
+export function plainRollLine(message, userId) {
+  if (!message || typeof message !== 'object') return null;
+  if (!isOwnMessage(message, userId)) return null;
+  if (message.system?.item) return null;
+  const strip = (h) => String(h ?? '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+  const match = strip(message.flavor).match(/^(Damage|Healing)\b/i)
+    ?? strip(message.content).match(/^(Damage|Healing)\b/i);
+  if (!match) return null;
+  const total = totalOf(Array.isArray(message.rolls) ? message.rolls[0] : null);
+  if (total === null) return null;
+  const word = match[1][0].toUpperCase() + match[1].slice(1).toLowerCase();
+  return `${word} ${total}.`;
+}
