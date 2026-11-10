@@ -24,8 +24,16 @@ export function mergeStacks(entries) {
   const merged = [];
   for (const entry of entries ?? []) {
     const key = `${entry.actionType ?? ''}|${(entry.label ?? '').trim().toLowerCase()}`;
+    // A charged item (a wand: uses.per set and not 'single') carries its own
+    // charges, so two of them are two items, never one stack (10.3).
+    const per = entry.uses?.per;
+    const stackable = !per || per === 'single';
     const first = byName.get(key);
-    if (!first || !entry.itemId) { byName.set(key, entry); merged.push(entry); continue; }
+    if (!stackable || !first || !entry.itemId) {
+      if (stackable) byName.set(key, entry);
+      merged.push(entry);
+      continue;
+    }
     first.alternates = [...(first.alternates ?? []), entry.itemId];
     first.quantity = (Number(first.quantity) || 0) + (Number(entry.quantity) || 0);
   }

@@ -59,4 +59,19 @@ t("an empty stack merged with a full one counts one, not two", () => {
   assert.equal(mergeStacks([a, b])[0].quantity, 1);
 });
 
+t("charged wands never merge, even with the same name (10.3)", () => {
+  const a = { id: "item_a", label: "Wand of Cure Light Wounds", actionType: "item", itemId: "a", quantity: 1, uses: { per: "charges", value: 33, max: 50 } };
+  const b = { id: "item_b", label: "Wand of Cure Light Wounds", actionType: "item", itemId: "b", quantity: 1, uses: { per: "charges", value: 5, max: 50 } };
+  const out = mergeStacks([a, b]);
+  assert.equal(out.length, 2);
+  assert.equal(out[0].alternates, undefined);
+});
+t("single-use potions still merge", () => {
+  const a = { id: "item_a", label: "Potion of Bull's Strength", actionType: "item", itemId: "a", quantity: 1, uses: { per: "single" } };
+  const b = { id: "item_b", label: "Potion of Bull's Strength", actionType: "item", itemId: "b", quantity: 2, uses: { per: "single" } };
+  const out = mergeStacks([a, b]);
+  assert.equal(out.length, 1);
+  assert.equal(out[0].quantity, 3);
+});
+
 console.log(`${pass} assertions passed.`);
