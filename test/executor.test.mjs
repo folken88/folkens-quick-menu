@@ -750,16 +750,37 @@ await t("10.21 changeover: a remembered potion code is dropped once, spoken once
     originalItem: { type: "consumable", system: { subType: "potion" }, _stats: { createdTime: 1 } } };
   const res = await newResolver([potion, coreSkill("Perception", "per")]);
   const actor = stubActor({ assignedCodes: { "item::potion of displacement": "pd" } });
-  spoken.length = 0;
-  await res.buildForActor(actor);
-  assert.equal(res.reverseMap.get("item_pd"), "pdisp");
-  assert.equal(actor.flags.codeRule, 2);
-  assert.deepEqual(spoken.filter(x => x.startsWith("Potion of Displacement")),
-    [`Potion of Displacement is now slash ${spellOut("pdisp")}.`], JSON.stringify(spoken));
-  spoken.length = 0;
-  await res.buildForActor(actor);
-  assert.equal(res.reverseMap.get("item_pd"), "pdisp");
-  assert.deepEqual(spoken, [], JSON.stringify(spoken));
+  const user = game.user;
+  game.user = { ...user, character: { id: actor.id } };
+  try {
+    spoken.length = 0;
+    await res.buildForActor(actor);
+    assert.equal(res.reverseMap.get("item_pd"), "pdisp");
+    assert.equal(actor.flags.codeRule, 2);
+    assert.deepEqual(spoken.filter(x => x.startsWith("Potion of Displacement")),
+      [`Potion of Displacement is now slash ${spellOut("pdisp")}.`], JSON.stringify(spoken));
+    spoken.length = 0;
+    await res.buildForActor(actor);
+    assert.equal(res.reverseMap.get("item_pd"), "pdisp");
+    assert.deepEqual(spoken, [], JSON.stringify(spoken));
+  } finally { game.user = user; }
+});
+
+await t("10.21 changeover waits for the player's own client: a GM build keeps pd and says nothing", async () => {
+  const potion = { ...consumableItem("pd", "Potion of Displacement"),
+    originalItem: { type: "consumable", system: { subType: "potion" }, _stats: { createdTime: 1 } } };
+  const res = await newResolver([potion, coreSkill("Perception", "per")]);
+  const actor = stubActor({ assignedCodes: { "item::potion of displacement": "pd" } });
+  const user = game.user;
+  game.user = { ...user, character: { id: "other" } };
+  try {
+    spoken.length = 0;
+    await res.buildForActor(actor);
+    assert.equal(res.reverseMap.get("item_pd"), "pd");
+    assert.deepEqual(spoken, [], JSON.stringify(spoken));
+    assert.equal(actor.flags.codeRule, undefined);
+    assert.equal(actor.flags.assignedCodes["item::potion of displacement"], "pd");
+  } finally { game.user = user; }
 });
 
 // --- one reader per command (8.46), late cards still read (8.44) ---

@@ -53,10 +53,13 @@ export class AbbreviationResolver {
 
     // 10.21: potions, wands and scrolls moved to spell-style codes. Forget what
     // they remembered, once, so they take the new code; the moved speech below
-    // announces each one. Core codes and aliases are untouched.
+    // announces each one. Core codes and aliases are untouched. Only on the
+    // client of the player whose character this is: a GM building it first
+    // would use up the change and the player would never hear his codes move.
     const rule = Number(actor.getFlag(MODULE_ID, CODE_RULE_KEY)) || 1;
+    const changeover = rule < CODE_RULE && game.user?.character?.id === actor.id;
     const forgotten = [];
-    if (rule < CODE_RULE) {
+    if (changeover) {
       for (const item of allActions) {
         if (!CODED_CONSUMABLE_KINDS.has(consumableKind(item))) continue;
         const keys = rememberedKeys(item).filter(k => saved[k]);
@@ -89,7 +92,7 @@ export class AbbreviationResolver {
       }
     }
 
-    if (rule < CODE_RULE && actor.isOwner !== false) {
+    if (changeover && actor.isOwner !== false) {
       try { await actor.setFlag(MODULE_ID, CODE_RULE_KEY, CODE_RULE); } catch (error) {
         debugLog('AbbreviationResolver: could not record the code rule:', error);
       }
