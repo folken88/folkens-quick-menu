@@ -413,8 +413,10 @@ export class QuickMenuManager {
    * Type-ahead: move to the first item whose name starts with what was typed,
    * or, with next, to the one after the current item that does. A word start
    * counts too, so "ret" finds "Potion of Expeditious Retreat". Never executes.
+   * With quiet, a miss says nothing: the caller has a fallback to try first,
+   * and a spoken miss would be clipped by it.
    */
-  navigateToPrefix(prefix, { next = false } = {}) {
+  navigateToPrefix(prefix, { next = false, quiet = false } = {}) {
     if (!this.isOpen || !this.currentMenu?.length || !prefix) return false;
     const norm = (s) => String(s ?? '').toLowerCase().replace(/^[^a-z0-9]+/, '');
     const shown = (item) => norm(item.menuLabel ?? item.label);
@@ -430,7 +432,7 @@ export class QuickMenuManager {
     let found = find(label => label.startsWith(prefix));
     if (found === -1) found = find(label => label.split(/[\s,(]+/).some(w => w.startsWith(prefix)));
     if (found === -1) {
-      game.folkenQuickMenu?.tts?.speak(`Nothing starts with ${spellOut(prefix)}.`, { interrupt: true });
+      if (!quiet) game.folkenQuickMenu?.tts?.speak(`Nothing starts with ${spellOut(prefix)}.`, { interrupt: true });
       return false;
     }
     this.selectedIndex = found;

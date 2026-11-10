@@ -514,8 +514,10 @@ export class KeyboardHandler {
       menuManager?.navigateToPrefix(letter, { next: true });
     } else {
       this.letterBuffer = buffer + letter;
-      const moved = menuManager?.navigateToPrefix(this.letterBuffer);
       // A letter that finishes no prefix starts a new one (2.12/2.18 fallback).
+      // The joined try is quiet, so its miss is never cut off by the letter's
+      // try; only when the letter alone misses too is the miss said, once.
+      const moved = menuManager?.navigateToPrefix(this.letterBuffer, { quiet: buffer.length >= 1 });
       if (moved === false && buffer.length >= 1) {
         this.letterBuffer = letter;
         menuManager?.navigateToPrefix(letter);
