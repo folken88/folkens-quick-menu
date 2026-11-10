@@ -273,22 +273,22 @@ t("a line that never starts gets one retry without a cancel; a second failure me
   assert.equal(q.voiceDownAnnounced, false);
 });
 
-t("an engine that claims to be busy for 8 s with our lines waiting is nudged, then the voice is declared down", () => {
-  // Nothing of ours in Chrome's hands: nothing to cancel, so the engine is
-  // nudged once; a second stretch of the same declares the voice down.
+t("an engine that claims to be busy for 8 s with none of our lines in hand is cancelled once, then the voice is declared down", () => {
+  // Nothing of ours in Chrome's hands, so the wedge is foreign: the first
+  // strike cancels it (as the stop key does); a second stretch declares it down.
   const { clock, engine, q, alarms } = setup();
   engine.speaking = true;
   q.enqueue("ours");
   clock.tick(7900);
-  assert.equal(engine.resumes, 0, "patience first: it may be another module talking");
+  assert.equal(engine.cancels, 0, "patience first: it may be another module talking");
   clock.tick(400);
-  assert.equal(engine.cancels, 0);
-  assert.equal(engine.resumes, 1);
-  assert.deepEqual(engine.spoken, [], "the engine is still busy");
+  assert.equal(engine.cancels, 1);
+  assert.equal(engine.resumes, 0);
+  assert.deepEqual(engine.spoken, ["ours"], "the cancel cleared it and our line went out");
+  engine.speaking = true;                 // but it never starts
   clock.tick(8300);
-  assert.equal(engine.cancels, 0);
+  assert.equal(engine.cancels, 1, "no second cancel");
   assert.equal(alarms.length, 1);
-  assert.deepEqual(engine.spoken, ["ours"], "once down, lines go out so a start can be noticed");
 });
 
 t("a stuck line Chrome never started is retried without a cancel (6.10)", () => {

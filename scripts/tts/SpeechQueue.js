@@ -232,7 +232,9 @@ export class SpeechQueue {
     this.current = null;
     this.lastEndTs = this.now();
     if (this.stuckStreak === 1) {
-      if (cur?.started) {
+      // Only an unstarted line of OURS is spared. With nothing of ours in hand
+      // the engine is wedged on something foreign: cancel it, as stopCurrent does.
+      if (!cur || cur.started) {
         try { this.engine.cancel(); } catch (_) {}
       } else if (typeof this.engine.resume === 'function') {
         // Never cancel a line Chrome has not started: that is what kills the
