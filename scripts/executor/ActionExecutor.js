@@ -11,6 +11,7 @@ import { canOfferUpcast, findUpcastLevel, planUpcast, slotsAt, ordinal,
          upcastPrompt, upcastConfirmation, noSlotsMessage } from '../spells/Upcast.js';
 import { playEarcon } from '../tts/Earcons.js';
 import { useOutcome, usesLeftLine, LAST_ONE } from './UseOutcome.js';
+import { healingOf } from './Healing.js';
 import { switchBuffOn } from './BuffOn.js';
 import { poolReadLine } from '../chat/StateSpeech.js';
 import { firstWithStock, stockLine, ammoReadLine } from '../character/Stock.js';
@@ -248,10 +249,7 @@ export class ActionExecutor {
 
   /** Is this item's action healing? PF1 marks it as actionType "heal". */
   _isHealing(item) {
-    const live = item?.defaultAction ?? item?.actions?.contents?.[0];
-    if (typeof live?.isHealing === 'boolean') return live.isHealing;
-    const raw = live ?? item?.system?.actions?.[0];
-    return raw?.actionType === 'heal';
+    return healingOf(item);
   }
 
   /**

@@ -277,6 +277,7 @@ const ABILITIES = {
  * "14 damage". PF1 marks those actions as healing; the caller says so.
  */
 export function damageWord(types = [], healing = false) {
+  if (healing === 'temp') return 'temporary hit points';
   if (healing) return 'healing';
   const list = (Array.isArray(types) ? types : [types]).map(t => String(t ?? '').trim()).filter(Boolean);
   for (const t of list) {
