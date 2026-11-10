@@ -644,6 +644,33 @@ async function newResolver(items) {
   return res;
 }
 
+await t("two wands of one name are two chat commands, a potion stack is one (10.3)", async () => {
+  const { AbbreviationResolver } = await import("../scripts/chat/AbbreviationResolver.js");
+  const wandItem = (id) => ({ ...consumableItem(id, "Wand of Cure Light Wounds"),
+    originalItem: { type: "consumable", system: { subType: "wand", uses: { per: "charges", value: 5, max: 50 } },
+      _stats: { createdTime: 1 } } });
+  const potionItem = (id) => ({ ...consumableItem(id, "Potion of Fly"),
+    originalItem: { type: "consumable", system: { subType: "potion", uses: { per: "single" } }, _stats: { createdTime: 1 } } });
+  const cd = game.folkenQuickMenu.characterData;
+  game.folkenQuickMenu.characterData = {
+    getItems: () => [{ type: "item_category", id: "consumables" }],
+    getItemsByCategory: () => [wandItem("w1"), wandItem("w2"), potionItem("p1"), potionItem("p2")],
+  };
+  try {
+    const res = new AbbreviationResolver();
+    const actor = stubActor();
+    await res.buildForActor(actor);
+    const w1 = res.codeForItemId("w1");
+    const w2 = res.codeForItemId("w2");
+    assert.ok(w1 && w2 && w1 !== w2, JSON.stringify([w1, w2]));
+    assert.equal(res.resolve(w1).actionItem.alternates, undefined);
+    assert.equal(res.codeForItemId("p1"), res.codeForItemId("p2"), "a potion stack is one command");
+    await res.buildForActor(actor);
+    assert.equal(res.codeForItemId("w1"), w1);
+    assert.equal(res.codeForItemId("w2"), w2);
+  } finally { game.folkenQuickMenu.characterData = cd; }
+});
+
 await t("a pool read keeps its name when the pool's own feature abbreviates the same (Bolty's Grit)", async () => {
   const res = await newResolver([
     { id: "item_grit", label: "Grit", type: "action", actionType: "item", itemId: "g" },

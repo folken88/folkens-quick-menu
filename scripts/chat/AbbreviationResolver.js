@@ -4,7 +4,7 @@
  */
 
 import { LEGACY_ALIASES, spellOut, consumableKind, CODED_CONSUMABLE_KINDS } from './AbbreviationGenerator.js';
-import { assignCodes, stableKey } from './CommandTiers.js';
+import { assignCodes, stableKey, rememberedKeys, isCharged } from './CommandTiers.js';
 import { debugLog } from '../module.js';
 
 const MODULE_ID = 'folken-games-quick-menu';
@@ -58,10 +58,11 @@ export class AbbreviationResolver {
     const forgotten = [];
     if (rule < CODE_RULE) {
       for (const item of allActions) {
-        const key = stableKey(item);
-        if (!CODED_CONSUMABLE_KINDS.has(consumableKind(item)) || !saved[key]) continue;
-        forgotten.push({ key, label: item.label, from: saved[key] });
-        delete saved[key];
+        if (!CODED_CONSUMABLE_KINDS.has(consumableKind(item))) continue;
+        const keys = rememberedKeys(item).filter(k => saved[k]);
+        if (!keys.length) continue;
+        forgotten.push({ key: stableKey(item), label: item.label, from: saved[keys[0]] });
+        for (const k of keys) delete saved[k];
       }
     }
 
@@ -347,10 +348,13 @@ export class AbbreviationResolver {
     // first - and remember the others as alternates, so a command whose first
     // stack is empty moves on to the next one with the same name. Josh,
     // 2026-10-29: two Potion of Cure Light Wounds stacks, one at 0, and /pclw
-    // said "None left." with a potion still in the bag.
+    // said "None left." with a potion still in the bag. Only single-use
+    // stacks merge: a charged item (a wand) carries its own charges, so two
+    // wands of one spell are two commands, as on the menu (10.3).
     const kept = new Map();
     const deduped = [];
     for (const item of items) {
+      if (isCharged(item)) { deduped.push(item); continue; }
       const key = `${item.label}::${item.actionType}`;
       const first = kept.get(key);
       if (!first) {

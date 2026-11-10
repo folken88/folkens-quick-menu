@@ -49,9 +49,42 @@ export function createdAt(item) {
   return Number.isFinite(t) ? t : 0;
 }
 
-/** How a code is remembered: by what the thing is, not which copy of it. */
-export function stableKey(item) {
+/**
+ * A charged item - a wand, a rod, anything whose uses.per is set and not
+ * 'single' - carries its own charges, so two of one name are two commands
+ * (10.3), never one stack.
+ */
+export function isCharged(item) {
+  const per = item?.originalItem?.system?.uses?.per;
+  return !!per && per !== 'single';
+}
+
+/** The name-and-type key every code was remembered under before 0.20.0. */
+function nameKey(item) {
   return `${item?.actionType ?? ''}::${String(item?.label ?? '').trim().toLowerCase()}`;
+}
+
+/**
+ * How a code is remembered: by what the thing is, not which copy of it - so a
+ * restocked potion gets its code back. A charged item is remembered by its
+ * own id as well, or two wands of one name would trade codes on every rebuild.
+ */
+export function stableKey(item) {
+  const key = nameKey(item);
+  return isCharged(item) && item?.itemId ? `${key}::${item.itemId}` : key;
+}
+
+/** Every key a code may be remembered under, the current one first. */
+export function rememberedKeys(item) {
+  const key = stableKey(item);
+  const legacy = nameKey(item);
+  return key === legacy ? [key] : [key, legacy];
+}
+
+/** The remembered code for an item, under its key or the pre-0.20.0 one. */
+function recall(saved, item) {
+  for (const key of rememberedKeys(item)) if (saved?.[key]) return saved[key];
+  return undefined;
 }
 
 const clean = (code) => String(code ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -113,7 +146,7 @@ export function assignCodes(items, { aliases = {}, saved = {} } = {}) {
   // C. Remembered codes, where still free.
   const rest = ordered.filter(i => tierOf(i) > 1 && !reverse.has(i.id));
   for (const item of rest) {
-    const remembered = clean(saved[stableKey(item)]);
+    const remembered = clean(recall(saved, item));
     if (remembered && isFree(remembered)) take(remembered, item);
   }
 
@@ -137,7 +170,7 @@ export function assignCodes(items, { aliases = {}, saved = {} } = {}) {
     // 0.19 saved the alias itself as the item's code; a remembered code equal
     // to the alias is that, not the item's own, so it is never kept or reset
     // would hand the alias straight back.
-    const remembered = clean(saved[stableKey(item)]);
+    const remembered = clean(recall(saved, item));
     const isAlias = remembered === clean(aliases[item.id]) || remembered === reverse.get(item.id);
     const own = (isAlias ? '' : remembered) || clean(generateAbbreviation(item.label, item));
     const holder = own ? map.get(own) : null;

@@ -197,4 +197,37 @@ t("two potions that collide: the newcomer extends, the holder stays put (10.21)"
   assert.equal(r.reverse.get("item_b"), "pmau");
 });
 
+const wand = (id, label, created) => ({ ...consumable(id, label, created),
+  originalItem: { type: "consumable", system: { subType: "wand", uses: { per: "charges", value: 10, max: 50 } },
+    _stats: { createdTime: created } } });
+
+t("two wands of one name get two codes, and a rebuild never swaps them (10.3)", () => {
+  const items = [wand("w1", "Wand of Cure Light Wounds", 1), wand("w2", "Wand of Cure Light Wounds", 1)];
+  const first = assignCodes(items);
+  const a = codeOf(first, "item_w1");
+  const b = codeOf(first, "item_w2");
+  assert.ok(a && b && a !== b, JSON.stringify([a, b]));
+  assert.notEqual(stableKey(items[0]), stableKey(items[1]));
+  // A rebuild in either order, with the codes it remembered, keeps both.
+  for (const order of [items, [...items].reverse()]) {
+    const again = assignCodes(order, { saved: first.assigned });
+    assert.equal(codeOf(again, "item_w1"), a);
+    assert.equal(codeOf(again, "item_w2"), b);
+    assert.deepEqual(again.moved, []);
+    assert.deepEqual(again.fresh, []);
+  }
+});
+
+t("a wand's code remembered by name before 0.20.0 is kept by the first wand", () => {
+  const items = [wand("w1", "Wand of Cure Light Wounds", 1), skill("Perception", "per")];
+  const r = assignCodes(items, { saved: { "item::wand of cure light wounds": "wclw" } });
+  assert.equal(codeOf(r, "item_w1"), "wclw");
+  assert.deepEqual(r.fresh, []);
+  assert.equal(r.assigned[stableKey(items[0])], "wclw");
+});
+
+t("single-use stacks keep one key by name", () => {
+  assert.equal(stableKey(consumable("p1", "Potion of Fly", 1)), stableKey(consumable("p2", "Potion of Fly", 2)));
+});
+
 console.log(`${pass} assertions passed.`);
