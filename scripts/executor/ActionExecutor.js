@@ -371,18 +371,25 @@ export class ActionExecutor {
    * hearing (8.44). The wait line comes at 8 seconds: Josh measured key to
    * card at 3.4 to 6.2 seconds on Punch with Dice So Nice, so anything shorter
    * would speak it on nearly every attack. If no card ever comes it says so,
-   * rather than leaving silence.
+   * rather than leaving silence - unless the use line was already spoken for
+   * this use (`useLineSpoken`): then the use was heard, and "no result" ten
+   * minutes later would only be stale.
    */
   _armItemReader(item, handler) {
-    return this._armReader({
+    const reader = this._armReader({
       handler,
       match: (message) => cardItemId(message) === item.id,
       itemId: item.id,
       timeout: 600000,
       waitMs: 8000,
       onWaiting: () => this._tts()?.speak(`${item.name}, waiting on the dice.`, { interrupt: false, queue: true }),
-      onTimeout: () => this._tts()?.speak(`${item.name}, no result.`, { interrupt: false, queue: true }),
+      onTimeout: () => {
+        if (reader.useLineSpoken) return;
+        this._tts()?.speak(`${item.name}, no result.`, { interrupt: false, queue: true });
+      },
     });
+    reader.useLineSpoken = false;
+    return reader;
   }
 
   _hookRollResult() {
@@ -929,7 +936,9 @@ export class ActionExecutor {
         speak(lineFor(msg));
         return true;
       }
-      speak(lineFor(null));
+      const useLine = lineFor(null);
+      speak(useLine);
+      if (useLine) reader.useLineSpoken = true;
       lateCard = (message) => speak(lineFor(message, { late: true }));
       return true;
     } catch (error) {

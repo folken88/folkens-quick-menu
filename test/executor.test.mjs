@@ -922,7 +922,27 @@ await t("a slow spell says once, at 8 s, that it is waiting, and its card is sti
   } finally { heard.restore(); }
 });
 
-await t("a spell whose card never comes says no result, once, after ten minutes", async () => {
+await t("an attack whose card never comes says no result, once, after ten minutes", async () => {
+  const heard = hearReadouts();
+  try {
+    const punch = { id: "p", name: "Punch", system: {}, use: async () => ({}) };
+    const ex = new ActionExecutor();
+    ex._timers = makeClock();
+    await ex.execute({ actionType: "attack", itemId: "p", label: "Punch" }, makeActor({ items: [punch] }));
+    assert.deepEqual(spoken, [], "an attack speaks no use line");
+    ex._timers.advance(599999);
+    assert.deepEqual(spoken, ["Punch, waiting on the dice."]);
+    ex._timers.advance(1);
+    assert.deepEqual(spoken, ["Punch, waiting on the dice.", "Punch, no result."]);
+    assert.equal(ex.hasPendingReader, false);
+    ex._timers.advance(600000);
+    postCard({ system: { item: "Actor.a1.Item.p" }, rolls: [{ total: 18 }] });
+    assert.deepEqual(heard, []);
+    assert.equal(spoken.length, 2);
+  } finally { heard.restore(); }
+});
+
+await t("a spell whose use line was spoken says nothing more when its card never comes", async () => {
   const heard = hearReadouts();
   try {
     const ex = new ActionExecutor();
@@ -931,12 +951,12 @@ await t("a spell whose card never comes says no result, once, after ten minutes"
     ex._timers.advance(599999);
     assert.deepEqual(spoken, [CAST, "Disintegrate, waiting on the dice."]);
     ex._timers.advance(1);
-    assert.deepEqual(spoken, [CAST, "Disintegrate, waiting on the dice.", "Disintegrate, no result."]);
+    assert.deepEqual(spoken, [CAST, "Disintegrate, waiting on the dice."], "a stale no result after the use line");
     assert.equal(ex.hasPendingReader, false);
     ex._timers.advance(600000);
     postCard(rayCard(51));
     assert.deepEqual(heard, []);
-    assert.equal(spoken.length, 3);
+    assert.equal(spoken.length, 2);
   } finally { heard.restore(); }
 });
 
