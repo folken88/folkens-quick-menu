@@ -14,6 +14,7 @@ import { AbbreviationResolver } from './chat/AbbreviationResolver.js';
 import { ChatCommandInterceptor } from './chat/ChatCommandInterceptor.js';
 import { spellOut } from './chat/AbbreviationGenerator.js';
 import { buildApi } from './agent/AgentApi.js';
+import { itemChangeNeedsRebuild } from './chat/RebuildTriggers.js';
 
 // Module constants
 const MODULE_ID = 'folken-games-quick-menu';
@@ -142,6 +143,17 @@ Hooks.once('ready', async function() {
         content: `<em>${item.name}</em> added. No command: it has nothing to use.`,
         speaker: { alias: 'Quick Menu' }
       });
+    }
+  });
+
+  // A rename or an identification moves codes. buildForActor speaks every
+  // code that moved, so nothing moves silently (8.40, 1.1).
+  Hooks.on('updateItem', async (item, changed) => {
+    const resolver = game.folkenQuickMenu.abbreviationResolver;
+    if (item.parent?.id !== resolver.currentActorId) return;
+    if (!itemChangeNeedsRebuild(changed)) return;
+    try { await resolver.buildForActor(item.parent); } catch (error) {
+      console.warn(`${MODULE_ID} | rebuild after item update failed:`, error);
     }
   });
 
