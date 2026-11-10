@@ -45,3 +45,12 @@ export function distinctSpellbooks(books, fallbackLevel = 1) {
 
   return out;
 }
+
+/**
+ * True when any book in use is a prepared one (not spontaneous, not the
+ * spell-like book). Only then do the prepare and unprepare keys mean anything.
+ */
+export function hasPreparedBook(books) {
+  return Object.entries(books ?? {}).some(([key, book]) =>
+    key !== 'spelllike' && !!book?.inUse && !book.spontaneous);
+}

@@ -3,7 +3,7 @@
  * Run: node test/spellbooks.test.mjs
  */
 import assert from "node:assert/strict";
-import { distinctSpellbooks } from "../scripts/character/Spellbooks.js";
+import { distinctSpellbooks, hasPreparedBook } from "../scripts/character/Spellbooks.js";
 
 let pass = 0;
 const t = (name, fn) => { fn(); pass++; console.log("  ok -", name); };
@@ -70,5 +70,12 @@ t("three books collapsing to two keeps suffixes contiguous", () => {
   assert.deepEqual(out.map(b => b.suffix), ["", "2"]);
   assert.deepEqual(out.map(b => b.label), ["A", "C"]);
 });
+
+t("spontaneous primary plus spell-like has no prepared book", () =>
+  assert.equal(hasPreparedBook({ primary: { inUse: true, spontaneous: true }, spelllike: { inUse: true } }), false));
+t("a secondary prepared book counts", () =>
+  assert.equal(hasPreparedBook({ primary: { inUse: true, spontaneous: true }, spelllike: { inUse: true }, secondary: { inUse: true, spontaneous: false } }), true));
+t("a prepared book not in use does not count", () =>
+  assert.equal(hasPreparedBook({ primary: { inUse: false, spontaneous: false } }), false));
 
 console.log(`\n${pass} assertions passed.`);

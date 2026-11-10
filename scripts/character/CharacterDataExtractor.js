@@ -333,7 +333,8 @@ export class CharacterDataExtractor {
         itemId: spell.id,
         level: spellLevel,
         prepared: preparedCount > 0,
-        school: spell.system.school || 'none'
+        school: spell.system.school || 'none',
+        ...(spell.system.spellbook === 'spelllike' ? { menuLabel: `${spell.name}, spell-like` } : {})
       };
     });
 

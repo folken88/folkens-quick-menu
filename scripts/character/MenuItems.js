@@ -95,3 +95,17 @@ export function containerContents(item, actorItems = []) {
   }
   return out;
 }
+
+/**
+ * What landing on an item says after its name: how many are left, or how many
+ * charges of the maximum. Empty when there is nothing to count.
+ */
+export function entryCountText(entry) {
+  const uses = entry?.uses;
+  if (!uses || uses.per === 'single') {
+    const quantity = entry?.quantity;
+    return typeof quantity === 'number' && Number.isFinite(quantity) ? `${quantity} left` : '';
+  }
+  const { value, max } = uses;
+  return Number.isFinite(value) && Number.isFinite(max) ? `${value} of ${max}` : '';
+}

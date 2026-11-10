@@ -8,6 +8,7 @@ import { CharacterDataExtractor } from '../character/CharacterDataExtractor.js';
 import { CharacterDataExtractorPF2e } from '../character/CharacterDataExtractorPF2e.js';
 import { playEarcon } from '../tts/Earcons.js';
 import { spellOut } from '../chat/AbbreviationGenerator.js';
+import { entryCountText } from '../character/MenuItems.js';
 
 /** An earcon at the player's own voice volume. Never throws. */
 function earcon(kind) {
@@ -474,6 +475,18 @@ export class QuickMenuManager {
    */
 
   /**
+   * Spontaneous and spell-like books have nothing to prepare: say so, change
+   * nothing. Returns true when it spoke.
+   */
+  _castsSpontaneously(actor, spell) {
+    const key = spell.system?.spellbook ?? 'primary';
+    const book = actor.system?.attributes?.spells?.spellbooks?.[key];
+    if (key !== 'spelllike' && !book?.spontaneous) return false;
+    game.folkenQuickMenu.tts.speak(`${actor.name} casts ${spell.name} spontaneously.`, { interrupt: true });
+    return true;
+  }
+
+  /**
    * Prepare/unprepare current spell
    */
   prepareCurrentSpell() {
@@ -487,6 +500,8 @@ export class QuickMenuManager {
     
     const spell = actor.items.get(selectedItem.itemId);
     if (!spell) return;
+    
+    if (this._castsSpontaneously(actor, spell)) return;
     
     // PF1 uses preparation.value for currently prepared count
     const currentCount = spell.system.preparation?.value || 0;
@@ -532,6 +547,8 @@ export class QuickMenuManager {
     
     const spell = actor.items.get(selectedItem.itemId);
     if (!spell) return;
+    
+    if (this._castsSpontaneously(actor, spell)) return;
     
     // PF1 uses preparation.value for currently prepared count
     const currentCount = spell.system.preparation?.value || 0;
@@ -1066,7 +1083,12 @@ export class QuickMenuManager {
       // that speaks and then redraws never speaks twice.
       // menuLabel is what the menu calls a thing when its command keeps the
       // sheet's name: the Grit feature is "Spend grit" here and /gritu in chat.
-      const message = `${prefix ? prefix + ' ' : ''}${displayNum}. ${selectedItem.menuLabel ?? selectedItem.label}`;
+      // Numbers are spoken only when the player asks for them (menuNumbers).
+      // Items also say how many are left, so a count never needs its own key.
+      const numberText = getSetting('menuNumbers') ? `${displayNum}. ` : '';
+      const countText = selectedItem.actionType === 'item' ? entryCountText(selectedItem) : '';
+      const name = `${selectedItem.menuLabel ?? selectedItem.label}${countText ? `, ${countText}` : ''}`;
+      const message = `${prefix ? prefix + ' ' : ''}${numberText}${name}`;
       debugLog('Announcing:', message);
       // Navigation is the one thing allowed to cut the voice off: arrowing
       // past an item should not wait for its name to finish.

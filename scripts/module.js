@@ -201,6 +201,15 @@ function registerSettings() {
   });
   
   // TTS settings
+  game.settings.register(MODULE_ID, 'menuNumbers', {
+    name: 'Speak item numbers in the menu',
+    hint: "Say the item's number before its name, as 0.19 did. Off: letters jump straight to items.",
+    scope: 'client',
+    config: true,
+    type: Boolean,
+    default: false
+  });
+
   game.settings.register(MODULE_ID, 'enableTTS', {
     name: 'Enable Text-to-Speech',
     hint: 'Enable TTS announcements for menu navigation',

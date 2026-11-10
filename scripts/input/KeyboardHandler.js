@@ -7,6 +7,7 @@ import { debugLog, getSetting } from '../module.js';
 import { menuClaimsKey, isDuplicateKeydown, loneModifier, isChosenStopKey, LONE_MODIFIERS,
          typeAheadLetter, DEFAULT_JOB_KEYS } from './MenuKeys.js';
 import { playEarcon } from '../tts/Earcons.js';
+import { hasPreparedBook } from '../character/Spellbooks.js';
 
 export class KeyboardHandler {
   constructor() {
@@ -305,8 +306,14 @@ export class KeyboardHandler {
       const jobs = this._jobKeys();
       if (event.code === jobs.favorite) menuManager.favoriteCurrentItem();
       else if (event.code === jobs.unfavorite) menuManager.unfavoriteCurrentItem();
-      else if (event.code === jobs.prepare) menuManager.prepareCurrentSpell();
-      else if (event.code === jobs.unprepare) menuManager.unprepareCurrentSpell();
+      else if (event.code === jobs.prepare || event.code === jobs.unprepare) {
+        // Only a prepared book has anything to prepare; otherwise the key
+        // passes through like any other Shift chord.
+        const books = menuManager.getCurrentActor?.()?.system?.attributes?.spells?.spellbooks ?? {};
+        if (!hasPreparedBook(books)) return;
+        if (event.code === jobs.prepare) menuManager.prepareCurrentSpell();
+        else menuManager.unprepareCurrentSpell();
+      }
       return;
     }
 
@@ -472,6 +479,14 @@ export class KeyboardHandler {
     if (this.numberTimeout) clearTimeout(this.numberTimeout);
 
     const listLength = menuManager?.currentMenu?.length ?? 0;
+
+    // Numbers off: a digit that is a valid index goes there at once.
+    if (!getSetting('menuNumbers') && digit >= 1 && digit <= listLength) {
+      this.numberBuffer = digit;
+      this._commitNumber(menuManager);
+      return;
+    }
+
     const candidate = this.numberBuffer * 10 + digit;
 
     // Adding this digit would run off the end of the list, so commit what we
