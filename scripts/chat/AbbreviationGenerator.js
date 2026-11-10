@@ -167,6 +167,14 @@ export function generateAbbreviation(name, actionItem = null) {
   //     memorised: knowing Haste is 3rd level is knowing it is /3hast.
   if (isLevelledSpell(actionItem)) return spellAbbreviation(name, actionItem.level);
 
+  // 0c. Potions, wands and scrolls read like spells without the level: a p, w
+  //     or s, then the name (10.21). Other consumables keep the initials rule.
+  const kind = consumableKind(actionItem);
+  if (kind && !actionItem.abbrevHint) {
+    const code = consumableAbbreviation(name, kind);
+    if (code) return code;
+  }
+
   // 0. Subskills abbreviate from their own name. Their skillKey is a path like
   //    "pro.subSkills.pro1", which would otherwise collapse every Profession
   //    onto the same command.
@@ -319,6 +327,48 @@ export function spellAbbreviationHead(name, level, extra = 1) {
   const head = words[0].slice(0, 1 + extra);
   const rest = words.slice(1).map(w => w[0]).join('');
   return safe((lvl + head + rest).toLowerCase().slice(0, 10));
+}
+
+const CONSUMABLE_PREFIX = {
+  potion: 'p', elixir: 'p', oil: 'p', draught: 'p', wand: 'w', scroll: 's'
+};
+
+/**
+ * The PF1 consumable kind of an action item (potion, wand, scroll, ...), or
+ * null for anything that is not a consumable.
+ */
+export function consumableKind(actionItem) {
+  const original = actionItem?.originalItem;
+  if (!original || original.type !== 'consumable') return null;
+  const kind = original.system?.subType ?? original.system?.consumableType;
+  return kind ? String(kind).toLowerCase() : null;
+}
+
+/**
+ * Spell-style code for a potion, wand or scroll (10.21): p for potion, elixir,
+ * oil and draught, w for wand, s for scroll, then the body of the name after
+ * " of ". One word gives its first four letters, several give their initials.
+ *
+ *   Potion of Cure Moderate Wounds -> pcmw   Scroll of Fly -> sfly
+ *   Potion of Displacement -> pdisp (extra 1 -> pdispl)
+ *
+ * `extra` widens the body by one letter or word per step. Any other kind
+ * returns null, so the caller keeps its own rule.
+ */
+export function consumableAbbreviation(name, subType, extra = 0) {
+  const prefix = CONSUMABLE_PREFIX[String(subType || '').toLowerCase()];
+  if (!prefix) return null;
+  const text = String(name || '');
+  const at = text.toLowerCase().indexOf(' of ');
+  const body = at >= 0 ? text.slice(at + 4) : text;
+  const words = body.split(/[^A-Za-z0-9]+/)
+    .filter(w => w && !['of', 'the', 'a'].includes(w.toLowerCase()));
+  if (!words.length) return null;
+  const limit = 4 + extra;
+  const code = words.length === 1
+    ? words[0].slice(0, limit)
+    : words.slice(0, limit).map(w => w[0]).join('');
+  return safe(prefix + code.toLowerCase());
 }
 
 /**

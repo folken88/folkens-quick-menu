@@ -3,7 +3,7 @@
  * Handles auto-generation, collision detection, player alias persistence.
  */
 
-import { LEGACY_ALIASES, spellOut } from './AbbreviationGenerator.js';
+import { LEGACY_ALIASES, spellOut, consumableKind } from './AbbreviationGenerator.js';
 import { assignCodes, stableKey } from './CommandTiers.js';
 import { debugLog } from '../module.js';
 
@@ -11,6 +11,10 @@ const MODULE_ID = 'folken-games-quick-menu';
 const FLAG_KEY = 'chatAliases';
 /** Codes handed out by the generator, remembered by name and type. */
 const ASSIGNED_KEY = 'assignedCodes';
+/** Which code rule the remembered codes were made under. 2 = p/w/s consumables (10.21). */
+const CODE_RULE_KEY = 'codeRule';
+const CODE_RULE = 2;
+const CHANGEOVER_KINDS = new Set(['potion', 'elixir', 'oil', 'draught', 'wand', 'scroll']);
 
 export class AbbreviationResolver {
   constructor() {
@@ -45,22 +49,49 @@ export class AbbreviationResolver {
 
     // 2. Player aliases, and the codes remembered from the last build.
     const playerAliases = actor.getFlag(MODULE_ID, FLAG_KEY) || {};
-    const saved = actor.getFlag(MODULE_ID, ASSIGNED_KEY) || {};
+    const saved = { ...(actor.getFlag(MODULE_ID, ASSIGNED_KEY) || {}) };
+    const savedBefore = JSON.stringify(actor.getFlag(MODULE_ID, ASSIGNED_KEY) || {});
+
+    // 10.21: potions, wands and scrolls moved to spell-style codes. Forget what
+    // they remembered, once, so they take the new code; the moved speech below
+    // announces each one. Core codes and aliases are untouched.
+    const rule = Number(actor.getFlag(MODULE_ID, CODE_RULE_KEY)) || 1;
+    const forgotten = [];
+    if (rule < CODE_RULE) {
+      for (const item of allActions) {
+        const key = stableKey(item);
+        if (!CHANGEOVER_KINDS.has(consumableKind(item)) || !saved[key]) continue;
+        forgotten.push({ key, label: item.label, from: saved[key] });
+        delete saved[key];
+      }
+    }
 
     // 3. Assign by tier: aliases, the fixed core, remembered codes, then
     //    anything new, oldest first. Nothing already assigned ever moves. See
     //    CommandTiers.js for the rule and why (Josh, 2026-10-31: a potion took
     //    his Perception command mid-fight).
     const { map, reverse, assigned, fresh, moved, dropped } = assignCodes(allActions, { aliases: playerAliases, saved });
+    // Forgotten codes are not in `saved` any more, so assignCodes cannot report
+    // them as moved. Report the ones that really changed.
+    for (const f of forgotten) {
+      const to = assigned[f.key];
+      if (to && to !== f.from) moved.push({ key: f.key, label: f.label, from: f.from, to });
+    }
     this.abbreviationMap = map;
     this.reverseMap = reverse;
     this.lastBuild = { fresh, moved };
 
     // 4. Remember what was handed out, so the next build gives the same answer.
     //    Only when it changed, and only if this user may write to the actor.
-    if (JSON.stringify(assigned) !== JSON.stringify(saved) && actor.isOwner !== false) {
+    if (JSON.stringify(assigned) !== savedBefore && actor.isOwner !== false) {
       try { await actor.setFlag(MODULE_ID, ASSIGNED_KEY, assigned); } catch (error) {
         debugLog('AbbreviationResolver: could not remember codes:', error);
+      }
+    }
+
+    if (rule < CODE_RULE && actor.isOwner !== false) {
+      try { await actor.setFlag(MODULE_ID, CODE_RULE_KEY, CODE_RULE); } catch (error) {
+        debugLog('AbbreviationResolver: could not record the code rule:', error);
       }
     }
 

@@ -4,7 +4,7 @@
  */
 import assert from "node:assert/strict";
 import { generateAbbreviation, expandAbbreviation, expandAbbreviationHead, LEGACY_ALIASES,
-         spellAbbreviation, spellAbbreviationHead, isLevelledSpell } from "../scripts/chat/AbbreviationGenerator.js";
+         spellAbbreviation, spellAbbreviationHead, isLevelledSpell, consumableAbbreviation, consumableKind } from "../scripts/chat/AbbreviationGenerator.js";
 
 let pass = 0;
 const t = (name, fn) => { fn(); pass++; console.log("  ok -", name); };

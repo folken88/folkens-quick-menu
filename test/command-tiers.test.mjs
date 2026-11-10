@@ -168,4 +168,20 @@ t("tiers and keys", () => {
   }
 });
 
+t("potions and wands take p/w prefixes, so Cure Light Wounds in both forms never fight (10.21)", () => {
+  const typed = (id, label, subType) => ({ ...consumable(id, label, 1),
+    originalItem: { type: "consumable", system: { subType }, _stats: { createdTime: 1 } } });
+  const r = assignCodes([typed("a", "Potion of Cure Light Wounds", "potion"), typed("b", "Wand of Cure Light Wounds", "wand")]);
+  assert.equal(r.reverse.get("item_a"), "pclw");
+  assert.equal(r.reverse.get("item_b"), "wclw");
+});
+
+t("two potions that collide: the newcomer extends, the holder stays put (10.21)", () => {
+  const typed = (id, label, created) => ({ ...consumable(id, label, created),
+    originalItem: { type: "consumable", system: { subType: "potion" }, _stats: { createdTime: created } } });
+  const r = assignCodes([typed("a", "Potion of Mage Armor", 1), typed("b", "Potion of Magic Aura", 2)]);
+  assert.equal(r.reverse.get("item_a"), "pma");
+  assert.equal(r.reverse.get("item_b"), "pmau");
+});
+
 console.log(`${pass} assertions passed.`);

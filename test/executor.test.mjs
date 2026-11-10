@@ -592,6 +592,23 @@ await t("more than five moves on reset: five lines, then a count", async () => {
   assert.equal(spoken[5], "2 more commands changed. Type slash f q m list.");
 });
 
+await t("10.21 changeover: a remembered potion code is dropped once, spoken once, and the rule flag is set", async () => {
+  const potion = { ...consumableItem("pd", "Potion of Displacement"),
+    originalItem: { type: "consumable", system: { subType: "potion" }, _stats: { createdTime: 1 } } };
+  const res = await newResolver([potion, coreSkill("Perception", "per")]);
+  const actor = stubActor({ assignedCodes: { "item::potion of displacement": "pd" } });
+  spoken.length = 0;
+  await res.buildForActor(actor);
+  assert.equal(res.reverseMap.get("item_pd"), "pdisp");
+  assert.equal(actor.flags.codeRule, 2);
+  assert.deepEqual(spoken.filter(x => x.startsWith("Potion of Displacement")),
+    [`Potion of Displacement is now slash ${spellOut("pdisp")}.`], JSON.stringify(spoken));
+  spoken.length = 0;
+  await res.buildForActor(actor);
+  assert.equal(res.reverseMap.get("item_pd"), "pdisp");
+  assert.deepEqual(spoken, [], JSON.stringify(spoken));
+});
+
 // --- one reader per command (8.46), late cards still read (8.44) ---
 
 /** Hand a chat card to every createChatMessage listener, as Foundry does. */

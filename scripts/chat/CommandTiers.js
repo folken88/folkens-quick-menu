@@ -28,7 +28,8 @@
  */
 
 import { generateAbbreviation, expandAbbreviation, expandAbbreviationHead,
-         isLevelledSpell, spellAbbreviation, spellAbbreviationHead } from './AbbreviationGenerator.js';
+         isLevelledSpell, spellAbbreviation, spellAbbreviationHead,
+         consumableAbbreviation, consumableKind } from './AbbreviationGenerator.js';
 
 /** Action types that make up the fixed core. */
 export const CORE_TYPES = new Set([
@@ -160,7 +161,9 @@ export function extendUntilFree(item, natural, map) {
   const holder = map.get(natural);
   if (holder?.actionType === 'pool_read' && !map.has(`${natural}u`)) return `${natural}u`;
 
+  const kind = consumableKind(item);
   const strategies = [
+    (extra) => consumableAbbreviation(item.label, kind, extra) ?? '',
     (extra) => isLevelledSpell(item)
       ? spellAbbreviation(item.label, item.level, extra)
       : expandAbbreviation(item.label, extra),
