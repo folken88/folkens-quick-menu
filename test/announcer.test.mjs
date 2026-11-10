@@ -12,7 +12,11 @@ import assert from "node:assert/strict";
 import { armAnnouncement } from "../scripts/executor/Announcer.js";
 
 let pass = 0;
-const t = (name, fn) => { fn(); pass++; console.log("  ok -", name); };
+const t = (name, fn) => {
+  const ok = () => { pass++; console.log("  ok -", name); };
+  const r = fn();
+  return r && typeof r.then === "function" ? r.then(ok) : ok();
+};
 
 /** A stand-in for Foundry's Hooks, which hands back a NUMBER from on(). */
 function fakeHooks() {
@@ -169,6 +173,91 @@ t("the default timers really do fire and unregister", async () => {
   assert.equal(hooks.live, 1);
   await new Promise(r => setTimeout(r, 40));
   assert.equal(hooks.live, 0, "default timeout never unregistered the listener");
+});
+
+// --- one reader per command (8.46) and late cards (8.44) ---
+
+/** Timers on a hand-advanced clock, so a ten-minute window costs nothing. */
+function makeClock() {
+  let now = 0;
+  const due = [];
+  let nextId = 1;
+  return {
+    set(fn, ms) { const id = nextId++; due.push({ id, at: now + ms, fn }); return id; },
+    clear(id) { const i = due.findIndex(d => d.id === id); if (i >= 0) due.splice(i, 1); },
+    advance(ms) {
+      const end = now + ms;
+      for (;;) {
+        due.sort((a, b) => a.at - b.at);
+        const next = due[0];
+        if (!next || next.at > end) break;
+        due.shift();
+        now = next.at;
+        next.fn();
+      }
+      now = end;
+    },
+    get count() { return due.length; },
+  };
+}
+
+t("two readers each take their own card, whatever the order (8.46)", () => {
+  const hooks = fakeHooks(), timers = makeClock();
+  const got = [];
+  const ray = armAnnouncement({ hooks, timers, match: m => m.item === "ray", handler: m => got.push("ray:" + m.total) });
+  const arcana = armAnnouncement({ hooks, timers, match: m => m.item === undefined, handler: m => got.push("arcana:" + m.total) });
+  hooks.emit("createChatMessage", { total: 32 });             // Arcana's card, no item
+  hooks.emit("createChatMessage", { item: "ray", total: 51 }); // the slow spell's card
+  assert.deepEqual(got, ["arcana:32", "ray:51"]);
+  assert.equal(ray.isPending(), false); assert.equal(arcana.isPending(), false);
+});
+
+t("a card that does not match leaves the reader armed", () => {
+  const hooks = fakeHooks(), timers = makeClock();
+  const got = [];
+  const r = armAnnouncement({ hooks, timers, match: m => m.item === "ray", handler: m => got.push(m.total) });
+  hooks.emit("createChatMessage", { total: 3 });
+  assert.deepEqual(got, []);
+  assert.equal(r.isPending(), true);
+  assert.equal(hooks.live, 1);
+});
+
+await t("a late card is still read, and the wait is said once (8.44)", async () => {
+  const hooks = fakeHooks(), timers = makeClock();
+  const said = []; const got = [];
+  const r = armAnnouncement({ hooks, timers, match: () => true, handler: m => got.push(m.total), timeout: 600000, waitMs: 3000, onWaiting: () => said.push("waiting") });
+  timers.advance(3000); timers.advance(3000);
+  hooks.emit("createChatMessage", { total: 7 });
+  assert.deepEqual(said, ["waiting"]); assert.deepEqual(got, [7]);
+  assert.equal((await r.done).total, 7); // done resolves to the matched message
+  assert.equal(timers.count, 0, "a timer outlived the reader");
+});
+
+t("no wait line when the card beats waitMs", () => {
+  const hooks = fakeHooks(), timers = makeClock();
+  const said = [];
+  armAnnouncement({ hooks, timers, handler: () => {}, timeout: 600000, waitMs: 3000, onWaiting: () => said.push("waiting") });
+  timers.advance(1000);
+  hooks.emit("createChatMessage", {});
+  timers.advance(5000);
+  assert.deepEqual(said, []);
+  assert.equal(timers.count, 0);
+});
+
+await t("done resolves to null when the reader is switched off before a card", async () => {
+  const hooks = fakeHooks(), timers = makeClock();
+  const r = armAnnouncement({ hooks, timers, handler: () => {} });
+  r.off();
+  assert.equal(await r.done, null);
+});
+
+await t("done resolves to null on timeout", async () => {
+  const hooks = fakeHooks(), timers = makeClock();
+  const r = armAnnouncement({ hooks, timers, handler: () => {}, timeout: 600000 });
+  timers.advance(600000);
+  assert.equal(r.isPending(), false);
+  assert.equal(hooks.live, 0);
+  assert.equal(await r.done, null);
 });
 
 console.log(`\n${pass} assertions passed.`);

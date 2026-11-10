@@ -29,10 +29,24 @@ globalThis.game = {
 
 const { ActionExecutor } = await import("../scripts/executor/ActionExecutor.js");
 
+// Every reader a test arms is switched off when it ends. Item readers wait ten
+// minutes on real timers (8.44), which would hold the process open.
+const armedReaders = [];
+const realArmReader = ActionExecutor.prototype._armReader;
+ActionExecutor.prototype._armReader = function (...args) {
+  const reader = realArmReader.apply(this, args);
+  armedReaders.push(reader);
+  return reader;
+};
+
 let pass = 0;
 const t = async (name, fn) => {
   spoken.length = 0;
-  await fn();
+  try {
+    await fn();
+  } finally {
+    for (const reader of armedReaders.splice(0)) reader.off();
+  }
   pass++;
   console.log("  ok -", name);
 };
@@ -305,6 +319,114 @@ await t("a pool read keeps its name when the pool's own feature abbreviates the 
   assert.equal(res.resolve("grit").actionItem.actionType, "pool_read");
   assert.equal(res.resolve("gritu").actionItem.id, "item_grit");
   assert.equal(res.collisionCount, 0);
+});
+
+// --- one reader per command (8.46), late cards still read (8.44) ---
+
+/** Hand a chat card to every createChatMessage listener, as Foundry does. */
+function postCard(message) {
+  for (const fn of hookHandlers.createChatMessage ?? []) fn(message);
+}
+
+/** Capture what the readers announce, in order. */
+function hearReadouts() {
+  const heard = [];
+  const tts = game.folkenQuickMenu.tts;
+  const saved = { attack: tts.announceAttackResult, roll: tts.announceRollResult };
+  tts.announceAttackResult = (message) => heard.push(["card", message]);
+  tts.announceRollResult = (total) => heard.push(["roll", total]);
+  Object.defineProperty(heard, "restore", { value: () => { tts.announceAttackResult = saved.attack; tts.announceRollResult = saved.roll; } });
+  return heard;
+}
+
+const rayCard = (total) => ({ system: { item: "Actor.a1.Item.d" }, rolls: [{ total }] });
+
+await t("a skill typed while a spell rolls keeps both readers, each reads its own card (8.46)", async () => {
+  const heard = hearReadouts();
+  try {
+    const book = spontaneousBook({ 6: 2 });
+    const spell = { id: "d", name: "Disintegrate", system: { level: 6, spellbook: "primary" }, spellbook: book, use: async () => ({}) };
+    const actor = makeActor({ items: [spell], books: { primary: book } });
+    actor.rollSkill = async () => {};
+    const ex = new ActionExecutor();
+    await ex.execute({ actionType: "spell", itemId: "d", label: "Disintegrate" }, actor);
+    await ex.execute({ actionType: "skill", skillKey: "kar", label: "Arcana" }, actor);
+    assert.equal(ex._readers.size, 2, "the skill dropped the spell's reader");
+    assert.equal(ex.hasPendingReader, true);
+    assert.ok(ex._itemReaderFor("d"), "the spell's reader is not an item reader");
+
+    postCard({ rolls: [{ total: 32 }] }); // Arcana's card: no item
+    const ray = rayCard(51);
+    postCard(ray);                         // the slow spell's card
+    assert.deepEqual(heard, [["roll", 32], ["card", ray]]);
+    assert.equal(ex.hasPendingReader, false);
+  } finally { heard.restore(); }
+});
+
+await t("a generic reader leaves a card some item reader is waiting for", async () => {
+  const heard = hearReadouts();
+  try {
+    const book = spontaneousBook({ 6: 2 });
+    const spell = { id: "d", name: "Disintegrate", system: { level: 6, spellbook: "primary" }, spellbook: book, use: async () => ({}) };
+    const actor = makeActor({ items: [spell], books: { primary: book } });
+    actor.rollSkill = async () => {};
+    const ex = new ActionExecutor();
+    await ex.execute({ actionType: "spell", itemId: "d", label: "Disintegrate" }, actor);
+    await ex.execute({ actionType: "skill", skillKey: "kar", label: "Arcana" }, actor);
+    const ray = rayCard(51);
+    postCard(ray); // the spell's card lands first
+    assert.deepEqual(heard, [["card", ray]], "the skill's reader took the spell's card");
+    postCard({ rolls: [{ total: 32 }] });
+    assert.deepEqual(heard, [["card", ray], ["roll", 32]]);
+  } finally { heard.restore(); }
+});
+
+await t("two casts of one spell get a card each, not the first card twice", async () => {
+  const heard = hearReadouts();
+  try {
+    const book = spontaneousBook({ 6: 2 });
+    const spell = { id: "d", name: "Disintegrate", system: { level: 6, spellbook: "primary" }, spellbook: book, use: async () => ({}) };
+    const actor = makeActor({ items: [spell], books: { primary: book } });
+    const ex = new ActionExecutor();
+    await ex.execute({ actionType: "spell", itemId: "d", label: "Disintegrate" }, actor);
+    await ex.execute({ actionType: "spell", itemId: "d", label: "Disintegrate" }, actor);
+    const first = rayCard(40), second = rayCard(22);
+    postCard(first);
+    postCard(second);
+    assert.deepEqual(heard, [["card", first], ["card", second]]);
+    assert.equal(ex.hasPendingReader, false);
+  } finally { heard.restore(); }
+});
+
+await t("an attack waits for its own weapon's card", async () => {
+  const heard = hearReadouts();
+  try {
+    const punch = { id: "p", name: "Punch", system: {}, use: async () => ({}) };
+    const ex = new ActionExecutor();
+    await ex.execute({ actionType: "attack", itemId: "p", label: "Punch" }, makeActor({ items: [punch] }));
+    assert.ok(ex._itemReaderFor("p"), "the attack's reader is not an item reader");
+    postCard({ rolls: [{ total: 9 }] }); // someone's plain roll: not the punch
+    assert.deepEqual(heard, []);
+    const card = { system: { item: "Actor.a1.Item.p" }, rolls: [{ total: 18 }] };
+    postCard(card);
+    assert.deepEqual(heard, [["card", card]]);
+  } finally { heard.restore(); }
+});
+
+await t("a slow spell says once that it is waiting, and its card is still read (8.44)", async () => {
+  const heard = hearReadouts();
+  try {
+    const book = spontaneousBook({ 6: 2 });
+    const spell = { id: "d", name: "Disintegrate", system: { level: 6, spellbook: "primary" }, spellbook: book, use: async () => ({}) };
+    const ex = new ActionExecutor();
+    await ex.execute({ actionType: "spell", itemId: "d", label: "Disintegrate" }, makeActor({ items: [spell], books: { primary: book } }));
+    await new Promise((r) => setTimeout(r, 3200));
+    assert.deepEqual(spoken, ["Disintegrate, waiting on the dice."]);
+    const ray = rayCard(51);
+    postCard(ray);
+    assert.deepEqual(heard, [["card", ray]]);
+    assert.deepEqual(spoken, ["Disintegrate, waiting on the dice."]);
+  } finally { heard.restore(); }
 });
 
 console.log(`\n${pass} assertions passed.`);

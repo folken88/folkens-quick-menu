@@ -23,10 +23,15 @@
  * @param {object}   deps.hooks     { on(event, fn) -> id, off(event, id) }
  * @param {object}   deps.timers    { set(fn, ms) -> id, clear(id) }
  * @param {function} deps.isOwn     (message) => boolean
+ * @param {function} [deps.match]   (message) => boolean; a card that is ours
+ *                                  but fails this is left for another reader
  * @param {function} deps.handler   (message) => void, called once
  * @param {number}   [deps.timeout] give up after this long
+ * @param {number}   [deps.waitMs]  if nothing matched by then, call onWaiting
+ * @param {function} [deps.onWaiting] () => void, called at most once
  * @param {string}   [deps.event]
- * @returns {{off: function, isPending: function}}
+ * @returns {{off: function, isPending: function, done: Promise<object|null>}}
+ *          done resolves to the matched message, or null on timeout or off()
  */
 export function armAnnouncement({
   hooks,
@@ -36,28 +41,41 @@ export function armAnnouncement({
   // the real default path was broken. Caught by running it in the live client.
   timers = { set: (fn, ms) => setTimeout(fn, ms), clear: (id) => clearTimeout(id) },
   isOwn = () => true,
+  // Several readers can be armed at once (8.46): a spell still rolling its dice
+  // and a skill typed meanwhile. Each takes only the card it is waiting for.
+  match = () => true,
   handler,
   timeout = 20000,
+  waitMs = 0,
+  onWaiting = null,
   event = 'createChatMessage',
 } = {}) {
   let finished = false;
   let timer = null;
+  let waitTimer = null;
   let hookId = null;
+  let resolveDone;
+  const done = new Promise((resolve) => { resolveDone = resolve; });
 
-  const off = () => {
+  const finish = (message) => {
     if (finished) return;
     finished = true;
     if (timer !== null) timers.clear(timer);
+    if (waitTimer !== null) timers.clear(waitTimer);
     // The actual unregister. Foundry returns a NUMBER from Hooks.on, so this
     // has to be hooks.off(event, id) - never id.off().
     if (hookId !== null) hooks.off(event, hookId);
+    resolveDone(message);
   };
+  const off = () => finish(null);
 
   hookId = hooks.on(event, (message) => {
     if (finished) return;
-    // Someone else's card: stay armed, we are still waiting for our own.
+    // Someone else's card, or ours for another reader: stay armed, we are
+    // still waiting for our own.
     if (!isOwn(message)) return;
-    off();
+    if (!match(message)) return;
+    finish(message);
     try {
       handler?.(message);
     } catch (error) {
@@ -66,6 +84,19 @@ export function armAnnouncement({
   });
 
   timer = timers.set(off, timeout);
+  // A card slower than this (hidden tab, Dice So Nice stalled, 8.44) is still
+  // read when it comes; this only says once that we are still waiting.
+  if (waitMs > 0 && typeof onWaiting === 'function') {
+    waitTimer = timers.set(() => {
+      waitTimer = null;
+      if (finished) return;
+      try {
+        onWaiting();
+      } catch (error) {
+        console.error('folken-games-quick-menu | waiting line failed:', error);
+      }
+    }, waitMs);
+  }
 
-  return { off, isPending: () => !finished };
+  return { off, isPending: () => !finished, done };
 }

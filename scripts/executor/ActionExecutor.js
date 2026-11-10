@@ -6,6 +6,7 @@
 
 import { debugLog } from '../module.js';
 import { isOwnMessage } from '../chat/RollTotals.js';
+import { cardItemId } from '../chat/CardNotes.js';
 import { armAnnouncement } from './Announcer.js';
 import { canOfferUpcast, findUpcastLevel, planUpcast, slotsAt, ordinal,
          upcastPrompt, upcastConfirmation, noSlotsMessage } from '../spells/Upcast.js';
@@ -272,26 +273,97 @@ export class ActionExecutor {
    * @returns {{off: function}} call off() to cancel early
    */
   /**
-   * Arm a one-shot announcement for the roll we are about to make.
+   * Arm a reader for the card a command is about to make.
    *
-   * Only one is ever pending. A previous one is cancelled first, so a roll that
-   * produced no card cannot still be waiting when the next command runs and
-   * steal its result. That is what makes the long window below safe.
+   * Until 0.20.0 only one was ever pending: arming a new one cancelled the
+   * last. Josh, 8.46: a skill typed while a many-dice spell was still rolling
+   * dropped the spell's reader, and its damage was never read. Now every
+   * command keeps its own reader until its card comes, it times out, or its own
+   * failure path switches it off; readers are told apart by what they match.
+   *
+   * A card goes to one reader only. Foundry hands the same message object to
+   * every listener in the order they were armed, so the oldest reader that
+   * matches claims it and the rest leave it alone - two Punches in a row get a
+   * card each instead of both reading the first.
+   *
+   * @returns {{off: function, isPending: function, done: Promise, itemId: ?string}}
+   */
+  _armReader({ handler, match = () => true, itemId = null, timeout = 600000, waitMs = 0, onWaiting = null } = {}) {
+    this._readers ??= new Set();
+    this._claimed ??= new WeakSet();
+    let reader = null;
+    const forget = () => { if (reader) this._readers.delete(reader); };
+    const armed = armAnnouncement({
+      hooks: Hooks,
+      isOwn: (message) => isOwnMessage(message, game.user?.id),
+      match: (message) => !(message && this._claimed.has(message)) && match(message),
+      handler: (message) => {
+        if (message && typeof message === 'object') this._claimed.add(message);
+        forget();
+        handler?.(message);
+      },
+      timeout,
+      waitMs,
+      onWaiting,
+    });
+    reader = {
+      ...armed,
+      itemId,
+      off: () => { forget(); armed.off(); },
+    };
+    // The timeout ends a reader from inside armAnnouncement; done covers it.
+    armed.done.then(forget);
+    this._readers.add(reader);
+    this._pending = reader;
+    return reader;
+  }
+
+  /** Is any command still waiting for its card? */
+  get hasPendingReader() {
+    return (this._readers?.size ?? 0) > 0;
+  }
+
+  /** The oldest pending reader waiting for this item's card, or null. */
+  _itemReaderFor(itemId) {
+    if (itemId === null || itemId === undefined) return null;
+    for (const reader of this._readers ?? []) {
+      if (reader.itemId === itemId && reader.isPending()) return reader;
+    }
+    return null;
+  }
+
+  /**
+   * A reader for a command whose card carries no item to tell it by: skills,
+   * saves, plain /r rolls. It takes only cards no item reader is waiting for,
+   * so it cannot steal a slow spell's card.
    *
    * The window is 20 seconds because attack cards are slow: Josh measured key to
    * card at 3.4 to 6.2 seconds on Punch, because Dice So Nice animates the dice
-   * first and PF1 only creates the card once they finish. The 5 seconds this
-   * shipped with in 0.13.0 would have cut off some attack readouts.
+   * first and PF1 only creates the card once they finish.
    */
-  _announceOnce(handler, { timeout = 20000 } = {}) {
-    this._pending?.off();
-    this._pending = armAnnouncement({
-      hooks: Hooks,
-      isOwn: (message) => isOwnMessage(message, game.user?.id),
+  _announceOnce(handler, opts = {}) {
+    return this._armReader({
       handler,
-      timeout,
+      match: (message) => !this._itemReaderFor(cardItemId(message)),
+      timeout: 20000,
+      ...opts,
     });
-    return this._pending;
+  }
+
+  /**
+   * A reader that waits for this item's card and nothing else. Ten minutes,
+   * because a card held up by a hidden tab or stalled dice is still worth
+   * hearing (8.44); after three seconds it says once that it is waiting.
+   */
+  _armItemReader(item, handler) {
+    return this._armReader({
+      handler,
+      match: (message) => cardItemId(message) === item.id,
+      itemId: item.id,
+      timeout: 600000,
+      waitMs: 3000,
+      onWaiting: () => this._tts()?.speak(`${item.name}, waiting on the dice.`, { interrupt: false, queue: true }),
+    });
   }
 
   _hookRollResult() {
@@ -310,8 +382,10 @@ export class ActionExecutor {
     return this._hookRollResult();
   }
 
-  _hookAttackResult() {
-    return this._announceOnce((message) => this._tts()?.announceAttackResult(message));
+  /** Maneuvers and PF2e attacks have no item in hand and use the generic reader. */
+  _hookAttackResult(item = null) {
+    const handler = (message) => this._tts()?.announceAttackResult(message);
+    return item?.id ? this._armItemReader(item, handler) : this._announceOnce(handler);
   }
 
   /**
@@ -323,8 +397,9 @@ export class ActionExecutor {
    */
   _hookSpellResult(item = null) {
     const healing = this._isHealing(item);
-    return this._announceOnce((message) =>
-      this._tts()?.announceAttackResult(message, { quietIfNone: true, healing, item }));
+    const handler = (message) =>
+      this._tts()?.announceAttackResult(message, { quietIfNone: true, healing, item });
+    return item?.id ? this._armItemReader(item, handler) : this._announceOnce(handler);
   }
 
   _createPF2eFakeEvent() {
@@ -377,7 +452,7 @@ export class ActionExecutor {
     const item = actor.items.get(actionItem.itemId);
     if (!item) { this._missing(); return; }
 
-    const hookId = this._hookAttackResult();
+    const hookId = this._hookAttackResult(item);
     try {
       // PF1 ignores a fullAttack option on use(); the Normal entry is made a
       // single attack through the pf1CreateActionUse hook instead.
