@@ -101,11 +101,11 @@ t("the first build reports every generated code as fresh; a rebuild reports only
 // --- the player's own aliases ---
 
 t("a player alias wins, and the generated holder it displaces is reported as moved", () => {
-  const items = [skill("Perception", "per"), consumable("ret", "Potion of Expeditious Retreat", 1)];
+  const items = [skill("Perception", "per"), consumable("ret", "Potion of Expeditious Retreat", 1), consumable("k", "Scroll of Knock", 2)];
   const first = assignCodes(items);
   assert.equal(codeOf(first, "item_ret"), "pere");
-  const renamed = assignCodes(items, { saved: first.assigned, aliases: { skill_per: "pere" } });
-  assert.equal(codeOf(renamed, "skill_per"), "pere");
+  const renamed = assignCodes(items, { saved: first.assigned, aliases: { item_k: "pere" } });
+  assert.equal(codeOf(renamed, "item_k"), "pere");
   assert.notEqual(codeOf(renamed, "item_ret"), "pere");
   assert.equal(renamed.moved.length, 1);
   assert.equal(renamed.moved[0].label, "Potion of Expeditious Retreat");
@@ -121,6 +121,21 @@ t("a feature named like a pool read takes the code plus u", () => {
   ]);
   assert.equal(codeOf(r, "pool_x"), "grit");
   assert.equal(codeOf(r, "item_gritfeat"), "gritu");
+});
+
+t("an alias cannot take a core code; it is dropped and reported (1.2)", () => {
+  const r = assignCodes([skill("Intimidate", "int"), stat("Intelligence", "int")], { aliases: { stat_int: "int", skill_int: "int2" } });
+  assert.equal(codeOf(r, "skill_int"), "itm");
+  assert.deepEqual(r.dropped.map(d => d.key).sort(), ["skill_int", "stat_int"]);
+});
+
+t("a remembered code is never the alias, so reset moves back and says so (1.9)", () => {
+  const items = [consumable("k", "Scroll of Knock", 1), skill("Perception", "per")];
+  const aliased = assignCodes(items, { aliases: { item_k: "skn" } });
+  assert.equal(codeOf(aliased, "item_k"), "skn");
+  assert.notEqual(aliased.assigned[stableKey(items[0])], "skn");
+  const reset = assignCodes(items, { saved: aliased.assigned });
+  assert.equal(codeOf(reset, "item_k"), aliased.assigned[stableKey(items[0])]);
 });
 
 t("tiers and keys", () => {

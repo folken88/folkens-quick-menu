@@ -51,7 +51,7 @@ export class AbbreviationResolver {
     //    anything new, oldest first. Nothing already assigned ever moves. See
     //    CommandTiers.js for the rule and why (Josh, 2026-10-31: a potion took
     //    his Perception command mid-fight).
-    const { map, reverse, assigned, fresh, moved } = assignCodes(allActions, { aliases: playerAliases, saved });
+    const { map, reverse, assigned, fresh, moved, dropped } = assignCodes(allActions, { aliases: playerAliases, saved });
     this.abbreviationMap = map;
     this.reverseMap = reverse;
     this.lastBuild = { fresh, moved };
@@ -61,6 +61,24 @@ export class AbbreviationResolver {
     if (JSON.stringify(assigned) !== JSON.stringify(saved) && actor.isOwner !== false) {
       try { await actor.setFlag(MODULE_ID, ASSIGNED_KEY, assigned); } catch (error) {
         debugLog('AbbreviationResolver: could not remember codes:', error);
+      }
+    }
+
+    // An alias that sits on a core item or collides with a core code can never
+    // work: clear it from the flag and say what the command is instead.
+    if (dropped.length) {
+      if (actor.isOwner !== false) {
+        try {
+          const flagged = { ...(actor.getFlag(MODULE_ID, FLAG_KEY) || {}) };
+          for (const d of dropped) delete flagged[d.key];
+          await actor.setFlag(MODULE_ID, FLAG_KEY, flagged);
+        } catch (error) {
+          debugLog('AbbreviationResolver: could not clear dropped aliases:', error);
+        }
+      }
+      const tts = game.folkenQuickMenu?.tts;
+      for (const d of dropped) {
+        tts?.speak(`Alias ${spellOut(d.alias)} cleared. ${d.label} is slash ${spellOut(reverse.get(d.key))}.`);
       }
     }
 

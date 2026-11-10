@@ -63,10 +63,12 @@ const clean = (code) => String(code ?? '').toLowerCase().replace(/[^a-z0-9]/g, '
  * @param {object}   [opts.aliases] player aliases by action item id (/fqm rename)
  * @param {object}   [opts.saved]   codes remembered from the last build, by stableKey
  * @returns {{map: Map<string, object>, reverse: Map<string, string>, assigned: object,
- *            fresh: object[], moved: Array<{key: string, label: string, from: string, to: string}>}}
+ *            fresh: object[], moved: Array<{key: string, label: string, from: string, to: string}>,
+ *            dropped: Array<{key: string, alias: string, label: string}>}}
  *   `assigned` is what to remember for next time; `fresh` are tier 2 and 3 items
  *   that had no remembered code; `moved` are remembered codes that could not be
- *   kept (only a player alias or a core code can take one).
+ *   kept (only a player alias or a core code can take one); `dropped` are
+ *   aliases refused because they sit on a core item or collide with a core code.
  */
 export function assignCodes(items, { aliases = {}, saved = {} } = {}) {
   const map = new Map();
@@ -80,11 +82,22 @@ export function assignCodes(items, { aliases = {}, saved = {} } = {}) {
     || String(a.label ?? '').localeCompare(String(b.label ?? ''))
     || String(a.id ?? '').localeCompare(String(b.id ?? '')));
 
-  // A. The player's own aliases win outright.
+  // A. The player's own aliases win over everything except the core: an alias
+  //    never lands on a core item, and never takes a core item's natural code.
+  //    Those are dropped and reported so the caller can clear them and say so.
+  const coreCodes = new Set(ordered.filter(i => tierOf(i) === 1)
+    .map(i => clean(generateAbbreviation(i.label, i))).filter(Boolean));
+  const dropped = [];
+  const aliasPlaced = new Set();
   for (const item of ordered) {
     const alias = clean(aliases[item.id]);
     if (!alias) continue;
+    if (tierOf(item) === 1 || coreCodes.has(alias)) {
+      dropped.push({ key: item.id, alias, label: item.label });
+      continue;
+    }
     take(isFree(alias) ? alias : extendUntilFree(item, alias, map), item);
+    aliasPlaced.add(item.id);
   }
 
   // B. The fixed core, explicit codes (pool reads, /cmb, /clc2) first.
@@ -115,7 +128,12 @@ export function assignCodes(items, { aliases = {}, saved = {} } = {}) {
 
   const assigned = {};
   for (const item of ordered) {
-    if (tierOf(item) > 1 && reverse.has(item.id)) assigned[stableKey(item)] = reverse.get(item.id);
+    if (tierOf(item) <= 1 || !reverse.has(item.id)) continue;
+    // An alias is the player's, not a remembered code: keep the code the item
+    // would have had, so /fqm reset restores it.
+    assigned[stableKey(item)] = aliasPlaced.has(item.id)
+      ? (clean(saved[stableKey(item)]) || clean(generateAbbreviation(item.label, item)))
+      : reverse.get(item.id);
   }
   const moved = [];
   for (const [key, from] of Object.entries(saved)) {
@@ -125,7 +143,7 @@ export function assignCodes(items, { aliases = {}, saved = {} } = {}) {
       moved.push({ key, label: item?.label ?? key, from: clean(from), to });
     }
   }
-  return { map, reverse, assigned, fresh, moved };
+  return { map, reverse, assigned, fresh, moved, dropped };
 }
 
 /**

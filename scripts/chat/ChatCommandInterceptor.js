@@ -632,7 +632,7 @@ export class ChatCommandInterceptor {
       this._fail('Reset failed.');
       return;
     }
-    this._whisper(`All custom aliases cleared for <strong>${actor.name}</strong>. Type <strong>/scan</strong> to rebuild.`);
+    this._whisper(`All custom aliases cleared for <strong>${actor.name}</strong>.`);
     game.folkenQuickMenu?.tts?.speak('All aliases cleared.');
   }
 
