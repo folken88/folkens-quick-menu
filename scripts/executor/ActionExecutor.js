@@ -14,6 +14,9 @@ import { playEarcon } from '../tts/Earcons.js';
 import { useOutcome, usesLeftLine, LAST_ONE } from './UseOutcome.js';
 import { healingOf } from './Healing.js';
 import { switchBuffOn } from './BuffOn.js';
+import { composeUseLine } from './UseReport.js';
+import { spellDetailLine } from '../chat/SpellDetail.js';
+import { rolledNotes } from '../chat/CardNotes.js';
 import { poolReadLine } from '../chat/StateSpeech.js';
 import { firstWithStock, stockLine, ammoReadLine } from '../character/Stock.js';
 
@@ -392,11 +395,16 @@ export class ActionExecutor {
    * all: Shield or Mage Armor have nothing to report beyond the name already
    * spoken when the cast was accepted.
    */
-  _hookSpellResult(item = null) {
+  _hookSpellResult(item = null, handler = null) {
     const healing = this._isHealing(item);
-    const handler = (message) =>
+    handler ??= (message) =>
       this._tts()?.announceAttackResult(message, { quietIfNone: true, healing, item });
     return item?.id ? this._armItemReader(item, handler) : this._announceOnce(handler);
+  }
+
+  /** How long the use line waits for the card (10.16); tests replace it. */
+  _sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   _createPF2eFakeEvent() {
@@ -722,45 +730,68 @@ export class ActionExecutor {
    *
    * Josh, 2026-10-09: scrolls with quantity 0 showed "You don't have any more of
    * that item" on screen and said "sent to chat". PF1 returns a refusal code
-   * rather than throwing, so it is checked. On success he hears how many uses
-   * are left - "2 of 3 left" - instead of "sent to chat".
+   * rather than throwing, so it is checked. On success he hears one use line,
+   * name first: "Rod, 7 fire damage. 2 of 3 left." (10.16). A card slower than
+   * 1.5 s gets the name and count now and its result when it comes.
    */
-  async _useItem(item, actor, actionItem = null) {
-    const hookId = this._hookSpellResult(item);
+  async _useItem(item, actor, actionItem = null, { forOther = false } = {}) {
+    // The reader does nothing by itself: the use line below decides who speaks
+    // the card, so its result is heard once (10.16).
+    let lateCard = null;
+    const reader = this._hookSpellResult(item, (message) => lateCard?.(message));
     try {
       const outcome = useOutcome(await this._pf1Use(item));
-      if (!outcome.ok) { hookId.off(); this._fail(outcome.reason); return; }
+      if (!outcome.ok) { reader.off(); this._fail(outcome.reason); return; }
 
       // A buff potion switches its buff on - the sheet's, or one imported from
       // the compendium - and says so. Nothing to switch on is not an error.
+      // Not waited for: nothing about buffs holds up the use line.
       if (item.type === 'consumable') {
-        try {
-          await switchBuffOn(actor, item, {
-            packs: typeof game !== 'undefined' ? [...(game.packs ?? [])] : [],
-            speak: (line) => this._tts()?.speak(line, { interrupt: false, queue: true }),
-            fromCompendium: (doc) => (typeof game !== 'undefined' && game.items?.fromCompendium)
-              ? game.items.fromCompendium(doc, { clearFolder: true }) : doc.toObject(),
-          });
-        } catch (error) {
-          console.warn('folken-games-quick-menu | buff switch failed:', error);
-        }
+        Promise.resolve().then(() => switchBuffOn(actor, item, {
+          packs: typeof game !== 'undefined' ? [...(game.packs ?? [])] : [],
+          speak: (line) => this._tts()?.speak(line, { interrupt: false, queue: true }),
+          fromCompendium: (doc) => (typeof game !== 'undefined' && game.items?.fromCompendium)
+            ? game.items.fromCompendium(doc, { clearFolder: true }) : doc.toObject(),
+        })).catch((error) => console.warn('folken-games-quick-menu | buff switch failed:', error));
       }
 
       // Read AFTER the use, and across every stack with this name, so two
       // half-empty potion stacks are counted as one supply.
       const stacks = this._stacks(actor, item, actionItem);
-      if (!stacks.length) {
-        this._tts()?.speak(LAST_ONE, { interrupt: false, queue: true });
+      let count = '';
+      if (!stacks.length) count = LAST_ONE;
+      else {
+        count = (stacks.length > 1 ? stockLine(stacks) : usesLeftLine(stacks[0])) || '';
+        // A negative charge cost gives a point back. Josh, 2026-11-01: Regain
+        // Grit said "2 of 3 left.", the same words as spending one.
+        if (count && this._chargeCost(item) < 0) count = `Regained. ${count.replace(/ left\.$/, '.')}`;
+      }
+
+      // Most cards are up within a moment of the use; wait that long so the
+      // result rides in the same line as the name and the count.
+      const tts = this._tts();
+      const healing = this._isHealing(item);
+      const terse = tts?.terse ?? true;
+      const detail = spellDetailLine(item, { terse });
+      const speak = (line) => this._tts()?.speak(line, { interrupt: false, queue: true });
+      const fromCard = (message) => ({
+        result: this._tts()?.resultLine?.(message, { healing }) ?? '',
+        notes: rolledNotes(message?.content ?? ''),
+      });
+      let msg = await Promise.race([reader.done, this._sleep(1500)]);
+      // A card that landed as the wait ended has already finished the reader.
+      if (!msg && !reader.isPending()) msg = await reader.done;
+      if (msg) {
+        reader.off();
+        speak(composeUseLine({ name: item.name, ...fromCard(msg), detail, count, forOther }));
         return;
       }
-      let left = stacks.length > 1 ? stockLine(stacks) : usesLeftLine(stacks[0]);
-      // A negative charge cost gives a point back. Josh, 2026-11-01: Regain
-      // Grit said "2 of 3 left.", the same words as spending one.
-      if (left && this._chargeCost(item) < 0) left = `Regained. ${left.replace(/ left\.$/, '.')}`;
-      if (left) this._tts()?.speak(left, { interrupt: false, queue: true });
+      speak(composeUseLine({ name: item.name, detail, count, forOther }));
+      // Late card: the name and its result only; detail and count were said.
+      lateCard = (message) => speak(composeUseLine({ name: item.name, ...fromCard(message) }));
     } catch (error) {
       console.error('Item use error:', error);
-      hookId.off();
+      reader.off();
       this._fail(`${item.name} failed.`);
     }
   }

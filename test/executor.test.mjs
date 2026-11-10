@@ -21,7 +21,9 @@ globalThis.game = {
   combat: null,
   settings: { get: () => true },
   folkenQuickMenu: {
-    tts: { liveVolume: 1, speak: (text) => spoken.push(text), announceAttackResult() {}, announceRollResult() {} },
+    tts: { liveVolume: 1, speak: (text) => spoken.push(text), announceAttackResult() {}, announceRollResult() {},
+      // The rendered totals; a test card carries them ready-made as `result`.
+      resultLine: (message) => message?.result ?? "", terse: true },
     systemDetector: { isPF2e: () => false },
   },
   actors: { get: () => null },
@@ -33,6 +35,9 @@ const { ActionExecutor } = await import("../scripts/executor/ActionExecutor.js")
 // minutes on real timers (8.44), which would hold the process open.
 const armedReaders = [];
 const realArmReader = ActionExecutor.prototype._armReader;
+// The use line waits up to 1.5 s for the card (10.16). No test waits: a card
+// either arrives during use() or comes later, by hand.
+ActionExecutor.prototype._sleep = async () => undefined;
 ActionExecutor.prototype._armReader = function (...args) {
   const reader = realArmReader.apply(this, args);
   armedReaders.push(reader);
@@ -128,7 +133,67 @@ await t("a rod after a use says how many uses are left", async () => {
   const ex = new ActionExecutor();
   await ex.execute({ actionType: "item", itemId: "r", label: "Rod" }, actor);
   ex._pending?.off();
-  assert.deepEqual(spoken, ["2 of 3 left."]);
+  assert.deepEqual(spoken, ["Rod. 2 of 3 left."]);
+});
+
+// --- the use line (10.16): name first, result after it, never "Card posted." ---
+
+const rodCard = (extra = {}) => ({ system: { item: "Actor.a1.Item.r" }, ...extra });
+
+await t("a card that comes during the use is one line: name, result, count", async () => {
+  const rod = { id: "r", name: "Rod", system: { uses: { per: "day", value: 2, max: 3 } } };
+  rod.use = async () => { postCard(rodCard({ result: "7 fire damage." })); return {}; };
+  const ex = new ActionExecutor();
+  await ex.execute({ actionType: "item", itemId: "r", label: "Rod" }, makeActor({ items: [rod] }));
+  assert.deepEqual(spoken, ["Rod, 7 fire damage. 2 of 3 left."]);
+  assert.equal(ex.hasPendingReader, false, "the reader was left armed");
+});
+
+await t("a card with nothing to roll still says the name, never Card posted", async () => {
+  const rod = { id: "r", name: "Rod", system: { uses: { per: "day", value: 2, max: 3 } } };
+  rod.use = async () => { postCard(rodCard()); return {}; };
+  await new ActionExecutor().execute({ actionType: "item", itemId: "r", label: "Rod" }, makeActor({ items: [rod] }));
+  assert.deepEqual(spoken, ["Rod. 2 of 3 left."]);
+});
+
+await t("the card's rolled notes join the line", async () => {
+  const rod = { id: "r", name: "Rod", system: { uses: { per: "day", value: 2, max: 3 } } };
+  const content = '<span class="tag"><a class="inline-roll">Caster Level Check 14</a></span>';
+  rod.use = async () => { postCard(rodCard({ result: "Ref DC 17.", content })); return {}; };
+  await new ActionExecutor().execute({ actionType: "item", itemId: "r", label: "Rod" }, makeActor({ items: [rod] }));
+  assert.equal(spoken.length, 1);
+  assert.match(spoken[0], /^Rod, Ref DC 17\. .*Caster Level Check 14.*\. 2 of 3 left\.$/);
+});
+
+await t("a late card speaks name and result only, after the use line", async () => {
+  const rod = { id: "r", name: "Rod", system: { uses: { per: "day", value: 2, max: 3 } } };
+  rod.use = async () => ({});
+  const ex = new ActionExecutor();
+  ex._timers = makeClock();
+  await ex.execute({ actionType: "item", itemId: "r", label: "Rod" }, makeActor({ items: [rod] }));
+  assert.deepEqual(spoken, ["Rod. 2 of 3 left."]);
+  postCard(rodCard({ result: "7 fire damage." }));
+  assert.deepEqual(spoken, ["Rod. 2 of 3 left.", "Rod, 7 fire damage."]);
+  postCard(rodCard({ result: "9 fire damage." })); // a second card is not this use's
+  assert.equal(spoken.length, 2);
+});
+
+await t("a card that lands as the wait ends is still read once, in the line", async () => {
+  const rod = { id: "r", name: "Rod", system: { uses: { per: "day", value: 2, max: 3 } } };
+  rod.use = async () => ({});
+  const ex = new ActionExecutor();
+  ex._sleep = async () => { postCard(rodCard({ result: "7 fire damage." })); };
+  await ex.execute({ actionType: "item", itemId: "r", label: "Rod" }, makeActor({ items: [rod] }));
+  assert.deepEqual(spoken, ["Rod, 7 fire damage. 2 of 3 left."]);
+});
+
+await t("for someone else is said after the name", async () => {
+  const rod = { id: "r", name: "Rod", system: { uses: { per: "day", value: 2, max: 3 } } };
+  rod.use = async () => ({});
+  const ex = new ActionExecutor();
+  await ex._useItem(rod, makeActor({ items: [rod] }), null, { forOther: true });
+  ex._pending?.off();
+  assert.deepEqual(spoken, ["Rod, for someone else. 2 of 3 left."]);
 });
 
 await t("using the last of something says it was the last", async () => {
@@ -139,7 +204,7 @@ await t("using the last of something says it was the last", async () => {
   const ex = new ActionExecutor();
   await ex.execute({ actionType: "item", itemId: "s", label: "Scroll" }, actor);
   ex._pending?.off();
-  assert.equal(spoken.at(-1), "That was the last one.");
+  assert.equal(spoken.at(-1), "Scroll. That was the last one.");
 });
 
 await t("an item gone since the last scan says how to fix it", async () => {

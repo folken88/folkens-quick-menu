@@ -575,6 +575,24 @@ export class TTSManager {
   }
 
   /**
+   * Short while a combat is running, fuller outside it. A full attack can be
+   * five numbers in a row; mid-fight they should arrive bare, and out of
+   * combat there is room to label them.
+   */
+  get terse() {
+    return shouldBeTerse(this.detailMode, typeof game !== 'undefined' && !!game.combat);
+  }
+
+  /**
+   * The card's rolled totals as words, without speaking them: '' when the card
+   * carries none. The use line (10.16) puts this straight after the name.
+   */
+  resultLine(chatMessage, { healing = false } = {}) {
+    if (!chatMessage) return '';
+    return renderAttackTotals(extractRollTotals(chatMessage), { terse: this.terse, healing }) || '';
+  }
+
+  /**
    * Announce an attack or maneuver result.
    *
    * This read only chatMessage.rolls until 0.12.0, which PF1 leaves empty on an
@@ -591,11 +609,7 @@ export class TTSManager {
     if (!getSetting('enableTTS') || !chatMessage) return;
 
     const totals = extractRollTotals(chatMessage);
-
-    // Short while a combat is running, fuller outside it. A full attack can be
-    // five numbers in a row; mid-fight they should arrive bare, and out of
-    // combat there is room to label them.
-    const terse = shouldBeTerse(this.detailMode, !!game.combat);
+    const terse = this.terse;
 
     const line = renderAttackTotals(totals, { terse, healing });
     // For a spell or item: range, area, duration and SR at full detail, and
@@ -612,10 +626,10 @@ export class TTSManager {
     }
 
     // A spell or item with nothing to roll - Shield, Mage Armor - has no number,
-    // and that is not an error. Since 0.17.0 its name is not spoken either, so
-    // the blip was followed by nothing. Josh, 2026-11-01: he cannot tell that
-    // from a lost result. Say the card went up.
-    if (quietIfNone) { this.speak(withDetail('Card posted.'), { interrupt: false, queue: true }); return; }
+    // and that is not an error. Josh, 2026-11-01: he cannot tell silence from a
+    // lost result, and 0.19.0 said "Card posted." for it, which names nothing
+    // (10.16). Say what was used.
+    if (quietIfNone) { this.speak(withDetail(`${item?.name ?? 'Done'}.`), { interrupt: false, queue: true }); return; }
 
     console.warn('folken-games-quick-menu | no roll total found on this card:',
       describeShape(chatMessage));
