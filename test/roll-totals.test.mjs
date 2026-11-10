@@ -295,4 +295,19 @@ t("when both exist the modern one wins, so the deprecated getter is not touched"
   assert.equal(extractRollTotals(card).attack, 30);
 });
 
+t("a natural 20 on an always-hit says hits, never threat (6.9)", () => {
+  const r = extractRollTotals({ system: { rolls: { attacks: [{ attack: d20(20, 103), damage: [dmg(3, ["force"])] }] } } });
+  assert.equal(renderAttackTotals(r), "natural 20, hits, 3 damage.");
+});
+
+t("a card whose save has a DC but no type speaks no DC (8.42)", () => {
+  const r = extractRollTotals({ system: { rolls: { attacks: [{ attack: d20(13, 20), damage: [dmg(2, ["acid"])] }] }, save: { dc: 20 } } });
+  assert.equal(renderAttackTotals(r), "33 to hit, 2 damage.");
+});
+
+t("a typed save still speaks its DC", () => {
+  const r = extractRollTotals({ system: { rolls: { attacks: [{ attack: null, damage: [dmg(40, ["electricity"])] }] }, save: { dc: 23, type: "ref" } } });
+  assert.equal(renderAttackTotals(r), "40 damage. Ref DC 23.");
+});
+
 console.log(`\n${pass} assertions passed.`);

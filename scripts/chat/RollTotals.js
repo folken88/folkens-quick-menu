@@ -239,17 +239,20 @@ export function renderAttackTotals(totals = {}, { terse = true, healing = false 
     if (attack === null || attack === undefined) return dmg;
     if (natural === 1) return 'natural 1, miss';
     const parts = [natural === 20 ? 'natural 20, hits' : toHit(attack)];
-    if (threat) parts.push('threat');
-    if (confirm !== null && confirm !== undefined) parts.push(`confirms ${confirm}`);
+    // An attack that always hits (+100) has nothing to threaten or confirm.
+    const alwaysHits = attack >= 100;
+    if (threat && !alwaysHits) parts.push('threat');
+    if (!alwaysHits && confirm !== null && confirm !== undefined) parts.push(`confirms ${confirm}`);
     if (dmg) parts.push(dmg);
-    if (threat && critTotal) parts.push(`${critTotal} on a crit`);
+    if (threat && !alwaysHits && critTotal) parts.push(`${critTotal} on a crit`);
     return parts.join(', ');
   };
   if (!attacks.some(a => one(a))) return '';
 
   // The save the target faces. A healing potion's "Will half; harmless" is
-  // not something anyone acts on, so healing skips it.
-  const dc = (!healing && totals.save?.dc) ? ` ${saveName(totals.save.type)} DC ${totals.save.dc}.` : '';
+  // not something anyone acts on, so healing skips it. A DC with no save type
+  // (Acid Splash, Magic Missile) is not a save, so it says nothing.
+  const dc = (!healing && totals.save?.dc && totals.save?.type) ? ` ${saveName(totals.save.type)} DC ${totals.save.dc}.` : '';
 
   if (attacks.length === 1) return one(attacks[0]) + '.' + dc;
   if (terse) return attacks.map(one).join('. ') + '.' + dc;
