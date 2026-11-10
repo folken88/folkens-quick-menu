@@ -254,47 +254,39 @@ export class ActionExecutor {
   }
 
   /**
-   * Announce the result of the roll we are about to make, once, and give up if
-   * it never arrives.
-   *
-   * Josh found the bug by reading the code, 2026-10-07: executeInitiativeRoll
-   * registered a one-time createChatMessage hook and then called rollInitiative.
-   * With no combat running, PF1 makes no message and throws no error - so the
-   * hook was never removed. It stayed armed, waiting, and would have read out
-   * the total of whatever chat message came next, possibly another player's.
-   *
-   * Every executor had the same leak; initiative was simply the one that could
-   * silently produce no message. Two guards now:
-   *
-   *  - only our own messages are considered, so an armed hook can never read
-   *    out someone else's number even if it is still waiting;
-   *  - the hook removes itself after a short wait, so it cannot stay armed.
-   *
-   * @returns {{off: function}} call off() to cancel early
-   */
-  /**
    * Arm a reader for the card a command is about to make.
+   *
+   * Josh found the first leak by reading the code, 2026-10-07: a hook armed for
+   * initiative with no combat running was never removed and would have read
+   * whatever card came next, possibly another player's. So only our own cards
+   * are considered, and every reader gives up after its timeout.
    *
    * Until 0.20.0 only one was ever pending: arming a new one cancelled the
    * last. Josh, 8.46: a skill typed while a many-dice spell was still rolling
-   * dropped the spell's reader, and its damage was never read. Now every
-   * command keeps its own reader until its card comes, it times out, or its own
-   * failure path switches it off; readers are told apart by what they match.
+   * dropped the spell's reader, and its damage was never read. Now an item
+   * reader (spell, item, attack) is never dropped by another command; it ends
+   * when its card comes, when it times out, or when its own failure path
+   * switches it off. Readers are told apart by what they match.
    *
    * A card goes to one reader only. Foundry hands the same message object to
    * every listener in the order they were armed, so the oldest reader that
    * matches claims it and the rest leave it alone - two Punches in a row get a
    * card each instead of both reading the first.
    *
+   * `timers` is a seam for tests; `this._timers` lets a test supply a clock for
+   * every reader an executor arms.
+   *
    * @returns {{off: function, isPending: function, done: Promise, itemId: ?string}}
    */
-  _armReader({ handler, match = () => true, itemId = null, timeout = 600000, waitMs = 0, onWaiting = null } = {}) {
+  _armReader({ handler, match = () => true, itemId = null, timeout = 600000, waitMs = 0,
+               onWaiting = null, onTimeout = null, timers = this._timers } = {}) {
     this._readers ??= new Set();
     this._claimed ??= new WeakSet();
     let reader = null;
     const forget = () => { if (reader) this._readers.delete(reader); };
     const armed = armAnnouncement({
       hooks: Hooks,
+      timers,
       isOwn: (message) => isOwnMessage(message, game.user?.id),
       match: (message) => !(message && this._claimed.has(message)) && match(message),
       handler: (message) => {
@@ -305,14 +297,13 @@ export class ActionExecutor {
       timeout,
       waitMs,
       onWaiting,
+      onTimeout: () => { forget(); onTimeout?.(); },
     });
     reader = {
       ...armed,
       itemId,
       off: () => { forget(); armed.off(); },
     };
-    // The timeout ends a reader from inside armAnnouncement; done covers it.
-    armed.done.then(forget);
     this._readers.add(reader);
     this._pending = reader;
     return reader;
@@ -337,23 +328,28 @@ export class ActionExecutor {
    * saves, plain /r rolls. It takes only cards no item reader is waiting for,
    * so it cannot steal a slow spell's card.
    *
-   * The window is 20 seconds because attack cards are slow: Josh measured key to
-   * card at 3.4 to 6.2 seconds on Punch, because Dice So Nice animates the dice
-   * first and PF1 only creates the card once they finish.
+   * Only one generic reader is kept: arming one switches off the previous, so a
+   * roll that produced no card cannot still be waiting, oldest in line, and
+   * steal the next command's card. It gives up silently after 20 seconds.
    */
   _announceOnce(handler, opts = {}) {
-    return this._armReader({
+    if (this._generic?.isPending()) this._generic.off();
+    this._generic = this._armReader({
       handler,
       match: (message) => !this._itemReaderFor(cardItemId(message)),
       timeout: 20000,
       ...opts,
     });
+    return this._generic;
   }
 
   /**
    * A reader that waits for this item's card and nothing else. Ten minutes,
    * because a card held up by a hidden tab or stalled dice is still worth
-   * hearing (8.44); after three seconds it says once that it is waiting.
+   * hearing (8.44). The wait line comes at 8 seconds: Josh measured key to
+   * card at 3.4 to 6.2 seconds on Punch with Dice So Nice, so anything shorter
+   * would speak it on nearly every attack. If no card ever comes it says so,
+   * rather than leaving silence.
    */
   _armItemReader(item, handler) {
     return this._armReader({
@@ -361,8 +357,9 @@ export class ActionExecutor {
       match: (message) => cardItemId(message) === item.id,
       itemId: item.id,
       timeout: 600000,
-      waitMs: 3000,
+      waitMs: 8000,
       onWaiting: () => this._tts()?.speak(`${item.name}, waiting on the dice.`, { interrupt: false, queue: true }),
+      onTimeout: () => this._tts()?.speak(`${item.name}, no result.`, { interrupt: false, queue: true }),
     });
   }
 

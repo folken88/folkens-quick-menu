@@ -29,6 +29,8 @@
  * @param {number}   [deps.timeout] give up after this long
  * @param {number}   [deps.waitMs]  if nothing matched by then, call onWaiting
  * @param {function} [deps.onWaiting] () => void, called at most once
+ * @param {function} [deps.onTimeout] () => void, called once if the timeout
+ *                                  ends the reader (not on off())
  * @param {string}   [deps.event]
  * @returns {{off: function, isPending: function, done: Promise<object|null>}}
  *          done resolves to the matched message, or null on timeout or off()
@@ -48,6 +50,7 @@ export function armAnnouncement({
   timeout = 20000,
   waitMs = 0,
   onWaiting = null,
+  onTimeout = null,
   event = 'createChatMessage',
 } = {}) {
   let finished = false;
@@ -74,7 +77,14 @@ export function armAnnouncement({
     // Someone else's card, or ours for another reader: stay armed, we are
     // still waiting for our own.
     if (!isOwn(message)) return;
-    if (!match(message)) return;
+    let matched = false;
+    try {
+      matched = match(message);
+    } catch (error) {
+      // A broken predicate must not end the reader or the hook: stay armed.
+      console.error('folken-games-quick-menu | announcement match failed:', error);
+    }
+    if (!matched) return;
     finish(message);
     try {
       handler?.(message);
@@ -83,7 +93,15 @@ export function armAnnouncement({
     }
   });
 
-  timer = timers.set(off, timeout);
+  timer = timers.set(() => {
+    if (finished) return;
+    finish(null);
+    try {
+      onTimeout?.();
+    } catch (error) {
+      console.error('folken-games-quick-menu | timeout line failed:', error);
+    }
+  }, timeout);
   // A card slower than this (hidden tab, Dice So Nice stalled, 8.44) is still
   // read when it comes; this only says once that we are still waiting.
   if (waitMs > 0 && typeof onWaiting === 'function') {

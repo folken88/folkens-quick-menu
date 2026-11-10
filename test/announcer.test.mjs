@@ -155,7 +155,7 @@ t("a throwing handler still leaves nothing registered", () => {
 
 // --- the default plumbing, not just the fakes ---
 
-t("it works with the default timers, which nothing else exercises", async () => {
+await t("it works with the default timers, which nothing else exercises", async () => {
   // The browser default was a bare setTimeout reference, which throws
   // "Illegal invocation" when called as timers.set(). Node does not reproduce
   // that, so this at least keeps the default path running in the suite.
@@ -167,7 +167,7 @@ t("it works with the default timers, which nothing else exercises", async () => 
   assert.equal(a.isPending(), false);
 });
 
-t("the default timers really do fire and unregister", async () => {
+await t("the default timers really do fire and unregister", async () => {
   const hooks = fakeHooks();
   armAnnouncement({ hooks, handler: () => {}, timeout: 10 });
   assert.equal(hooks.live, 1);
@@ -258,6 +258,40 @@ await t("done resolves to null on timeout", async () => {
   assert.equal(r.isPending(), false);
   assert.equal(hooks.live, 0);
   assert.equal(await r.done, null);
+});
+
+t("the timeout calls onTimeout once, and off() never does", () => {
+  const hooks = fakeHooks(), timers = makeClock();
+  let timeouts = 0;
+  armAnnouncement({ hooks, timers, handler: () => {}, timeout: 600000, onTimeout: () => timeouts++ });
+  timers.advance(600000); timers.advance(600000);
+  assert.equal(timeouts, 1);
+  const b = armAnnouncement({ hooks, timers, handler: () => {}, timeout: 600000, onTimeout: () => timeouts++ });
+  b.off();
+  timers.advance(600000);
+  assert.equal(timeouts, 1);
+  const c = armAnnouncement({ hooks, timers, handler: () => {}, timeout: 600000, onTimeout: () => timeouts++ });
+  hooks.emit("createChatMessage", {});
+  timers.advance(600000);
+  assert.equal(timeouts, 1);
+  assert.equal(c.isPending(), false);
+});
+
+t("a throwing match leaves the reader armed and logs", () => {
+  const hooks = fakeHooks(), timers = makeClock();
+  const logged = []; const origError = console.error; console.error = (...a) => logged.push(a);
+  try {
+    let heard = 0;
+    let broken = true;
+    const r = armAnnouncement({ hooks, timers, match: () => { if (broken) throw new Error("bad match"); return true; }, handler: () => heard++ });
+    hooks.emit("createChatMessage", {});
+    assert.equal(r.isPending(), true);
+    assert.equal(hooks.live, 1);
+    assert.equal(logged.length, 1);
+    broken = false;
+    hooks.emit("createChatMessage", {});
+    assert.equal(heard, 1);
+  } finally { console.error = origError; }
 });
 
 console.log(`\n${pass} assertions passed.`);

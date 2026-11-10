@@ -413,20 +413,101 @@ await t("an attack waits for its own weapon's card", async () => {
   } finally { heard.restore(); }
 });
 
-await t("a slow spell says once that it is waiting, and its card is still read (8.44)", async () => {
+/** Timers on a hand-advanced clock, handed to an executor as ex._timers. */
+function makeClock() {
+  let now = 0;
+  const due = [];
+  let nextId = 1;
+  return {
+    set(fn, ms) { const id = nextId++; due.push({ id, at: now + ms, fn }); return id; },
+    clear(id) { const i = due.findIndex(d => d.id === id); if (i >= 0) due.splice(i, 1); },
+    advance(ms) {
+      const end = now + ms;
+      for (;;) {
+        due.sort((a, b) => a.at - b.at);
+        const next = due[0];
+        if (!next || next.at > end) break;
+        due.shift();
+        now = next.at;
+        next.fn();
+      }
+      now = end;
+    },
+  };
+}
+
+const disintegrate = () => {
+  const book = spontaneousBook({ 6: 2 });
+  const spell = { id: "d", name: "Disintegrate", system: { level: 6, spellbook: "primary" }, spellbook: book, use: async () => ({}) };
+  return makeActor({ items: [spell], books: { primary: book } });
+};
+
+await t("a slow spell says once, at 8 s, that it is waiting, and its card is still read (8.44)", async () => {
   const heard = hearReadouts();
   try {
-    const book = spontaneousBook({ 6: 2 });
-    const spell = { id: "d", name: "Disintegrate", system: { level: 6, spellbook: "primary" }, spellbook: book, use: async () => ({}) };
     const ex = new ActionExecutor();
-    await ex.execute({ actionType: "spell", itemId: "d", label: "Disintegrate" }, makeActor({ items: [spell], books: { primary: book } }));
-    await new Promise((r) => setTimeout(r, 3200));
+    ex._timers = makeClock();
+    await ex.execute({ actionType: "spell", itemId: "d", label: "Disintegrate" }, disintegrate());
+    ex._timers.advance(7000); // inside Josh's 3.4-6.2 s dice window: quiet
+    assert.deepEqual(spoken, []);
+    ex._timers.advance(1000);
     assert.deepEqual(spoken, ["Disintegrate, waiting on the dice."]);
+    ex._timers.advance(60000);
     const ray = rayCard(51);
     postCard(ray);
     assert.deepEqual(heard, [["card", ray]]);
     assert.deepEqual(spoken, ["Disintegrate, waiting on the dice."]);
   } finally { heard.restore(); }
+});
+
+await t("a spell whose card never comes says no result, once, after ten minutes", async () => {
+  const heard = hearReadouts();
+  try {
+    const ex = new ActionExecutor();
+    ex._timers = makeClock();
+    await ex.execute({ actionType: "spell", itemId: "d", label: "Disintegrate" }, disintegrate());
+    ex._timers.advance(599999);
+    assert.deepEqual(spoken, ["Disintegrate, waiting on the dice."]);
+    ex._timers.advance(1);
+    assert.deepEqual(spoken, ["Disintegrate, waiting on the dice.", "Disintegrate, no result."]);
+    assert.equal(ex.hasPendingReader, false);
+    ex._timers.advance(600000);
+    postCard(rayCard(51));
+    assert.deepEqual(heard, []);
+    assert.equal(spoken.length, 2);
+  } finally { heard.restore(); }
+});
+
+await t("a skill whose card never came is dropped by the next skill, which reads the card", async () => {
+  const heard = hearReadouts();
+  try {
+    const actor = makeActor();
+    actor.rollSkill = async () => {};
+    const ex = new ActionExecutor();
+    ex._timers = makeClock();
+    await ex.execute({ actionType: "skill", skillKey: "per", label: "Perception" }, actor); // no card
+    const first = ex._pending;
+    await ex.execute({ actionType: "skill", skillKey: "kar", label: "Arcana" }, actor);
+    const second = ex._pending;
+    assert.equal(first.isPending(), false, "the stale generic reader is still armed");
+    assert.equal(second.isPending(), true);
+    postCard({ rolls: [{ total: 15 }] });
+    assert.deepEqual(heard, [["roll", 15]]);
+    assert.deepEqual(spoken, []);
+    assert.equal(ex.hasPendingReader, false, "the second reader never got its card");
+  } finally { heard.restore(); }
+});
+
+await t("a skill does not drop a spell's reader", async () => {
+  const actor = disintegrate();
+  actor.rollSkill = async () => {};
+  const ex = new ActionExecutor();
+  ex._timers = makeClock();
+  await ex.execute({ actionType: "spell", itemId: "d", label: "Disintegrate" }, actor);
+  await ex.execute({ actionType: "skill", skillKey: "per", label: "Perception" }, actor);
+  await ex.execute({ actionType: "skill", skillKey: "kar", label: "Arcana" }, actor);
+  assert.ok(ex._itemReaderFor("d"));
+  assert.equal(ex._readers.size, 2);
 });
 
 console.log(`\n${pass} assertions passed.`);
