@@ -7,7 +7,7 @@ import { debugLog } from '../module.js';
 import { stripMarkup } from '../chat/StateSpeech.js';
 import { distinctSpellbooks } from './Spellbooks.js';
 import { isTriggerable, isUsefulFeature } from './ItemUse.js';
-import { mergeStacks, containerContents, quantityOf } from './MenuItems.js';
+import { mergeStacks, containerContents, quantityOf, infoEntry } from './MenuItems.js';
 import { poolCommandsFor } from '../chat/StateSpeech.js';
 
 export class CharacterDataExtractor {
@@ -520,16 +520,7 @@ export class CharacterDataExtractor {
       const quantity = quantityOf(item.system);
       if (!(ammo || item.type === 'consumable' || isTriggerable(item))) {
         // Not usable, but still in the box: say what it is and how many.
-        entries.push({
-          id: `item_${itemId}`,
-          label: item.name,
-          menuLabel: `${item.name}, ${quantity}`,
-          type: 'info',
-          actionType: 'item_info',
-          itemId,
-          quantity,
-          originalItem: item,
-        });
+        entries.push(infoEntry(item));
         continue;
       }
       entries.push({

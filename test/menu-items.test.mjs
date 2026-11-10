@@ -3,7 +3,7 @@
  * Run: node test/menu-items.test.mjs
  */
 import assert from "node:assert/strict";
-import { mergeStacks, containerContents, quantityOf } from "../scripts/character/MenuItems.js";
+import { mergeStacks, containerContents, quantityOf, infoEntry } from "../scripts/character/MenuItems.js";
 import { usesLeftLine } from "../scripts/executor/UseOutcome.js";
 
 let pass = 0;
@@ -90,6 +90,22 @@ t("both formats together dedupe by id", () => {
   const box = { id: "bag", items: { contents: [{ id: "p" }] } };
   const out = containerContents(box, [{ id: "p", flags: { pf1: { container: "bag" } } }, { id: "q", flags: { pf1: { container: "bag" } } }]);
   assert.deepEqual(out.map(i => i.id), ["p", "q"]);
+});
+
+t("a non-usable box content becomes an info entry with a spoken count", () => {
+  const e = infoEntry({ id: "t1", name: "Torch", system: { quantity: 2 } });
+  assert.equal(e.type, "info");
+  assert.equal(e.actionType, "item_info");
+  assert.equal(e.label, "Torch");
+  assert.equal(e.menuLabel, "Torch, 2");
+  assert.equal(e.itemId, "t1");
+  assert.equal(e.quantity, 2);
+});
+t("merged info stacks announce the summed count", () => {
+  const out = mergeStacks([infoEntry({ id: "a", name: "Torch", system: { quantity: 1 } }), infoEntry({ id: "b", name: "Torch", system: { quantity: 2 } })]);
+  assert.equal(out.length, 1);
+  assert.equal(out[0].quantity, 3);
+  assert.equal(out[0].menuLabel, "Torch, 3");
 });
 
 console.log(`${pass} assertions passed.`);

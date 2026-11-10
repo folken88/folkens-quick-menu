@@ -13,6 +13,28 @@ export function quantityOf(system) {
   return Number.isFinite(Number(system?.quantity)) ? Number(system.quantity) : 1;
 }
 
+/** What an info entry announces: its name and its current count. */
+export function menuLabelFor(entry) {
+  return `${entry.label}, ${entry.quantity}`;
+}
+
+/** The entry for something in a box that cannot be used (read-only). */
+export function infoEntry(item) {
+  const itemId = item.id ?? item._id;
+  const quantity = quantityOf(item.system);
+  const entry = {
+    id: `item_${itemId}`,
+    label: item.name,
+    type: 'info',
+    actionType: 'item_info',
+    itemId,
+    quantity,
+    originalItem: item,
+  };
+  entry.menuLabel = menuLabelFor(entry);
+  return entry;
+}
+
 /**
  * One entry per name. The first entry keeps its place and gains the other
  * stacks' ids as `alternates` - the same field the chat resolver sets, so the
@@ -36,6 +58,7 @@ export function mergeStacks(entries) {
     }
     first.alternates = [...(first.alternates ?? []), entry.itemId];
     first.quantity = (Number(first.quantity) || 0) + (Number(entry.quantity) || 0);
+    if (first.menuLabel !== undefined) first.menuLabel = menuLabelFor(first);
   }
   return merged;
 }
