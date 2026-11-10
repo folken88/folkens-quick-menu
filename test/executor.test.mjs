@@ -44,6 +44,20 @@ ActionExecutor.prototype._armReader = function (...args) {
   return reader;
 };
 
+// Every buff window a use opens is closed when the test ends: an executor
+// with no test clock watches on a real 4 s timer (8.36).
+const buffWindows = [];
+const realBuffWatch = ActionExecutor.prototype._buffWatch;
+if (realBuffWatch) ActionExecutor.prototype._buffWatch = function (actor) {
+  const watch = realBuffWatch.call(this, actor);
+  if (!watch._tracked) {
+    const open = watch.open.bind(watch);
+    watch.open = (opts) => { const w = open(opts); buffWindows.push(w); return w; };
+    watch._tracked = true;
+  }
+  return watch;
+};
+
 let pass = 0;
 const t = async (name, fn) => {
   spoken.length = 0;
@@ -51,6 +65,7 @@ const t = async (name, fn) => {
     await fn();
   } finally {
     for (const reader of armedReaders.splice(0)) reader.off();
+    for (const w of buffWindows.splice(0)) w.close();
   }
   pass++;
   console.log("  ok -", name);
@@ -216,6 +231,112 @@ await t("for someone else is said after the name", async () => {
   await ex._useItem(rod, makeActor({ items: [rod] }), null, { forOther: true });
   ex._pending?.off();
   assert.deepEqual(spoken, ["Rod, for someone else. 2 of 3 left."]);
+});
+
+// --- buffs switched on are said, by us or by Auto Buff (8.36, 4.6, 10.28) ---
+
+/** A sheet buff whose update() fires updateItem, as Foundry does. */
+function sheetBuff(name, actor) {
+  return {
+    id: `b-${name}`, type: "buff", name, parent: actor, system: { active: false }, updates: [],
+    async update(changes) {
+      this.updates.push(changes);
+      this.system.active = changes["system.active"];
+      for (const fn of hookHandlers.updateItem ?? []) fn(this, { system: { active: this.system.active } }, {}, "me");
+    },
+  };
+}
+/** makeActor's items, searchable by name as switchBuffOn needs. */
+function buffActor(items) {
+  const actor = makeActor({ items });
+  actor.items.contents = items;
+  actor.items.find = (fn) => items.find(fn);
+  return actor;
+}
+const settle = () => new Promise((resolve) => setImmediate(resolve));
+
+await t("a buff potion's buff switching on is said after the use line", async () => {
+  const items = [];
+  const actor = buffActor(items);
+  const shield = sheetBuff("Shield", actor);
+  const potion = { id: "p", name: "Potion of Shield", type: "consumable", system: { quantity: 2 }, use: async () => ({}) };
+  items.push(potion, shield);
+  const ex = new ActionExecutor();
+  ex._timers = makeClock();
+  await ex.execute({ actionType: "item", itemId: "p", label: "Potion of Shield" }, actor);
+  await settle();
+  assert.deepEqual(shield.updates, [{ "system.active": true }]);
+  assert.equal(spoken.length, 2, JSON.stringify(spoken));
+  assert.match(spoken[0], /^Potion of Shield\b/);
+  assert.equal(spoken[1], "Shield on.");
+});
+
+await t("a buff Auto Buff switches on during the use is said once, after the use line", async () => {
+  const items = [];
+  const actor = buffActor(items);
+  const haste = sheetBuff("Haste", actor);
+  // Auto Buff switches Haste on while PF1 is using the wand.
+  const wand = { id: "w", name: "Wand of Haste", type: "consumable", system: { uses: { per: "charges", value: 9, max: 10 } },
+    use: async () => { await haste.update({ "system.active": true }); return {}; } };
+  items.push(wand, haste);
+  const ex = new ActionExecutor();
+  ex._timers = makeClock();
+  await ex.execute({ actionType: "item", itemId: "w", label: "Wand of Haste" }, actor);
+  await settle();
+  assert.equal(spoken.length, 2, JSON.stringify(spoken));
+  assert.match(spoken[0], /^Wand of Haste\b/);
+  assert.equal(spoken[1], "Haste on.");
+});
+
+await t("used for someone else, a buff switched on here is switched back off and not said", async () => {
+  const items = [];
+  const actor = buffActor(items);
+  const shield = sheetBuff("Shield", actor);
+  // Auto Buff switches the buff on the user's own sheet.
+  const potion = { id: "p", name: "Potion of Shield", type: "consumable", system: { quantity: 2 },
+    use: async () => { await shield.update({ "system.active": true }); return {}; } };
+  items.push(potion, shield);
+  const ex = new ActionExecutor();
+  ex._timers = makeClock();
+  await ex._useItem(potion, actor, null, { forOther: true });
+  await settle();
+  assert.deepEqual(shield.updates, [{ "system.active": true }, { "system.active": false }]);
+  assert.equal(shield.system.active, false);
+  assert.equal(spoken.length, 1, JSON.stringify(spoken));
+  assert.match(spoken[0], /^Potion of Shield, for someone else\b/);
+});
+
+await t("the buff window lasts 4 s after the use, then hears nothing", async () => {
+  const items = [];
+  const actor = buffActor(items);
+  const bless = sheetBuff("Bless", actor);
+  const rod = { id: "r", name: "Rod", system: { uses: { per: "day", value: 2, max: 3 } }, use: async () => ({}) };
+  items.push(rod, bless);
+  const ex = new ActionExecutor();
+  ex._timers = makeClock();
+  await ex.execute({ actionType: "item", itemId: "r", label: "Rod" }, actor);
+  ex._timers.advance(3999);
+  await bless.update({ "system.active": true }); // Auto Buff, a little late
+  assert.deepEqual(spoken, ["Rod. 2 of 3 left.", "Bless on."]);
+  await bless.update({ "system.active": false });
+  ex._timers.advance(1);
+  const bark = sheetBuff("Barkskin", actor); items.push(bark);
+  await bark.update({ "system.active": true });
+  assert.deepEqual(spoken, ["Rod. 2 of 3 left.", "Bless on."]);
+});
+
+await t("a refused use closes the buff window at once", async () => {
+  const items = [];
+  const actor = buffActor(items);
+  const shield = sheetBuff("Shield", actor);
+  const potion = { id: "p", name: "Potion of Shield", type: "consumable", system: {}, use: async () => 3 };
+  items.push(potion, shield);
+  const ex = new ActionExecutor();
+  ex._timers = makeClock();
+  await ex.execute({ actionType: "item", itemId: "p", label: "Potion of Shield" }, actor);
+  await shield.update({ "system.active": true });
+  await settle();
+  assert.deepEqual(spoken, ["None left."]);
 });
 
 await t("using the last of something says it was the last", async () => {

@@ -14,6 +14,7 @@ import { playEarcon } from '../tts/Earcons.js';
 import { useOutcome, usesLeftLine, LAST_ONE } from './UseOutcome.js';
 import { healingOf } from './Healing.js';
 import { switchBuffOn } from './BuffOn.js';
+import { BuffWatch } from './BuffWatch.js';
 import { composeUseLine } from './UseReport.js';
 import { spellDetailLine } from '../chat/SpellDetail.js';
 import { rolledNotes } from '../chat/CardNotes.js';
@@ -402,6 +403,51 @@ export class ActionExecutor {
     return item?.id ? this._armItemReader(item, handler) : this._announceOnce(handler);
   }
 
+  /**
+   * One BuffWatch per actor (8.36, 4.6). Every use opens its window, so a buff
+   * that switches on - by our potion, wand or scroll, or by Auto Buff - is said
+   * once, and used for someone else is switched back off (10.28).
+   */
+  _buffWatch(actor) {
+    this._buffWatches ??= new Map();
+    const id = actor?.id ?? null;
+    let watch = this._buffWatches.get(id);
+    if (!watch) {
+      watch = new BuffWatch({
+        hooks: Hooks,
+        actorId: id,
+        speak: (line) => this._sayBuff(line),
+        ...(this._timers ? { timers: this._timers } : {}),
+      });
+      this._buffWatches.set(id, watch);
+    }
+    return watch;
+  }
+
+  /**
+   * A buff line waits while a use line is still to come, so the name is heard
+   * first: "Potion of Shield. 1 left." then "Shield on." Auto Buff switches the
+   * buff on well inside the 1.5 s the use line waits for its card.
+   */
+  _sayBuff(line) {
+    if (!line) return;
+    if ((this._buffHolds ?? 0) > 0) { (this._heldBuffLines ??= []).push(line); return; }
+    this._tts()?.speak(line, { interrupt: false, queue: true });
+  }
+
+  _holdBuffLines() {
+    this._buffHolds = (this._buffHolds ?? 0) + 1;
+  }
+
+  /** Always called once per hold (a finally), so a held line is never lost. */
+  _releaseBuffLines() {
+    this._buffHolds = Math.max(0, (this._buffHolds ?? 1) - 1);
+    if (this._buffHolds > 0) return;
+    const held = this._heldBuffLines ?? [];
+    this._heldBuffLines = [];
+    for (const line of held) this._sayBuff(line);
+  }
+
   /** How long the use line waits for the card (10.16); tests replace it. */
   _sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
@@ -739,17 +785,22 @@ export class ActionExecutor {
     // the card, so its result is heard once (10.16).
     let lateCard = null;
     const reader = this._hookSpellResult(item, (message) => lateCard?.(message));
+    // Any buff that switches on during this use is said after the use line;
+    // for someone else it is switched back off (8.36, 10.28). The window is
+    // left to expire on success, so Auto Buff's later updates are still heard.
+    const watch = this._buffWatch(actor).open({ revert: forOther });
+    this._holdBuffLines();
     try {
       const outcome = useOutcome(await this._pf1Use(item));
-      if (!outcome.ok) { reader.off(); this._fail(outcome.reason); return; }
+      if (!outcome.ok) { reader.off(); watch.close(); this._fail(outcome.reason); return; }
 
-      // A buff potion switches its buff on - the sheet's, or one imported from
-      // the compendium - and says so. Nothing to switch on is not an error.
-      // Not waited for: nothing about buffs holds up the use line.
-      if (item.type === 'consumable') {
+      // A buff potion, wand or scroll switches its buff on - the sheet's, or
+      // one imported from the compendium. The watch hears it and says it.
+      // Nothing to switch on is not an error. Not waited for: nothing about
+      // buffs holds up the use line. Not for someone else: their buff is theirs.
+      if (item.type === 'consumable' && !forOther) {
         Promise.resolve().then(() => switchBuffOn(actor, item, {
           packs: typeof game !== 'undefined' ? [...(game.packs ?? [])] : [],
-          speak: (line) => this._tts()?.speak(line, { interrupt: false, queue: true }),
           fromCompendium: (doc) => (typeof game !== 'undefined' && game.items?.fromCompendium)
             ? game.items.fromCompendium(doc, { clearFolder: true }) : doc.toObject(),
         })).catch((error) => console.warn('folken-games-quick-menu | buff switch failed:', error));
@@ -796,7 +847,10 @@ export class ActionExecutor {
     } catch (error) {
       console.error('Item use error:', error);
       reader.off();
+      watch.close();
       this._fail(`${item.name} failed.`);
+    } finally {
+      this._releaseBuffLines();
     }
   }
 

@@ -1,5 +1,7 @@
 /**
- * A buff potion switches its buff on: the sheet's, else the compendium's, else nothing.
+ * A buff potion, wand or scroll switches its buff on: the sheet's, else the
+ * compendium's, else nothing. It says nothing itself - the BuffWatch hears the
+ * buff switch on and says it (8.36).
  * Run: node test/buff-on.test.mjs
  */
 import assert from "node:assert/strict";
@@ -23,21 +25,22 @@ function makePack(id, entries) {
   };
 }
 
-await t("a potion's buff is its name after 'of'; other consumables have none", async () => {
+await t("a potion's, wand's or scroll's buff is its name after 'of'; other consumables have none", async () => {
   assert.equal(buffNameFor({ name: "Potion of Shield" }), "Shield");
   assert.equal(buffNameFor({ name: "Potion of Owl's Wisdom" }), "Owl's Wisdom");
-  assert.equal(buffNameFor({ name: "Scroll of Fireball" }), null);
+  assert.equal(buffNameFor({ name: "Wand of Fly" }), "Fly");
+  assert.equal(buffNameFor({ name: "Scroll of Haste" }), "Haste");
   assert.equal(buffNameFor({ name: "Wack Juce" }), null);
 });
 
-await t("the sheet's own buff is switched on and said", async () => {
+await t("the sheet's own buff is switched on, and nothing is said here", async () => {
   const said = [];
   const shield = { type: "buff", name: "Shield", system: { active: false }, updates: [], async update(c) { this.updates.push(c); } };
   const actor = makeActor([shield]);
   const where = await switchBuffOn(actor, { name: "Potion of Shield" }, { speak: l => said.push(l) });
-  assert.equal(where, "sheet");
+  assert.deepEqual(where, { where: "sheet", name: "Shield" });
   assert.deepEqual(shield.updates, [{ "system.active": true }]);
-  assert.deepEqual(said, ["Shield on."]);
+  assert.deepEqual(said, [], "the watch says it, not switchBuffOn");
   assert.equal(actor.created.length, 0, "nothing imported when the sheet has it");
 });
 
@@ -47,11 +50,11 @@ await t("with no buff on the sheet, PF1's compendium buff is imported active, be
   const homebrew = makePack("world.my-buffs", [{ _id: "h1", name: "Fly", type: "buff", duration: "homebrew" }]);
   const pf1 = makePack("pf1.commonbuffs", [{ _id: "p1", name: "Fly", type: "buff", duration: "5 min" }]);
   const where = await switchBuffOn(actor, { name: "Potion of Fly" }, { packs: [homebrew, pf1], speak: l => said.push(l) });
-  assert.equal(where, "compendium");
+  assert.deepEqual(where, { where: "compendium", name: "Fly" });
   assert.equal(actor.created.length, 1);
   assert.equal(actor.created[0].system.active, true);
   assert.equal(actor.created[0].system.duration, "5 min", "the system's version, as Tobias asked");
-  assert.deepEqual(said, ["Fly on, from the compendium."]);
+  assert.deepEqual(said, []);
 });
 
 await t("a cure potion has no buff anywhere, and nothing is said", async () => {
@@ -59,8 +62,12 @@ await t("a cure potion has no buff anywhere, and nothing is said", async () => {
   const actor = makeActor([]);
   const pf1 = makePack("pf1.commonbuffs", [{ _id: "p1", name: "Fly", type: "buff" }]);
   const where = await switchBuffOn(actor, { name: "Potion of Cure Light Wounds" }, { packs: [pf1], speak: l => said.push(l) });
-  assert.equal(where, null);
+  assert.deepEqual(where, { where: null, name: "Cure Light Wounds" });
   assert.deepEqual(said, []);
+});
+
+await t("a consumable with no 'of' name has no buff: where and name are null", async () => {
+  assert.deepEqual(await switchBuffOn(makeActor([]), { name: "Wack Juce" }), { where: null, name: null });
 });
 
 await t("pack order: pf1 first, non-Item packs dropped", async () => {

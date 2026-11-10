@@ -9,14 +9,20 @@
  *
  * So: the buff of that name already on the sheet is switched on; failing that,
  * one is imported from a compendium (PF1's own first) and switched on; failing
- * that, nothing is said - a cure potion has no buff, and that is not an error.
+ * that, nothing - a cure potion has no buff, and that is not an error.
  *
- * The actor, packs and voice are passed in, so the rule can be tested in node.
+ * Wands and scrolls too (10.11): "Wand of Fly" switches Fly on.
+ *
+ * Nothing is said here (8.36). The sheet update fires updateItem and the
+ * import fires createItem with the buff active; the BuffWatch hears either and
+ * says "Fly on." - the same line whether we or Auto Buff switched it.
+ *
+ * The actor and packs are passed in, so the rule can be tested in node.
  */
 
-/** "Potion of Shield" -> "Shield"; anything that is not a potion -> null. */
+/** "Potion of Shield" / "Wand of Fly" -> the buff's name; anything else -> null. */
 export function buffNameFor(item) {
-  const m = /^(?:potion|elixir|oil|draught) of (.+)$/i.exec(String(item?.name ?? '').trim());
+  const m = /^(?:potion|elixir|oil|draught|wand|scroll) of (.+)$/i.exec(String(item?.name ?? '').trim());
   return m ? m[1].trim() : null;
 }
 
@@ -35,21 +41,20 @@ export function orderPacks(packs = []) {
  * @param {object}   item          the consumable that was just used
  * @param {object}   [opts]
  * @param {object[]} [opts.packs]  compendium packs to search when the sheet has no such buff
- * @param {function} [opts.speak]  (line) => void
  * @param {function} [opts.fromCompendium] (doc) => plain item data; defaults to doc.toObject()
- * @returns {Promise<'sheet'|'compendium'|null>} where the buff came from, or null when there was none to switch on
+ * @returns {Promise<{where: 'sheet'|'compendium'|null, name: ?string}>} where the buff
+ *          came from (null when there was none to switch on), and its name
  */
-export async function switchBuffOn(actor, item, { packs = [], speak = () => {}, fromCompendium = null } = {}) {
+export async function switchBuffOn(actor, item, { packs = [], fromCompendium = null } = {}) {
   const name = buffNameFor(item);
-  if (!name || !actor) return null;
+  if (!name || !actor) return { where: null, name };
   const lower = name.toLowerCase();
 
   const own = (actor.items?.contents ?? actor.items ?? []).find?.(i => i.type === 'buff' && String(i.name).toLowerCase() === lower)
     ?? actor.items?.find?.(i => i.type === 'buff' && String(i.name).toLowerCase() === lower);
   if (own) {
     if (own.system?.active !== true) await own.update({ 'system.active': true });
-    speak(`${name} on.`);
-    return 'sheet';
+    return { where: 'sheet', name };
   }
 
   for (const pack of orderPacks(packs)) {
@@ -61,8 +66,7 @@ export async function switchBuffOn(actor, item, { packs = [], speak = () => {}, 
     const data = fromCompendium ? fromCompendium(doc) : doc.toObject();
     data.system = { ...(data.system ?? {}), active: true };
     await actor.createEmbeddedDocuments('Item', [data]);
-    speak(`${name} on, from the compendium.`);
-    return 'compendium';
+    return { where: 'compendium', name };
   }
-  return null;
+  return { where: null, name };
 }
